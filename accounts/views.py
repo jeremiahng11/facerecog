@@ -243,7 +243,8 @@ def enroll_face_ajax(request):
 
         user.set_face_encoding(encoding)
         user.face_registered = True
-        user.save(update_fields=['face_photo', 'face_encoding', 'face_registered'])
+        user.face_enabled = True
+        user.save(update_fields=['face_photo', 'face_encoding', 'face_registered', 'face_enabled'])
 
         return JsonResponse({
             'success': True,

@@ -43,7 +43,7 @@ class StaffUser(AbstractBaseUser, PermissionsMixin):
     )
     face_registered = models.BooleanField(default=False)
     face_enabled = models.BooleanField(
-        default=False,
+        default=True,
         help_text='Allow this user to login via Face ID'
     )
 
