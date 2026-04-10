@@ -1,0 +1,198 @@
+{% extends 'base.html' %}
+{% block title %}Login — FaceID Portal{% endblock %}
+
+{% block extra_head %}
+<style>
+  body { background: var(--bg); }
+  .login-wrap {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: radial-gradient(ellipse at 30% 60%, rgba(0,212,255,0.04) 0%, transparent 60%),
+                radial-gradient(ellipse at 70% 20%, rgba(124,58,237,0.05) 0%, transparent 60%),
+                var(--bg);
+  }
+  .login-box {
+    width: 100%;
+    max-width: 420px;
+    animation: fadeIn 0.4s ease;
+  }
+  .login-logo {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+  .login-logo .icon-ring {
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 16px;
+    box-shadow: 0 0 30px rgba(0,212,255,0.2);
+    position: relative;
+  }
+  .login-logo .icon-ring::before {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 1px solid rgba(0,212,255,0.2);
+  }
+  .login-logo svg { color: var(--accent); }
+  .login-logo h1 {
+    font-family: var(--mono);
+    font-size: 22px;
+    color: var(--text);
+    letter-spacing: 2px;
+  }
+  .login-logo p { color: var(--text2); font-size: 13px; margin-top: 4px; }
+
+  .tab-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px;
+    margin-bottom: 24px;
+  }
+  .tab-btn {
+    padding: 10px;
+    text-align: center;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: var(--text3);
+    border: none;
+    background: transparent;
+    font-family: var(--sans);
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+  }
+  .tab-btn.active {
+    background: var(--card);
+    color: var(--accent);
+    border: 1px solid var(--border);
+  }
+
+  .face-id-card {
+    text-align: center;
+    padding: 32px 20px;
+  }
+  .face-btn {
+    width: 120px; height: 120px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    background: rgba(0,212,255,0.05);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    margin: 0 auto 20px;
+    cursor: pointer;
+    transition: all 0.3s;
+    gap: 8px;
+    color: var(--accent);
+    font-size: 12px;
+    font-family: var(--mono);
+    letter-spacing: 1px;
+  }
+  .face-btn:hover {
+    background: rgba(0,212,255,0.12);
+    box-shadow: 0 0 40px rgba(0,212,255,0.25);
+    transform: scale(1.03);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="login-wrap">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="icon-ring">
+        <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <path d="M12 1C6.477 1 2 5.477 2 11s4.477 10 10 10 10-4.477 10-10S17.523 1 12 1z"/>
+          <circle cx="12" cy="10" r="3"/>
+          <path d="M7 20.662V19a5 5 0 0110 0v1.662"/>
+        </svg>
+      </div>
+      <h1>FACEID PORTAL</h1>
+      <p>Secure Staff Authentication System</p>
+    </div>
+
+    <div class="card">
+      <div class="tab-group">
+        <button class="tab-btn active" id="tabPassword" onclick="switchTab('password')">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          Staff ID
+        </button>
+        <button class="tab-btn" id="tabFace" onclick="switchTab('face')">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M8 8c0-.667.133-1.3.4-1.9M15.6 6.1c.267.6.4 1.233.4 1.9M9 15c0 2.21 1.343 4 3 4s3-1.79 3-4"/><path d="M5 4l1.5 1.5M19 4l-1.5 1.5M5 20l1.5-1.5M19 20l-1.5-1.5"/></svg>
+          Face ID
+        </button>
+      </div>
+
+      <!-- Password Login -->
+      <div id="panelPassword">
+        <form method="post">
+          {% csrf_token %}
+          <div class="form-group">
+            <label>Staff ID</label>
+            <input type="text" name="staff_id" placeholder="e.g. EMP-001" autocomplete="username" required>
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input type="password" name="password" placeholder="Enter your password" autocomplete="current-password" required>
+          </div>
+          <button type="submit" class="btn btn-primary btn-full" style="margin-top:8px">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+            Sign In
+          </button>
+        </form>
+      </div>
+
+      <!-- Face ID Login -->
+      <div id="panelFace" style="display:none">
+        <div class="face-id-card">
+          <div class="face-btn" onclick="goToFaceLogin()">
+            <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.2" viewBox="0 0 24 24">
+              <path d="M7 3H5a2 2 0 00-2 2v2M17 3h2a2 2 0 012 2v2M7 21H5a2 2 0 01-2-2v-2M17 21h2a2 2 0 002-2v-2"/>
+              <circle cx="9" cy="10" r="1" fill="currentColor"/>
+              <circle cx="15" cy="10" r="1" fill="currentColor"/>
+              <path d="M9 15c.667.667 1.333 1 2 1h2c.667 0 1.333-.333 2-1"/>
+            </svg>
+            SCAN
+          </div>
+          <p class="text-muted text-sm" style="margin-bottom:16px">
+            Tap to start Face ID authentication
+          </p>
+          <a href="{% url 'face_login' %}" class="btn btn-primary btn-full">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12l2 2 4-4"/></svg>
+            Open Face Scanner
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <p style="text-align:center;margin-top:16px;font-size:12px;color:var(--text3);">
+      Secure access · Aleta Planet Pte. Ltd.
+    </p>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function switchTab(tab) {
+  const isPass = tab === 'password';
+  document.getElementById('tabPassword').classList.toggle('active', isPass);
+  document.getElementById('tabFace').classList.toggle('active', !isPass);
+  document.getElementById('panelPassword').style.display = isPass ? '' : 'none';
+  document.getElementById('panelFace').style.display = isPass ? 'none' : '';
+}
+function goToFaceLogin() {
+  window.location.href = "{% url 'face_login' %}";
+}
+</script>
+{% endblock %}

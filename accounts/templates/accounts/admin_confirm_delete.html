@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}Delete User — FaceID Portal{% endblock %}
+{% block content %}
+<div class="page" style="max-width:480px">
+  <div class="card" style="border-color:rgba(239,68,68,0.3)">
+    <div style="text-align:center;padding:16px 0 24px">
+      <div style="width:64px;height:64px;border-radius:50%;background:rgba(239,68,68,0.1);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;border:2px solid rgba(239,68,68,0.3)">
+        <svg width="28" height="28" fill="none" stroke="var(--danger)" stroke-width="1.5" viewBox="0 0 24 24">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+        </svg>
+      </div>
+      <h2 style="font-family:var(--mono);font-size:16px;color:var(--text);margin-bottom:8px">DELETE USER</h2>
+      <p style="color:var(--text2);font-size:14px">Are you sure you want to delete</p>
+      <p style="color:var(--danger);font-size:18px;font-weight:600;margin:8px 0">{{ target_user.full_name }}</p>
+      <p style="color:var(--text3);font-size:13px">{{ target_user.staff_id }} · {{ target_user.email }}</p>
+      <p style="color:var(--text3);font-size:12px;margin-top:12px">This action cannot be undone. All face data will be deleted.</p>
+    </div>
+    <div style="display:flex;gap:12px">
+      <a href="{% url 'admin_users' %}" class="btn btn-secondary" style="flex:1;justify-content:center">Cancel</a>
+      <form method="post" style="flex:1">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger btn-full">Delete User</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

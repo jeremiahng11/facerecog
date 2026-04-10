@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+{% block title %}Add User — FaceID Portal{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width:700px">
+  <div style="margin-bottom:24px;display:flex;align-items:center;gap:16px">
+    <a href="{% url 'admin_users' %}" class="btn btn-secondary btn-sm">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+      Back
+    </a>
+    <div>
+      <div class="page-title">Add New User</div>
+      <div class="page-subtitle">Create a staff account with optional Face ID</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+
+      <div class="card-header">
+        <h2>Account Details</h2>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Staff ID *</label>
+          <input type="text" name="staff_id" placeholder="e.g. EMP-001" required
+            value="{{ form.staff_id.value|default:'' }}">
+          {% if form.staff_id.errors %}<div class="hint" style="color:var(--danger)">{{ form.staff_id.errors.0 }}</div>{% endif %}
+        </div>
+        <div class="form-group">
+          <label>Email *</label>
+          <input type="email" name="email" placeholder="staff@company.com" required
+            value="{{ form.email.value|default:'' }}">
+          {% if form.email.errors %}<div class="hint" style="color:var(--danger)">{{ form.email.errors.0 }}</div>{% endif %}
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Full Name *</label>
+          <input type="text" name="full_name" placeholder="Full Name" required
+            value="{{ form.full_name.value|default:'' }}">
+        </div>
+        <div class="form-group">
+          <label>Department</label>
+          <input type="text" name="department" placeholder="e.g. Engineering"
+            value="{{ form.department.value|default:'' }}">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Password *</label>
+          <input type="password" name="password" placeholder="Minimum 6 characters" required>
+          {% if form.password.errors %}<div class="hint" style="color:var(--danger)">{{ form.password.errors.0 }}</div>{% endif %}
+        </div>
+        <div class="form-group">
+          <label>Confirm Password *</label>
+          <input type="password" name="password_confirm" placeholder="Repeat password" required>
+        </div>
+      </div>
+
+      {% if form.non_field_errors %}
+      <div class="alert alert-error">{{ form.non_field_errors.0 }}</div>
+      {% endif %}
+
+      <div class="divider"></div>
+      <div class="card-header" style="margin-bottom:16px">
+        <h2>Face ID Setup</h2>
+        <p>Optional — you can also enroll face later from Profile page</p>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Profile Picture</label>
+          <input type="file" name="profile_picture" accept="image/*">
+          <div class="hint">Shown in the app UI</div>
+        </div>
+        <div class="form-group">
+          <label>Face Recognition Photo</label>
+          <input type="file" name="face_photo" accept="image/*">
+          <div class="hint">Clear frontal face — used for Face ID login</div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-check">
+          <input type="checkbox" name="face_enabled" id="face_enabled" value="True"
+            {% if form.face_enabled.value %}checked{% endif %}>
+          <label for="face_enabled">Enable Face ID login for this user</label>
+        </div>
+        <div class="hint" style="margin-top:6px;margin-left:28px">User can login via Face ID once their face photo is enrolled</div>
+      </div>
+
+      <div style="display:flex;gap:12px;margin-top:8px">
+        <button type="submit" class="btn btn-primary" style="flex:1">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+          Create User
+        </button>
+        <a href="{% url 'admin_users' %}" class="btn btn-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

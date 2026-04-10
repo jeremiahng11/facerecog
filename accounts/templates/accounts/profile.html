@@ -1,0 +1,269 @@
+{% extends 'base.html' %}
+{% block title %}Profile & Face ID — FaceID Portal{% endblock %}
+
+{% block extra_head %}
+<style>
+  .profile-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 768px) { .profile-grid { grid-template-columns: 1fr; } }
+
+  /* Camera enroll */
+  .enroll-camera {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4/3;
+    background: #000;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
+  .enroll-camera video {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+    display: block;
+  }
+  .enroll-camera .cam-overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(8,12,18,0.85);
+    color: var(--text2); font-size: 13px; gap: 10px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .enroll-camera .cam-overlay:hover { background: rgba(8,12,18,0.7); }
+  .enroll-camera .cam-overlay.hidden { display: none; }
+  .face-oval {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 55%; aspect-ratio: 3/4;
+    border: 2px dashed rgba(0,212,255,0.4);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  .enroll-status {
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    text-align: center;
+    margin-bottom: 12px;
+    min-height: 40px;
+    display: flex; align-items: center; justify-content: center;
+    gap: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text2);
+  }
+  .enroll-status.ok { border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.07); color: var(--accent3); }
+  .enroll-status.err { border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.07); color: #f87171; }
+  .enroll-status.info { border-color: rgba(0,212,255,0.3); background: rgba(0,212,255,0.06); color: var(--accent); }
+
+  .current-face {
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid var(--accent3);
+    display: block;
+  }
+  .section-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 12px;
+  }
+  .cam-btn-row { display: flex; gap: 10px; margin-bottom: 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div style="margin-bottom:24px">
+    <div class="page-title">Profile & Face ID</div>
+    <div class="page-subtitle">Manage your profile photo and Face ID enrollment</div>
+  </div>
+
+  <div class="profile-grid">
+
+    <!-- Left: Photo upload form -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Profile Photos</h2>
+        <p>Upload profile picture and face recognition photo</p>
+      </div>
+
+      {% if user.face_registered %}
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;padding:14px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:10px;">
+        {% if user.face_photo %}
+        <img src="{{ user.face_photo.url }}" class="current-face" alt="Face photo">
+        {% endif %}
+        <div>
+          <div style="font-size:13px;color:var(--accent3);font-weight:600;margin-bottom:2px">✓ Face ID Enrolled</div>
+          <div style="font-size:12px;color:var(--text2)">Your face is registered for login</div>
+          {% if not user.face_enabled %}
+          <div style="font-size:11px;color:var(--warn);margin-top:3px">⚠ Face login disabled by admin</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="form-group">
+          <label>Profile Picture</label>
+          {% if user.profile_picture %}
+          <div style="margin-bottom:8px">
+            <img src="{{ user.profile_picture.url }}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--border);">
+          </div>
+          {% endif %}
+          <input type="file" name="profile_picture" accept="image/*">
+          <div class="hint">Shown in navigation and dashboard</div>
+        </div>
+
+        <div class="form-group">
+          <label>Face Recognition Photo</label>
+          <input type="file" name="face_photo" accept="image/*">
+          <div class="hint">Upload a clear frontal face photo to register for Face ID. Or use the live camera below.</div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-full">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+          Save Photos
+        </button>
+      </form>
+    </div>
+
+    <!-- Right: Live webcam enroll -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Live Face Enroll</h2>
+        <p>Use your camera to capture and register your face</p>
+      </div>
+
+      <div class="section-label">Camera Preview</div>
+      <div class="enroll-camera" id="enrollCamera">
+        <video id="enrollVideo" autoplay playsinline muted></video>
+        <div class="face-oval"></div>
+        <div class="cam-overlay" id="enrollOverlay" onclick="startEnrollCamera()">
+          <svg width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+          <span>Tap to start camera</span>
+        </div>
+      </div>
+
+      <div class="enroll-status" id="enrollStatus">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Start camera, then position your face in the oval and capture
+      </div>
+
+      <div class="cam-btn-row">
+        <button class="btn btn-secondary" id="camStartBtn" onclick="startEnrollCamera()" style="flex:1">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          Camera
+        </button>
+        <button class="btn btn-primary" id="captureBtn" onclick="captureAndEnroll()" disabled style="flex:2">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>
+          Capture & Enroll
+        </button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section-label">Requirements</div>
+      <ul style="list-style:none;display:flex;flex-direction:column;gap:8px">
+        {% for tip in "Good lighting,Face clearly visible,Look directly at camera,Only one person in frame,No heavy filters or masks"|split:"," %}
+        <li style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2)">
+          <svg width="14" height="14" fill="none" stroke="var(--accent)" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          {{ tip }}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CSRF_TOKEN = '{{ csrf_token }}';
+let enrollStream = null;
+const video = document.getElementById('enrollVideo');
+const overlay = document.getElementById('enrollOverlay');
+const captureBtn = document.getElementById('captureBtn');
+const statusEl = document.getElementById('enrollStatus');
+
+async function startEnrollCamera() {
+  if (enrollStream) return;
+  try {
+    enrollStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 } } });
+    video.srcObject = enrollStream;
+    overlay.classList.add('hidden');
+    captureBtn.disabled = false;
+    setEnrollStatus('info', 'Camera active. Centre your face in the oval and click Capture.');
+  } catch(e) {
+    setEnrollStatus('err', 'Camera error: ' + (e.message || 'Permission denied'));
+  }
+}
+
+async function captureAndEnroll() {
+  if (!enrollStream) { setEnrollStatus('err', 'Please start camera first.'); return; }
+  captureBtn.disabled = true;
+  captureBtn.innerHTML = `<svg class="spinning" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg> Processing…`;
+  setEnrollStatus('info', 'Capturing face data…');
+
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  const imageData = canvas.toDataURL('image/jpeg', 0.92);
+
+  try {
+    const resp = await fetch('{% url "enroll_face_ajax" %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+      body: JSON.stringify({ image: imageData }),
+    });
+    const data = await resp.json();
+    if (data.success) {
+      setEnrollStatus('ok', '✓ ' + data.message);
+      // Show new photo if returned
+      if (data.photo_url) {
+        const img = document.createElement('img');
+        img.src = data.photo_url; img.className = 'current-face';
+        img.style.cssText = 'margin:12px auto;display:block';
+        statusEl.parentNode.insertBefore(img, statusEl);
+      }
+    } else {
+      setEnrollStatus('err', data.message);
+    }
+  } catch(e) {
+    setEnrollStatus('err', 'Network error. Try again.');
+  }
+
+  captureBtn.disabled = false;
+  captureBtn.innerHTML = `<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg> Capture & Enroll`;
+}
+
+function setEnrollStatus(type, msg) {
+  statusEl.className = 'enroll-status ' + (type || '');
+  statusEl.textContent = msg;
+}
+
+// CSS spinning helper
+const style = document.createElement('style');
+style.textContent = '@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.spinning{animation:spin 0.8s linear infinite;display:inline-block}';
+document.head.appendChild(style);
+
+// Auto start camera
+window.addEventListener('load', () => startEnrollCamera());
+</script>
+{% endblock %}

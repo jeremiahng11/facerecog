@@ -1,0 +1,156 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard — FaceID Portal{% endblock %}
+
+{% block extra_head %}
+<style>
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .stat-icon {
+    width: 48px; height: 48px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .stat-icon.blue { background: rgba(0,212,255,0.1); color: var(--accent); }
+  .stat-icon.green { background: rgba(16,185,129,0.1); color: var(--accent3); }
+  .stat-icon.purple { background: rgba(124,58,237,0.15); color: #a78bfa; }
+  .stat-val { font-family: var(--mono); font-size: 22px; color: var(--text); }
+  .stat-label { font-size: 12px; color: var(--text3); margin-top: 2px; }
+  .welcome-banner {
+    background: linear-gradient(135deg, rgba(0,212,255,0.06), rgba(124,58,237,0.06));
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 24px;
+    display: flex; align-items: center; justify-content: space-between; gap: 20px;
+    flex-wrap: wrap;
+  }
+  .user-avatar-lg {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid var(--accent);
+  }
+  .user-avatar-placeholder {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    background: var(--bg3);
+    border: 3px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text3);
+  }
+  .quick-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <!-- Welcome Banner -->
+  <div class="welcome-banner">
+    <div class="flex items-center gap-3">
+      {% if user.profile_picture %}
+        <img src="{{ user.profile_picture.url }}" class="user-avatar-lg" alt="{{ user.display_name }}">
+      {% else %}
+        <div class="user-avatar-placeholder">
+          <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.582-7 8-7s8 3 8 7"/></svg>
+        </div>
+      {% endif %}
+      <div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text3);letter-spacing:2px;text-transform:uppercase">Welcome back</div>
+        <div style="font-size:22px;font-weight:600;color:var(--text)">{{ user.display_name }}</div>
+        <div style="font-size:13px;color:var(--text2)">{{ user.staff_id }} {% if user.department %}· {{ user.department }}{% endif %}</div>
+      </div>
+    </div>
+    <div class="quick-actions">
+      <a href="{% url 'profile' %}" class="btn btn-secondary">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z"/></svg>
+        Edit Profile
+      </a>
+      {% if user.is_staff %}
+      <a href="{% url 'admin_users' %}" class="btn btn-primary">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+        Manage Users
+      </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-icon blue">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+      </div>
+      <div>
+        <div class="stat-val">{{ user.staff_id }}</div>
+        <div class="stat-label">Staff ID</div>
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-icon {% if face_registered %}green{% else %}purple{% endif %}">
+        {% if face_registered %}
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        {% else %}
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M7 3H5a2 2 0 00-2 2v2M17 3h2a2 2 0 012 2v2M7 21H5a2 2 0 01-2-2v-2M17 21h2a2 2 0 002-2v-2"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="15" cy="10" r="1" fill="currentColor"/><path d="M9 15c.667.667 1.333 1 2 1h2c.667 0 1.333-.333 2-1"/></svg>
+        {% endif %}
+      </div>
+      <div>
+        <div class="stat-val" style="font-size:15px;padding-top:4px">{% if face_registered %}Registered{% else %}Not Set{% endif %}</div>
+        <div class="stat-label">Face ID Status</div>
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-icon {% if face_enabled %}green{% else %}purple{% endif %}">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      </div>
+      <div>
+        <div class="stat-val" style="font-size:15px;padding-top:4px">{% if face_enabled %}Enabled{% else %}Disabled{% endif %}</div>
+        <div class="stat-label">Face Login</div>
+      </div>
+    </div>
+
+    {% if user.last_face_login %}
+    <div class="stat-card">
+      <div class="stat-icon blue">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <div>
+        <div class="stat-val" style="font-size:13px;padding-top:6px">{{ user.last_face_login|date:"d M Y H:i" }}</div>
+        <div class="stat-label">Last Face Login</div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Face ID Setup prompt if not registered -->
+  {% if not face_registered %}
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:200px;">
+        <div style="font-family:var(--mono);font-size:13px;color:var(--accent);margin-bottom:4px">FACE ID NOT CONFIGURED</div>
+        <div style="font-size:14px;color:var(--text2)">Set up Face ID to enable camera-based login from any device. Go to Profile &amp; Face ID to enrol.</div>
+      </div>
+      <a href="{% url 'profile' %}" class="btn btn-primary">Set Up Face ID →</a>
+    </div>
+  </div>
+  {% else %}
+  <div class="card" style="border-color:rgba(16,185,129,0.3)">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:200px;">
+        <div style="font-family:var(--mono);font-size:13px;color:var(--accent3);margin-bottom:4px">✓ FACE ID ACTIVE</div>
+        <div style="font-size:14px;color:var(--text2)">Your face is registered. {% if face_enabled %}You can use Face ID to login.{% else %}Face login is currently disabled by admin.{% endif %}</div>
+      </div>
+      <a href="{% url 'profile' %}" class="btn btn-secondary">Manage →</a>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

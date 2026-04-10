@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+{% block title %}Face Login Logs — FaceID Portal{% endblock %}
+{% block content %}
+<div class="page">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:24px">
+    <div>
+      <div class="page-title">Face Login Audit Log</div>
+      <div class="page-subtitle">Last 200 face recognition attempts</div>
+    </div>
+    <a href="{% url 'admin_users' %}" class="btn btn-secondary">← Back to Users</a>
+  </div>
+
+  <div class="card" style="padding:0">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Result</th>
+            <th>User</th>
+            <th>Staff ID</th>
+            <th>Confidence</th>
+            <th>IP Address</th>
+            <th>Time</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in logs %}
+          <tr>
+            <td>
+              {% if log.success %}
+                <span class="badge badge-green">✓ Success</span>
+              {% else %}
+                <span class="badge badge-red">✗ Failed</span>
+              {% endif %}
+            </td>
+            <td class="td-main">{{ log.user.full_name|default:"Unknown" }}</td>
+            <td><span class="mono text-sm text-accent">{{ log.user.staff_id|default:"—" }}</span></td>
+            <td>
+              {% if log.confidence %}
+              <span style="font-family:var(--mono);font-size:13px;color:{% if log.confidence > 70 %}var(--accent3){% elif log.confidence > 50 %}var(--warn){% else %}var(--danger){% endif %}">
+                {{ log.confidence|floatformat:1 }}%
+              </span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-sm text-muted mono">{{ log.ip_address|default:"—" }}</td>
+            <td class="text-sm text-muted">{{ log.timestamp|date:"d M Y H:i:s" }}</td>
+            <td class="text-sm text-dim">{{ log.notes|default:"—" }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text3)">No face login attempts recorded yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
