@@ -185,7 +185,18 @@ def profile_view(request):
             return redirect('profile')
     else:
         form = FacePhotoUploadForm(instance=user)
-    return render(request, 'accounts/profile.html', {'form': form, 'user': user})
+    context = {
+        'form': form,
+        'user': user,
+        'requirements': [
+            'Good lighting',
+            'Face clearly visible',
+            'Look directly at camera',
+            'Only one person in frame',
+            'No heavy filters or masks',
+        ],
+    }
+    return render(request, 'accounts/profile.html', context)
 
 
 @login_required
