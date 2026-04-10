@@ -5,7 +5,6 @@ nixPkgs = [
   "gnumake",
   "openblas",
   "lapack",
-  "libX11",
   "glib",
   "python311",
   "python311Packages.pip",
