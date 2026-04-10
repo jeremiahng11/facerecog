@@ -73,6 +73,41 @@ def extract_encoding_from_file(image_path: str) -> list | None:
     return extract_face_encoding(arr)
 
 
+def extract_encoding_from_field_file(field_file) -> list | None:
+    """
+    Extract face encoding from a Django FieldFile, supporting both local
+    filesystem storage and remote backends (e.g. Cloudinary).
+
+    For local storage the file is read directly from disk via .path.
+    For remote storage the file is streamed into memory so no local path
+    is required (avoiding the AttributeError that .path raises on
+    Cloudinary-backed fields).
+    """
+    if not field_file:
+        return None
+    try:
+        # Local storage exposes a real filesystem path.
+        path = field_file.path
+        return extract_encoding_from_file(path)
+    except NotImplementedError:
+        # Remote storage backends (e.g. Cloudinary) raise NotImplementedError
+        # for .path — read the file content directly instead.
+        pass
+    except Exception as e:
+        logger.error(f"Error accessing field_file.path: {e}")
+
+    # Fallback: stream the file into a PIL Image via its storage backend.
+    try:
+        with field_file.open('rb') as fh:
+            pil_img = Image.open(fh).convert('RGB')
+            pil_img.load()  # force read while the file handle is still open
+        arr = np.array(pil_img)
+        return extract_face_encoding(arr)
+    except Exception as e:
+        logger.error(f"Failed to load image from remote storage: {e}")
+        return None
+
+
 def extract_encoding_from_b64(data_url: str) -> list | None:
     """Extract face encoding from a base64 data URL."""
     arr = decode_base64_image(data_url)
