@@ -1,20 +1,8 @@
 [build]
-builder = "NIXPACKS"
-
-[build.nixpacksPlan.phases.setup]
-# Install system libraries required by dlib (face_recognition dependency)
-nixPkgs = [
-  "cmake",
-  "gcc",
-  "openblas",
-  "lapack",
-  "libX11",
-  "python311",
-  "python311Packages.pip",
-]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "gunicorn faceid.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
 healthcheckPath = "/login/"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
