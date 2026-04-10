@@ -191,7 +191,25 @@ function switchTab(tab) {
   document.getElementById('panelPassword').style.display = isPass ? '' : 'none';
   document.getElementById('panelFace').style.display = isPass ? 'none' : '';
 }
-function goToFaceLogin() {
+async function goToFaceLogin() {
+  // Mark the Face ID tab as active immediately for visual feedback.
+  document.getElementById('tabPassword').classList.remove('active');
+  document.getElementById('tabFace').classList.add('active');
+
+  // Trigger the camera permission prompt here — inside the tab click's
+  // user-gesture context — so the destination page can auto-start the
+  // scanner from its load handler without needing another user gesture.
+  // Browsers (especially mobile) only allow getUserMedia inside a gesture.
+  try {
+    const preStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user' }
+    });
+    // Release tracks; the target page will open a fresh stream.
+    preStream.getTracks().forEach(t => t.stop());
+  } catch (e) {
+    // Permission denied or no camera — navigate anyway so the user
+    // sees the error UI and manual retry button on the face login page.
+  }
   window.location.href = "{% url 'face_login' %}";
 }
 </script>
