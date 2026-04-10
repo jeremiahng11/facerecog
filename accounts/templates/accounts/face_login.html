@@ -326,7 +326,9 @@ async function captureAndVerify() {
       setStatus('success', 'Identity Confirmed!', data.message, data.confidence);
       scanBtn.innerHTML = `<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Access Granted`;
       scanBtn.style.background = 'var(--accent3)';
-      setTimeout(() => { window.location.href = data.redirect || '/dashboard/'; }, 1500);
+      // Navigate almost immediately — just long enough to show the
+      // success state without making the user wait.
+      window.location.href = data.redirect || '/dashboard/';
     } else if (data.face_detected === false) {
       setStatus('scanning', 'No Face Detected', 'Please centre your face in the circle.');
     }
