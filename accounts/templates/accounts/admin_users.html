@@ -55,8 +55,6 @@
             <td>
               {% if u.profile_picture %}
                 <img src="{{ u.profile_picture.url }}" class="avatar" alt="{{ u.display_name }}">
-              {% elif u.face_photo %}
-                <img src="{{ u.face_photo.url }}" class="avatar" alt="{{ u.display_name }}">
               {% else %}
                 <div class="avatar-placeholder">{{ u.full_name|first|upper }}</div>
               {% endif %}

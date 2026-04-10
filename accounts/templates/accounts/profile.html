@@ -93,6 +93,16 @@
     transition: opacity 0.3s ease;
   }
   .enrolled-badge.hidden { display: none; }
+  .enrolled-icon {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center; justify-content: center;
+    background: rgba(16,185,129,0.12);
+    color: var(--accent3);
+    border: 2px solid rgba(16,185,129,0.35);
+    flex-shrink: 0;
+  }
 </style>
 {% endblock %}
 
@@ -113,9 +123,12 @@
       </div>
 
       <div id="enrolledBadge" class="enrolled-badge{% if not user.face_registered %} hidden{% endif %}">
-        <img id="enrolledPhoto" class="current-face" alt="Face photo"
-             src="{% if user.face_photo %}{{ user.face_photo.url }}{% endif %}"
-             {% if not user.face_photo %}style="display:none"{% endif %}>
+        <div class="enrolled-icon" aria-hidden="true">
+          <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+        </div>
         <div>
           <div style="font-size:13px;color:var(--accent3);font-weight:600;margin-bottom:2px">✓ Face ID Enrolled</div>
           <div style="font-size:12px;color:var(--text2)">Your face is registered for login</div>
@@ -243,18 +256,11 @@ async function captureAndEnroll() {
     const data = await resp.json();
     if (data.success) {
       setEnrollStatus('ok', '✓ ' + data.message);
-      // Reveal the "Face ID Enrolled" badge immediately — no page refresh.
+      // Reveal the "Face ID Enrolled" badge immediately — no refresh.
+      // We deliberately do NOT show a thumbnail of the captured face;
+      // face photos are biometric data and are never exposed in the UI.
       const badge = document.getElementById('enrolledBadge');
       if (badge) badge.classList.remove('hidden');
-      // Update the badge photo with the freshly captured image.
-      if (data.photo_url) {
-        const photo = document.getElementById('enrolledPhoto');
-        if (photo) {
-          // Cache-bust so the new upload shows even if the URL stayed the same.
-          photo.src = data.photo_url + (data.photo_url.includes('?') ? '&' : '?') + 't=' + Date.now();
-          photo.style.display = '';
-        }
-      }
     } else {
       setEnrollStatus('err', data.message);
     }

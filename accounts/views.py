@@ -246,10 +246,12 @@ def enroll_face_ajax(request):
         user.face_enabled = True
         user.save(update_fields=['face_photo', 'face_encoding', 'face_registered', 'face_enabled'])
 
+        # Do NOT return face_photo.url — face photos are biometric data
+        # and are never exposed over HTTP. The client only needs a
+        # success signal to flip the enrolled badge.
         return JsonResponse({
             'success': True,
             'message': 'Face enrolled successfully! You can now use Face ID login.',
-            'photo_url': user.face_photo.url,
         })
 
     except Exception as e:
