@@ -180,7 +180,7 @@
 
       <div class="section-label">Requirements</div>
       <ul style="list-style:none;display:flex;flex-direction:column;gap:8px">
-        {% for tip in "Good lighting,Face clearly visible,Look directly at camera,Only one person in frame,No heavy filters or masks"|split:"," %}
+        {% for tip in requirements %}
         <li style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2)">
           <svg width="14" height="14" fill="none" stroke="var(--accent)" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
           {{ tip }}
