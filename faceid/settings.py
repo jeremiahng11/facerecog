@@ -109,18 +109,19 @@ if _STATIC_SRC.exists():
     STATICFILES_DIRS = [_STATIC_SRC]
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# ─── Media files (Cloudinary) ─────────────────────────────────────────────────
-# Railway containers are ephemeral — local /media is wiped on redeploy.
-# Cloudinary provides persistent cloud storage for uploaded photos.
-# Set CLOUDINARY_URL=cloudinary://API_KEY:API_SECRET@CLOUD_NAME in Railway env vars.
+# ─── Media files ──────────────────────────────────────────────────────────────
+# Two supported storage modes:
+#   1. Railway Volume (default): mount a volume at MEDIA_ROOT so uploaded
+#      photos persist across redeploys. Override MEDIA_ROOT via env var if
+#      your volume is mounted somewhere other than /app/media.
+#   2. Cloudinary: set CLOUDINARY_URL=cloudinary://API_KEY:API_SECRET@CLOUD_NAME
+#      to push uploads to Cloudinary instead of the local filesystem.
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.environ.get('MEDIA_ROOT', str(BASE_DIR / 'media'))
+
 CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL', '')
 if CLOUDINARY_URL:
     DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-    MEDIA_URL = '/media/'  # Cloudinary overrides the actual URL
-else:
-    # Local fallback (dev only)
-    MEDIA_URL = '/media/'
-    MEDIA_ROOT = BASE_DIR / 'media'
 
 # ─── Security (auto-enabled when not DEBUG) ───────────────────────────────────
 if not DEBUG:
