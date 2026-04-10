@@ -1,10 +1,12 @@
 import json
 import logging
 import os
+import tempfile
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
+from django.core.files import File as DjangoFile
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -165,9 +167,8 @@ def profile_view(request):
             saved_user = form.save(commit=False)
             # If a new face_photo was uploaded, re-extract encoding
             if 'face_photo' in request.FILES:
-                photo_path = saved_user.face_photo.path if saved_user.face_photo else None
-                saved_user.save()  # save first so .path is valid
-                encoding = face_utils.extract_encoding_from_file(saved_user.face_photo.path)
+                saved_user.save()  # save first so the storage backend has the file
+                encoding = face_utils.extract_encoding_from_field_file(saved_user.face_photo)
                 if encoding:
                     saved_user.set_face_encoding(encoding)
                     saved_user.face_registered = True
@@ -207,21 +208,28 @@ def enroll_face_ajax(request):
         if n_faces > 1:
             return JsonResponse({'success': False, 'message': 'Multiple faces detected. Please be alone in frame.'})
 
-        # Save snapshot to media/face_photos/<staff_id>_face.jpg
+        # Save snapshot to a temporary local file for encoding extraction.
+        # Using a temp directory means this works regardless of whether
+        # MEDIA_ROOT is defined (it may not be when Cloudinary is active).
         user = request.user
         filename = f"{user.staff_id}_face.jpg"
-        save_path = os.path.join(settings.MEDIA_ROOT, 'face_photos', filename)
-        saved = face_utils.save_face_snapshot(image_data, save_path)
-        if not saved:
-            return JsonResponse({'success': False, 'message': 'Failed to save image.'})
 
-        # Extract encoding
-        encoding = face_utils.extract_encoding_from_file(save_path)
-        if not encoding:
-            return JsonResponse({'success': False, 'message': 'Could not extract face data.'})
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            save_path = os.path.join(tmp_dir, filename)
+            saved = face_utils.save_face_snapshot(image_data, save_path)
+            if not saved:
+                return JsonResponse({'success': False, 'message': 'Failed to save image.'})
 
-        # Update user record
-        user.face_photo = f'face_photos/{filename}'
+            # Extract encoding from the local temp file
+            encoding = face_utils.extract_encoding_from_file(save_path)
+            if not encoding:
+                return JsonResponse({'success': False, 'message': 'Could not extract face data.'})
+
+            # Persist the photo via Django's storage backend (works for both
+            # local filesystem and Cloudinary).
+            with open(save_path, 'rb') as f:
+                user.face_photo.save(f'face_photos/{filename}', DjangoFile(f), save=False)
+
         user.set_face_encoding(encoding)
         user.face_registered = True
         user.save(update_fields=['face_photo', 'face_encoding', 'face_registered'])
@@ -255,8 +263,8 @@ def admin_add_user_view(request):
             user = form.save(commit=False)
             # If face photo provided, extract encoding
             if user.face_photo:
-                user.save()  # save to get proper path
-                encoding = face_utils.extract_encoding_from_file(user.face_photo.path)
+                user.save()  # save so the storage backend has the file
+                encoding = face_utils.extract_encoding_from_field_file(user.face_photo)
                 if encoding:
                     user.set_face_encoding(encoding)
                     user.face_registered = True
@@ -285,7 +293,7 @@ def admin_edit_user_view(request, user_id):
             user = form.save(commit=False)
             if 'face_photo' in request.FILES:
                 user.save()
-                encoding = face_utils.extract_encoding_from_file(user.face_photo.path)
+                encoding = face_utils.extract_encoding_from_field_file(user.face_photo)
                 if encoding:
                     user.set_face_encoding(encoding)
                     user.face_registered = True
@@ -333,7 +341,7 @@ def admin_face_logs_view(request):
 def admin_reencode_user(request, user_id):
     target_user = get_object_or_404(StaffUser, pk=user_id)
     if target_user.face_photo:
-        encoding = face_utils.extract_encoding_from_file(target_user.face_photo.path)
+        encoding = face_utils.extract_encoding_from_field_file(target_user.face_photo)
         if encoding:
             target_user.set_face_encoding(encoding)
             target_user.face_registered = True
