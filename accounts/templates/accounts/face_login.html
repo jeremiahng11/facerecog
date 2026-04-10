@@ -240,9 +240,11 @@
 const CSRF_TOKEN = '{{ csrf_token }}';
 let stream = null;
 let scanning = false;
-let scanInterval = null;
 let attemptCount = 0;
-const MAX_ATTEMPTS = 20; // ~10 seconds of scanning at 500ms intervals
+const MAX_ATTEMPTS = 40;              // up to ~15 seconds of scanning
+const CAPTURE_MAX_DIM = 480;           // downscale video frames to this max dimension
+const CAPTURE_JPEG_QUALITY = 0.75;     // lower quality = smaller payload, still plenty for face recognition
+const SCAN_GAP_MS = 60;                // small breather between attempts
 
 const video = document.getElementById('videoEl');
 const camera = document.getElementById('cameraContainer');
@@ -300,16 +302,34 @@ async function startScan() {
   scanBtn.innerHTML = `<svg class="spinning" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Scanning…`;
   setStatus('scanning', 'Scanning…', 'Looking for your face. Hold still.');
 
-  scanInterval = setInterval(captureAndVerify, 600);
+  // Self-chaining scan loop. Unlike setInterval, this fires the next
+  // attempt as soon as the previous fetch resolves, so when the server
+  // is fast we're not idling for 600ms between tries, and when it's
+  // slow we don't stack overlapping requests.
+  scanLoop();
+}
+
+async function scanLoop() {
+  while (scanning) {
+    await captureAndVerify();
+    if (!scanning) break;
+    await new Promise(r => setTimeout(r, SCAN_GAP_MS));
+  }
 }
 
 function captureFrame() {
+  // Downscale to CAPTURE_MAX_DIM on the client so the server's
+  // face_recognition.face_encodings() has less data to process — this
+  // is the single biggest win for end-to-end scan latency.
+  const vw = video.videoWidth || 480;
+  const vh = video.videoHeight || 480;
+  const scale = Math.min(1, CAPTURE_MAX_DIM / Math.max(vw, vh));
   const canvas = document.createElement('canvas');
-  canvas.width = video.videoWidth || 320;
-  canvas.height = video.videoHeight || 320;
+  canvas.width = Math.max(1, Math.round(vw * scale));
+  canvas.height = Math.max(1, Math.round(vh * scale));
   const ctx = canvas.getContext('2d');
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL('image/jpeg', 0.85);
+  return canvas.toDataURL('image/jpeg', CAPTURE_JPEG_QUALITY);
 }
 
 async function captureAndVerify() {
@@ -353,9 +373,9 @@ async function captureAndVerify() {
 }
 
 function stopScan() {
+  // Flipping scanning = false is enough — scanLoop() checks this flag
+  // at the top of every iteration and exits the while loop.
   scanning = false;
-  clearInterval(scanInterval);
-  scanInterval = null;
   scanBtn.disabled = false;
   scanBtn.innerHTML = `<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 3H5a2 2 0 00-2 2v2M17 3h2a2 2 0 012 2v2M7 21H5a2 2 0 01-2-2v-2M17 21h2a2 2 0 002-2v-2"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="15" cy="10" r="1" fill="currentColor"/><path d="M9 15c.667.667 1.333 1 2 1h2c.667 0 1.333-.333 2-1"/></svg> Retry Scan`;
 }
