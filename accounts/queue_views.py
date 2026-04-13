@@ -107,9 +107,12 @@ def queue_print_view(request, ticket_id):
         f'Q{ticket.number:03d}|{request.user.staff_id}|{ticket.date}',
         box_size=5,
     )
+    # Generate a signed URL for RawBT (which can't use login cookies).
+    print_token = _sign_ticket_id(ticket.pk)
     return render(request, 'accounts/queue_print.html', {
         'ticket': ticket,
         'qr_data': qr_data,
+        'print_token': print_token,
     })
 
 

@@ -126,6 +126,12 @@ const video = document.getElementById('videoEl');
 const ring = document.getElementById('cameraRing');
 const scanStatus = document.getElementById('scanStatus');
 
+// ── CSRF: always read fresh token from cookie (survives session rotation) ──
+function getCSRF() {
+  const match = document.cookie.match(/csrftoken=([^;]+)/);
+  return match ? match[1] : CSRF;
+}
+
 // ── Screen switching ─────────────────────────────────────────────
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -150,7 +156,7 @@ async function resetKiosk() {
   try {
     await fetch('{% url "logout" %}', {
       method: 'POST',
-      headers: { 'X-CSRFToken': CSRF },
+      headers: { 'X-CSRFToken': getCSRF() },
     });
   } catch (e) {}
 
@@ -183,7 +189,7 @@ async function scanLoop() {
     try {
       const resp = await fetch('{% url "face_verify_ajax" %}', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
         body: JSON.stringify({
           image: captureFrame(),
           match_user: matchUser,
@@ -223,7 +229,7 @@ async function generateQueueTicket() {
   try {
     const resp = await fetch('{% url "queue_kiosk_generate" %}', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
       body: '{}',
     });
     const data = await resp.json();
@@ -242,8 +248,8 @@ async function generateQueueTicket() {
       setTimeout(resetKiosk, 3000);
     }
   } catch (e) {
-    scanStatus.textContent = 'Error generating ticket. Resetting…';
-    setTimeout(resetKiosk, 3000);
+    scanStatus.textContent = 'Error: ' + (e.message || 'Failed to generate ticket') + '. Resetting…';
+    setTimeout(resetKiosk, 4000);
   }
 }
 
@@ -258,12 +264,13 @@ function printTicket() {
   }
 
   // Build the full signed print URL that RawBT will fetch.
-  const printUrl = window.location.origin + '/queue/print-r/' + encodeURIComponent(currentPrintToken) + '/';
+  const printUrl = window.location.origin + '/queue/print-r/' + currentPrintToken + '/';
 
   // Trigger RawBT: rawbt:<url> — RawBT opens the URL in its
   // internal WebView, renders it, and prints the rendered page.
+  // Do NOT encodeURIComponent — RawBT expects a plain URL after rawbt:
   const a = document.createElement('a');
-  a.href = 'rawbt:' + encodeURIComponent(printUrl);
+  a.href = 'rawbt:' + printUrl;
   a.style.display = 'none';
   document.body.appendChild(a);
   a.click();
