@@ -165,5 +165,51 @@
   {% endif %}
 
   {% endif %}
+
+  <!-- User's own login history -->
+  {% if my_logins %}
+  <div class="card" style="margin-top:24px">
+    <div class="card-header">
+      <h2>Your Recent Face Logins</h2>
+      <p>Last 10 face recognition attempts for your account</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Result</th>
+            <th>Confidence</th>
+            <th>Device</th>
+            <th>IP Address</th>
+            <th>Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in my_logins %}
+          <tr>
+            <td>
+              {% if log.success %}
+                <span class="badge badge-green">Success</span>
+              {% else %}
+                <span class="badge badge-red">Failed</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if log.confidence %}
+              <span class="mono text-sm" style="color:{% if log.confidence > 70 %}var(--accent3){% elif log.confidence > 50 %}var(--warn){% else %}var(--danger){% endif %}">
+                {{ log.confidence|floatformat:1 }}%
+              </span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-sm text-muted">{{ log.device|default:"—" }}</td>
+            <td class="text-sm text-muted mono">{{ log.ip_address|default:"—" }}</td>
+            <td class="text-sm text-muted">{{ log.timestamp|date:"d M Y H:i:s" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

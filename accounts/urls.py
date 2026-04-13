@@ -22,6 +22,7 @@ urlpatterns = [
     ), name='password_reset_complete'),
 
     # Face ID
+    path('kiosk/', views.kiosk_view, name='kiosk'),
     path('face-login/', views.face_login_view, name='face_login'),
     path('api/face-verify/', views.face_verify_ajax, name='face_verify_ajax'),
     path('api/enroll-face/', views.enroll_face_ajax, name='enroll_face_ajax'),
@@ -40,4 +41,5 @@ urlpatterns = [
     path('admin-panel/users/<int:user_id>/reencode/', views.admin_reencode_user, name='admin_reencode_user'),
     path('admin-panel/face-logs/', views.admin_face_logs_view, name='admin_face_logs'),
     path('admin-panel/action-logs/', views.admin_action_logs_view, name='admin_action_logs'),
+    path('admin-panel/bulk-import/', views.admin_bulk_import_view, name='admin_bulk_import'),
 ]

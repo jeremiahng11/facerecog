@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Face ID Kiosk</title>
+  <style>
+    :root {
+      --bg: #080c12; --accent: #00d4ff; --accent3: #10b981;
+      --danger: #ef4444; --text: #e2eaf8; --text2: #8ba4c8; --text3: #4a6080;
+      --mono: 'Space Mono', monospace; --sans: 'DM Sans', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg); color: var(--text); font-family: var(--sans);
+      height: 100vh; overflow: hidden; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; user-select: none;
+    }
+    .kiosk-title {
+      font-family: var(--mono); font-size: 14px; color: var(--text3);
+      letter-spacing: 3px; text-transform: uppercase; margin-bottom: 24px;
+    }
+    .camera-ring {
+      width: min(70vw, 380px); aspect-ratio: 1; border-radius: 50%;
+      overflow: hidden; border: 3px solid var(--text3);
+      position: relative; background: #000;
+      box-shadow: 0 0 60px rgba(0,0,0,0.6);
+      transition: border-color 0.4s, box-shadow 0.4s;
+    }
+    .camera-ring.scanning { border-color: var(--accent); box-shadow: 0 0 60px rgba(0,212,255,0.15); }
+    .camera-ring.success { border-color: var(--accent3); box-shadow: 0 0 80px rgba(16,185,129,0.3); }
+    .camera-ring.failed { border-color: var(--danger); box-shadow: 0 0 60px rgba(239,68,68,0.15); }
+    .camera-ring video {
+      width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); display: block;
+    }
+    .scan-line {
+      display: none; position: absolute; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      animation: scanline 2s linear infinite; top: 0;
+      box-shadow: 0 0 8px var(--accent);
+    }
+    .scanning .scan-line { display: block; }
+    @keyframes scanline { 0% { top: 0; } 100% { top: 100%; } }
+
+    .status-text {
+      margin-top: 28px; text-align: center; font-size: 16px;
+      color: var(--text2); min-height: 48px; transition: color 0.3s;
+    }
+    .status-text.success { color: var(--accent3); font-size: 22px; font-weight: 600; }
+    .status-text.failed { color: var(--danger); }
+
+    .welcome-overlay {
+      position: absolute; inset: 0; display: none;
+      flex-direction: column; align-items: center; justify-content: center;
+      background: rgba(16,185,129,0.15); backdrop-filter: blur(4px);
+      border-radius: 50%;
+    }
+    .welcome-overlay.show { display: flex; }
+    .welcome-overlay svg { margin-bottom: 12px; }
+
+    .kiosk-footer {
+      position: fixed; bottom: 20px; font-size: 11px;
+      color: var(--text3); font-family: var(--mono); letter-spacing: 1px;
+    }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .spinning { animation: spin 1s linear infinite; }
+  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="kiosk-title">Face ID Check-In</div>
+
+  <div class="camera-ring scanning" id="cameraRing">
+    <video id="videoEl" autoplay playsinline muted></video>
+    <div class="scan-line"></div>
+    <div class="welcome-overlay" id="welcomeOverlay">
+      <svg width="56" height="56" fill="none" stroke="#10b981" stroke-width="2.5" viewBox="0 0 24 24">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+      <div id="welcomeName" style="font-size:20px;font-weight:600;color:#10b981"></div>
+    </div>
+  </div>
+
+  <div class="status-text" id="statusText">Initialising camera…</div>
+  <div class="kiosk-footer">FaceID Kiosk Mode</div>
+
+<script>
+const CSRF_TOKEN = '{{ csrf_token }}';
+const CAPTURE_MAX_DIM = 480;
+const SCAN_GAP_MS = 100;
+const RESET_DELAY_MS = 4000;
+
+let stream = null;
+let scanning = false;
+let matchUser = null;
+let matchCount = 0;
+
+const video = document.getElementById('videoEl');
+const ring = document.getElementById('cameraRing');
+const statusEl = document.getElementById('statusText');
+const overlay = document.getElementById('welcomeOverlay');
+const nameEl = document.getElementById('welcomeName');
+
+function captureFrame() {
+  const vw = video.videoWidth || 480;
+  const vh = video.videoHeight || 480;
+  const scale = Math.min(1, CAPTURE_MAX_DIM / Math.max(vw, vh));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(vw * scale));
+  c.height = Math.max(1, Math.round(vh * scale));
+  c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.75);
+}
+
+async function scanLoop() {
+  while (scanning) {
+    try {
+      const resp = await fetch('{% url "face_verify_ajax" %}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+        body: JSON.stringify({
+          image: captureFrame(),
+          match_user: matchUser,
+          match_count: matchCount,
+        }),
+      });
+      const data = await resp.json();
+      matchUser = data.match_user || null;
+      matchCount = data.match_count || 0;
+
+      if (data.success) {
+        scanning = false;
+        ring.className = 'camera-ring success';
+        statusEl.className = 'status-text success';
+        statusEl.textContent = data.message;
+        nameEl.textContent = data.message;
+        overlay.classList.add('show');
+
+        // Auto-reset after greeting
+        setTimeout(() => {
+          overlay.classList.remove('show');
+          ring.className = 'camera-ring scanning';
+          statusEl.className = 'status-text';
+          statusEl.textContent = 'Scanning…';
+          matchUser = null;
+          matchCount = 0;
+          scanning = true;
+          scanLoop();
+        }, RESET_DELAY_MS);
+        return;
+      } else if (data.verifying) {
+        statusEl.textContent = data.message;
+      } else if (data.locked_out) {
+        statusEl.className = 'status-text failed';
+        statusEl.textContent = 'Temporarily locked out. Please wait.';
+        scanning = false;
+        setTimeout(() => {
+          statusEl.className = 'status-text';
+          statusEl.textContent = 'Scanning…';
+          scanning = true;
+          scanLoop();
+        }, 30000);
+        return;
+      } else if (data.face_detected === false) {
+        statusEl.textContent = 'Position your face in the circle';
+      } else {
+        matchUser = null;
+        matchCount = 0;
+      }
+    } catch (e) {
+      // network error, keep trying
+    }
+    if (!scanning) break;
+    await new Promise(r => setTimeout(r, SCAN_GAP_MS));
+  }
+}
+
+async function init() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } }
+    });
+    video.srcObject = stream;
+    await new Promise(r => { if (video.readyState >= 1) return r(); video.onloadedmetadata = r; });
+    statusEl.textContent = 'Scanning…';
+    scanning = true;
+    scanLoop();
+  } catch (e) {
+    statusEl.className = 'status-text failed';
+    statusEl.textContent = 'Camera error: ' + (e.message || 'Permission denied');
+  }
+}
+
+init();
+</script>
+</body>
+</html>

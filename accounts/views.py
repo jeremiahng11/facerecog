@@ -310,21 +310,19 @@ def face_verify_ajax(request):
 @login_required
 def dashboard_view(request):
     user = request.user
-    # Check if user should re-enroll (old single-frame enrollment).
-    # Multi-sample enrollments produce encodings that are 128-dim averages;
-    # we can't directly detect this, so we use a proxy: if the user enrolled
-    # before this feature was deployed, show the prompt. We'll use a simple
-    # heuristic: check if face_registered but last_face_login is old or
-    # the encoding was set before the improvement. For simplicity, always
-    # show the prompt if face_registered — the user can dismiss by
-    # re-enrolling.
     show_reenroll = user.face_registered
+
+    # User's own recent face login history.
+    my_logins = FaceLoginLog.objects.filter(
+        user=user
+    ).order_by('-timestamp')[:10]
 
     context = {
         'user': user,
         'face_enabled': user.face_enabled,
         'face_registered': user.face_registered,
         'show_reenroll': show_reenroll,
+        'my_logins': my_logins,
     }
     return render(request, 'accounts/dashboard.html', context)
 
@@ -489,6 +487,18 @@ def enroll_face_ajax(request):
         return JsonResponse({'success': False, 'message': str(e)})
 
 
+# ─── Kiosk Mode ──────────────────────────────────────────────────────────────
+
+def kiosk_view(request):
+    """
+    Full-screen face scanner for shared devices (entrance tablets, kiosks).
+    Continuously scans → shows welcome greeting on match → auto-resets
+    after a few seconds. No login/auth required to render the page — the
+    face_verify_ajax endpoint handles the actual authentication.
+    """
+    return render(request, 'accounts/kiosk.html')
+
+
 # ─── Password Reset ──────────────────────────────────────────────────────────
 
 def password_reset_view(request):
@@ -578,6 +588,58 @@ def admin_delete_user_view(request, user_id):
         messages.success(request, f'User {name} deleted.')
         return redirect('admin_users')
     return render(request, 'accounts/admin_confirm_delete.html', {'target_user': target_user})
+
+
+@login_required
+@user_passes_test(is_admin)
+def admin_bulk_import_view(request):
+    """CSV bulk import of users. Expects columns: staff_id, email, full_name, department, password."""
+    import csv
+    import io
+
+    results = None
+    if request.method == 'POST' and request.FILES.get('csv_file'):
+        csv_file = request.FILES['csv_file']
+        try:
+            decoded = csv_file.read().decode('utf-8-sig')
+            reader = csv.DictReader(io.StringIO(decoded))
+            results = {'created': [], 'skipped': [], 'errors': []}
+
+            for i, row in enumerate(reader, start=2):  # row 1 is header
+                staff_id = (row.get('staff_id') or '').strip()
+                email = (row.get('email') or '').strip()
+                full_name = (row.get('full_name') or '').strip()
+                department = (row.get('department') or '').strip()
+                password = (row.get('password') or '').strip()
+
+                if not staff_id or not email or not password:
+                    results['errors'].append(f'Row {i}: missing staff_id, email, or password')
+                    continue
+
+                if StaffUser.objects.filter(staff_id=staff_id).exists():
+                    results['skipped'].append(f'{staff_id} — already exists')
+                    continue
+                if StaffUser.objects.filter(email=email).exists():
+                    results['skipped'].append(f'{email} — email already in use')
+                    continue
+
+                try:
+                    user = StaffUser.objects.create_user(
+                        staff_id=staff_id,
+                        email=email,
+                        password=password,
+                        full_name=full_name,
+                        department=department,
+                    )
+                    _log_admin_action(request.user, 'create', user, 'CSV bulk import')
+                    results['created'].append(staff_id)
+                except Exception as e:
+                    results['errors'].append(f'Row {i} ({staff_id}): {e}')
+
+        except Exception as e:
+            results = {'created': [], 'skipped': [], 'errors': [f'CSV parse error: {e}']}
+
+    return render(request, 'accounts/admin_bulk_import.html', {'results': results})
 
 
 @login_required

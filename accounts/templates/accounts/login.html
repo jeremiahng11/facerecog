@@ -117,7 +117,7 @@
           <path d="M7 20.662V19a5 5 0 0110 0v1.662"/>
         </svg>
       </div>
-      <h1>FACEID PORTAL</h1>
+      <h1>{{ brand_name|default:"FACEID PORTAL"|upper }}</h1>
       <p>Secure Staff Authentication System</p>
     </div>
 
@@ -179,7 +179,7 @@
     </div>
 
     <p style="text-align:center;margin-top:16px;font-size:12px;color:var(--text3);">
-      Secure access · Aleta Planet Pte. Ltd.
+      Secure access{% if brand_company %} · {{ brand_company }}{% endif %}
     </p>
   </div>
 </div>

@@ -3,7 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}FaceID Portal{% endblock %}</title>
+  <title>{% block title %}{{ brand_name|default:"FaceID Portal" }}{% endblock %}</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#00d4ff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
   <style>
@@ -13,7 +18,7 @@
       --bg3: #111c2e;
       --card: #0f1928;
       --border: #1e3050;
-      --accent: #00d4ff;
+      --accent: {{ brand_accent|default:"#00d4ff" }};
       --accent2: #7c3aed;
       --accent3: #10b981;
       --danger: #ef4444;
@@ -338,7 +343,7 @@
 <nav class="nav">
   <div class="nav-brand">
     <span class="dot"></span>
-    FaceID Portal
+    {{ brand_name|default:"FaceID Portal" }}
   </div>
   <button class="nav-mobile-btn" onclick="toggleNav()" aria-label="Menu">
     <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
@@ -372,6 +377,10 @@
 <script>
 function toggleNav() {
   document.getElementById('navLinks').classList.toggle('open');
+}
+// Register PWA service worker.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/static/sw.js').catch(() => {});
 }
 </script>
 {% block extra_js %}{% endblock %}

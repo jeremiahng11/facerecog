@@ -54,6 +54,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'django.template.context_processors.media',
+                'accounts.context_processors.branding',
             ],
         },
     },
@@ -188,5 +189,10 @@ FACE_VERIFY_RATE_LIMIT = int(os.environ.get('FACE_VERIFY_RATE_LIMIT', '30'))
 # for FACE_LOCKOUT_DURATION_MINUTES.
 FACE_LOCKOUT_THRESHOLD = int(os.environ.get('FACE_LOCKOUT_THRESHOLD', '15'))
 FACE_LOCKOUT_DURATION_MINUTES = int(os.environ.get('FACE_LOCKOUT_DURATION_MINUTES', '5'))
+
+# ─── Branding (customise via env vars) ────────────────────────────────────────
+BRAND_NAME = os.environ.get('BRAND_NAME', 'FaceID Portal')
+BRAND_COMPANY = os.environ.get('BRAND_COMPANY', '')
+BRAND_ACCENT_COLOR = os.environ.get('BRAND_ACCENT_COLOR', '#00d4ff')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
