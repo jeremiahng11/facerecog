@@ -183,7 +183,19 @@
 
       <div class="enroll-status" id="enrollStatus">
         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        Start camera, then position your face in the oval and capture
+        Position your face in the oval, then click Capture. Move naturally and blink during the process.
+      </div>
+
+      <!-- Enrollment instructions banner -->
+      <div style="background:rgba(0,212,255,0.06);border:1px solid rgba(0,212,255,0.2);border-radius:10px;padding:14px;margin-bottom:14px;font-size:13px;color:var(--text2)">
+        <div style="font-weight:600;color:var(--accent);margin-bottom:6px;font-size:12px;font-family:var(--mono);letter-spacing:1px">HOW ENROLLMENT WORKS</div>
+        <div style="margin-bottom:6px">When you click <strong>Capture & Enroll</strong>, the system will take <strong>{{ enroll_num_samples|default:"5" }} photos</strong> over a few seconds.</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span>&#8226; <strong>Move your head slightly</strong> between captures (small tilts, nods)</span>
+          <span>&#8226; <strong>Blink naturally</strong> — don't stare frozen at the camera</span>
+          <span>&#8226; Stay within the oval but <strong>don't hold perfectly still</strong></span>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:var(--text3)">This ensures the system can tell you're a real person and builds a more accurate face profile.</div>
       </div>
 
       <div class="cam-btn-row">
@@ -247,11 +259,22 @@ async function captureAndEnroll() {
   if (!enrollStream) { setEnrollStatus('err', 'Please start camera first.'); return; }
   captureBtn.disabled = true;
 
+  const hints = [
+    'Look at the camera',
+    'Tilt your head slightly left',
+    'Tilt your head slightly right',
+    'Blink naturally',
+    'Look straight ahead',
+    'Slight nod',
+    'Stay relaxed',
+  ];
+
   const frames = [];
   for (let i = 0; i < NUM_SAMPLES; i++) {
     const n = i + 1;
+    const hint = hints[i % hints.length];
     captureBtn.innerHTML = `<svg class="spinning" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg> Capturing ${n}/${NUM_SAMPLES}…`;
-    setEnrollStatus('info', `Capturing sample ${n} of ${NUM_SAMPLES} — hold still`);
+    setEnrollStatus('info', `Capture ${n}/${NUM_SAMPLES} — ${hint}`);
 
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth; canvas.height = video.videoHeight;
