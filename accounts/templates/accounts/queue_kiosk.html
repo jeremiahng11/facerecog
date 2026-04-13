@@ -356,9 +356,8 @@ function printTicket() {
   text('Thank you for waiting'); LF();
   text('--------------------------------'); LF();
 
-  // ── Feed + cut (partial cut if supported)
-  push(0x1B, 0x64, 0x04);     // ESC d 4 — feed 4 lines
-  push(0x1D, 0x56, 0x01);     // GS V 1 — partial cut (ignored if no cutter)
+  // ── Minimal feed (just enough to tear the receipt)
+  push(0x1B, 0x64, 0x01);     // ESC d 1 — feed 1 line
 
   // Convert to base64 and send via RawBT — instant, zero dialogs.
   const uint8 = new Uint8Array(bytes);
