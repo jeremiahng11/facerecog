@@ -490,7 +490,38 @@ def enroll_face_ajax(request):
 
 
 # ─── Password Reset ──────────────────────────────────────────────────────────
-# Uses Django's built-in password reset views. Wire in urls.py.
+
+def password_reset_view(request):
+    """
+    Custom password reset view that wraps Django's built-in form but
+    catches SMTP errors and shows them to the user instead of silently
+    failing or returning a 500.
+    """
+    from django.contrib.auth.forms import PasswordResetForm
+
+    if request.method == 'POST':
+        form = PasswordResetForm(request.POST)
+        if form.is_valid():
+            try:
+                form.save(
+                    request=request,
+                    use_https=request.is_secure(),
+                    email_template_name='accounts/password_reset_email.html',
+                    subject_template_name='accounts/password_reset_subject.txt',
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                )
+                return redirect('password_reset_done')
+            except Exception as e:
+                logger.exception("Password reset email failed")
+                messages.error(
+                    request,
+                    f'Failed to send reset email. Please contact an administrator. '
+                    f'(Error: {type(e).__name__})'
+                )
+    else:
+        form = None
+
+    return render(request, 'accounts/password_reset.html', {'form': form})
 
 
 # ─── Admin: User Management ────────────────────────────────────────────────────
