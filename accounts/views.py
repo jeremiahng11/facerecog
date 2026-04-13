@@ -25,6 +25,51 @@ def is_admin(user):
     return user.is_staff or user.is_superuser
 
 
+def parse_device(request) -> str:
+    """
+    Parse the User-Agent header into a human-readable device string
+    like 'Android Mobile · Chrome' or 'macOS · Safari'.
+    """
+    import re
+    ua = request.META.get('HTTP_USER_AGENT', '')
+    if not ua:
+        return 'Unknown'
+
+    # ── Platform ──────────────────────────────────────────────────
+    if 'iPhone' in ua:
+        platform = 'iOS Mobile'
+    elif 'iPad' in ua:
+        platform = 'iOS Tablet'
+    elif 'Android' in ua:
+        platform = 'Android Mobile' if 'Mobile' in ua else 'Android Tablet'
+    elif 'Windows' in ua:
+        platform = 'Windows'
+    elif 'Macintosh' in ua or 'Mac OS' in ua:
+        platform = 'macOS'
+    elif 'Linux' in ua:
+        platform = 'Linux'
+    elif 'CrOS' in ua:
+        platform = 'Chrome OS'
+    else:
+        platform = 'Unknown OS'
+
+    # ── Browser ───────────────────────────────────────────────────
+    if 'Edg/' in ua or 'Edge/' in ua:
+        browser = 'Edge'
+    elif 'OPR/' in ua or 'Opera' in ua:
+        browser = 'Opera'
+    elif 'Firefox/' in ua:
+        browser = 'Firefox'
+    elif 'CriOS/' in ua or ('Chrome/' in ua and 'Safari/' in ua):
+        browser = 'Chrome'
+    elif 'Safari/' in ua and 'Chrome/' not in ua:
+        browser = 'Safari'
+    else:
+        browser = 'Unknown Browser'
+
+    return f'{platform} · {browser}'
+
+
 def get_client_ip(request):
     """
     Return the real client IP address. Railway (and most reverse proxies)
@@ -104,6 +149,19 @@ def face_verify_ajax(request):
         )
         min_confidence = getattr(settings, 'FACE_MIN_CONFIDENCE', 65)
 
+        # ── Face quality gate ──────────────────────────────────────
+        # Reject frames where the face is too small, off-centre, or
+        # not alone before spending CPU on encoding extraction.
+        quality = face_utils.validate_face_quality(image_data)
+        if not quality['ok']:
+            return JsonResponse({
+                'success': False,
+                'message': quality['reason'],
+                'face_detected': False,
+                'match_user': None,
+                'match_count': 0,
+            })
+
         # Extract encoding from the live frame
         candidate_encoding = face_utils.extract_encoding_from_b64(image_data)
         if candidate_encoding is None:
@@ -138,6 +196,7 @@ def face_verify_ajax(request):
                 best_confidence = result['confidence']
 
         ip_addr = get_client_ip(request)
+        device_info = parse_device(request)
 
         if best_match and best_confidence >= min_confidence:
             # Count consecutive matches to the same user.
@@ -164,6 +223,7 @@ def face_verify_ajax(request):
                 success=True,
                 confidence=best_confidence,
                 ip_address=ip_addr,
+                device=device_info,
                 notes=f'{required_consecutive} consecutive matches',
             )
             best_match.last_face_login = timezone.now()
@@ -185,6 +245,7 @@ def face_verify_ajax(request):
             FaceLoginLog.objects.create(
                 success=False,
                 ip_address=ip_addr,
+                device=device_info,
                 notes='No matching face found',
             )
             return JsonResponse({
@@ -298,17 +359,12 @@ def enroll_face_ajax(request):
         encodings = []
 
         for idx, image_data in enumerate(images):
-            # Validate exactly one face per frame
-            n_faces = face_utils.detect_faces_in_b64(image_data)
-            if n_faces == 0:
+            # Validate face quality: one face, large enough, centred.
+            quality = face_utils.validate_face_quality(image_data)
+            if not quality['ok']:
                 return JsonResponse({
                     'success': False,
-                    'message': f'No face detected in capture {idx + 1}. Please keep your face visible.',
-                })
-            if n_faces > 1:
-                return JsonResponse({
-                    'success': False,
-                    'message': f'Multiple faces in capture {idx + 1}. Please be alone in frame.',
+                    'message': f'Capture {idx + 1}: {quality["reason"]}',
                 })
 
             # Extract high-quality encoding with jitter

@@ -178,6 +178,76 @@ def detect_faces_in_b64(data_url: str) -> int:
         return 0
 
 
+# ─── Face quality validation ──────────────────────────────────────────────────
+
+
+def validate_face_quality(data_url: str, min_face_pct: float = 0.04) -> dict:
+    """
+    Check that a base64 webcam frame contains exactly one well-positioned,
+    sufficiently large face. Returns a dict:
+
+        {'ok': True}                          — frame is usable
+        {'ok': False, 'reason': '...'}        — frame should be rejected
+
+    Checks performed:
+    1. Exactly one face detected (not zero, not multiple).
+    2. Face bounding box covers at least min_face_pct of the total frame
+       area (default 4%). Prevents recognition from tiny/far-away faces.
+    3. Face is roughly centred — its centre must be within the middle 70%
+       of the frame in both axes. Prevents heavily off-centre captures
+       that produce unreliable encodings.
+    """
+    if not FACE_RECOGNITION_AVAILABLE:
+        return {'ok': False, 'reason': 'Face recognition library not available.'}
+
+    arr = decode_base64_image(data_url)
+    if arr is None:
+        return {'ok': False, 'reason': 'Could not decode image.'}
+
+    try:
+        locations = face_recognition.face_locations(arr)
+    except Exception as e:
+        logger.error(f"Error detecting faces for quality check: {e}")
+        return {'ok': False, 'reason': 'Error detecting face.'}
+
+    if len(locations) == 0:
+        return {'ok': False, 'reason': 'No face detected. Please centre your face.'}
+    if len(locations) > 1:
+        return {'ok': False, 'reason': 'Multiple faces detected. Please be alone in frame.'}
+
+    # face_recognition returns (top, right, bottom, left)
+    top, right, bottom, left = locations[0]
+    face_h = bottom - top
+    face_w = right - left
+    img_h, img_w = arr.shape[:2]
+
+    # ── Size check ────────────────────────────────────────────────
+    face_area = face_h * face_w
+    frame_area = img_h * img_w
+    if frame_area > 0 and (face_area / frame_area) < min_face_pct:
+        return {
+            'ok': False,
+            'reason': 'Face is too small. Please move closer to the camera.',
+        }
+
+    # ── Centre check ──────────────────────────────────────────────
+    face_cx = (left + right) / 2
+    face_cy = (top + bottom) / 2
+    margin = 0.15  # face centre must be within 15%-85% of frame
+    if not (img_w * margin < face_cx < img_w * (1 - margin)):
+        return {
+            'ok': False,
+            'reason': 'Face is off-centre. Please centre your face in frame.',
+        }
+    if not (img_h * margin < face_cy < img_h * (1 - margin)):
+        return {
+            'ok': False,
+            'reason': 'Face is off-centre. Please centre your face in frame.',
+        }
+
+    return {'ok': True}
+
+
 # ─── Accuracy helpers ────────────────────────────────────────────────────────
 
 

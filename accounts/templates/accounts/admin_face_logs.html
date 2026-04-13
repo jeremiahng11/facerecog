@@ -20,6 +20,7 @@
             <th>Staff ID</th>
             <th>Confidence</th>
             <th>IP Address</th>
+            <th>Device</th>
             <th>Time</th>
             <th>Notes</th>
           </tr>
@@ -44,11 +45,12 @@
               {% else %}—{% endif %}
             </td>
             <td class="text-sm text-muted mono">{{ log.ip_address|default:"—" }}</td>
+            <td class="text-sm text-muted">{{ log.device|default:"—" }}</td>
             <td class="text-sm text-muted">{{ log.timestamp|date:"d M Y H:i:s" }}</td>
             <td class="text-sm text-dim">{{ log.notes|default:"—" }}</td>
           </tr>
           {% empty %}
-          <tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text3)">No face login attempts recorded yet.</td></tr>
+          <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text3)">No face login attempts recorded yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>

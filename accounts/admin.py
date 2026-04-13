@@ -29,6 +29,6 @@ class StaffUserAdmin(UserAdmin):
 
 @admin.register(FaceLoginLog)
 class FaceLoginLogAdmin(admin.ModelAdmin):
-    list_display = ['user', 'timestamp', 'success', 'confidence', 'ip_address']
-    list_filter = ['success']
-    readonly_fields = ['user', 'timestamp', 'success', 'confidence', 'ip_address', 'notes']
+    list_display = ['user', 'timestamp', 'success', 'confidence', 'ip_address', 'device']
+    list_filter = ['success', 'device']
+    readonly_fields = ['user', 'timestamp', 'success', 'confidence', 'ip_address', 'device', 'notes']

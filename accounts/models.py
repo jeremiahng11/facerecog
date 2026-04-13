@@ -89,6 +89,10 @@ class FaceLoginLog(models.Model):
     success = models.BooleanField(default=False)
     confidence = models.FloatField(null=True, blank=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
+    device = models.CharField(
+        max_length=120, blank=True,
+        help_text='Parsed device/browser info from User-Agent'
+    )
     notes = models.CharField(max_length=200, blank=True)
 
     class Meta:
