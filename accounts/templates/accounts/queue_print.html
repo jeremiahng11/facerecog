@@ -60,10 +60,34 @@
   <div class="divider"></div>
   <div class="footer">Thank you for waiting</div>
 
-  <button class="no-print" onclick="window.print()" style="
+  <button class="no-print" onclick="directPrint()" style="
     padding:10px 24px; font-size:14px; cursor:pointer;
     background:#00d4ff; color:#000; border:none; border-radius:8px;
-    font-weight:600;
+    font-weight:600; margin-top:16px;
   ">Print Ticket</button>
+
+  <button class="no-print" onclick="window.print()" style="
+    padding:10px 24px; font-size:14px; cursor:pointer;
+    background:transparent; color:#666; border:1px solid #ccc; border-radius:8px;
+    margin-top:8px;
+  ">System Print Dialog</button>
+
+<script>
+function directPrint() {
+  // Use RawBT for instant Bluetooth printing (no dialog).
+  // Falls back to system print if RawBT is not installed.
+  try {
+    const b64 = btoa(unescape(encodeURIComponent(document.documentElement.outerHTML)));
+    const a = document.createElement('a');
+    a.href = 'rawbt:base64,' + b64;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } catch (e) {
+    window.print();
+  }
+}
+</script>
 </body>
 </html>

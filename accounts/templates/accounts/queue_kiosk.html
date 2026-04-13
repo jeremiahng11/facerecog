@@ -67,9 +67,6 @@
   .print-btn:active { transform: scale(0.96); }
   .countdown { margin-top: 16px; font-size: 14px; color: var(--text3); }
 
-  /* ── Print iframe (hidden) ── */
-  .print-frame { position: fixed; left: -9999px; top: -9999px; width: 0; height: 0; }
-
   .kiosk-footer { position: fixed; bottom: 16px; font-size: 11px; color: var(--text3); font-family: var(--mono); letter-spacing: 1px; }
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   .spinning { animation: spin 1s linear infinite; }
@@ -106,9 +103,6 @@
   </button>
   <div class="countdown" id="countdown"></div>
 </div>
-
-<!-- Hidden iframe for printing -->
-<iframe id="printFrame" class="print-frame"></iframe>
 
 <div class="kiosk-footer">{{ brand_name|default:"FaceID Portal" }} — Queue Kiosk</div>
 
@@ -251,7 +245,10 @@ async function generateQueueTicket() {
   }
 }
 
-// ── Print ticket via hidden iframe ───────────────────────────────
+// ── Print ticket via RawBT (instant, no dialog) ─────────────────
+// RawBT app accepts rawbt:base64,<b64html> — renders the HTML and
+// sends it directly to the paired Bluetooth thermal printer (MPT-2)
+// with zero user interaction. No Android print dialog.
 function printTicket() {
   const num = document.getElementById('ticketNum').textContent;
   const name = document.getElementById('ticketName').textContent;
@@ -259,7 +256,7 @@ function printTicket() {
   const date = document.getElementById('ticketDate').textContent;
   const time = document.getElementById('ticketTime').textContent;
 
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  const printHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
   @page { size: 58mm auto; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -280,15 +277,23 @@ function printTicket() {
 <div class="time">${date}<br>${time}</div>
 <div class="div"></div>
 <div class="foot">Thank you for waiting</div>
-<script>window.onload=function(){window.print();}<\/script>
 </body></html>`;
 
-  const frame = document.getElementById('printFrame');
-  frame.srcdoc = html;
+  // Encode the HTML for RawBT's base64 protocol.
+  const b64 = btoa(unescape(encodeURIComponent(printHtml)));
 
-  // Start post-print countdown.
+  // Trigger RawBT intent via invisible link click.
+  // Using a link (not window.location) keeps us on the kiosk page.
+  const a = document.createElement('a');
+  a.href = 'rawbt:base64,' + b64;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  // Update button and start countdown.
   const btn = document.getElementById('printBtn');
-  btn.textContent = 'Printing…';
+  btn.textContent = 'Sent to printer';
   btn.disabled = true;
 
   let secs = Math.round(POST_PRINT_TIMEOUT / 1000);
