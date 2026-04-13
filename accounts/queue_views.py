@@ -25,6 +25,7 @@ from .models import StaffUser, QueueTicket
 
 
 from django.conf import settings as django_settings
+from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
 
 
 def is_admin(user):
@@ -100,10 +101,50 @@ def queue_my_ticket_view(request):
 
 @login_required
 def queue_print_view(request, ticket_id):
-    """58mm thermal printer-friendly layout."""
+    """58mm thermal printer-friendly layout (requires login)."""
     ticket = get_object_or_404(QueueTicket, pk=ticket_id, user=request.user)
     qr_data = _generate_qr_base64(
         f'Q{ticket.number:03d}|{request.user.staff_id}|{ticket.date}',
+        box_size=5,
+    )
+    return render(request, 'accounts/queue_print.html', {
+        'ticket': ticket,
+        'qr_data': qr_data,
+    })
+
+
+def _sign_ticket_id(ticket_id):
+    """Create a signed token for a ticket ID (for RawBT print URL)."""
+    signer = TimestampSigner()
+    return signer.sign(str(ticket_id))
+
+
+def _verify_ticket_token(token, max_age=300):
+    """Verify a signed ticket token. Returns ticket_id or None. Default 5 min expiry."""
+    signer = TimestampSigner()
+    try:
+        value = signer.unsign(token, max_age=max_age)
+        return int(value)
+    except (BadSignature, SignatureExpired, ValueError):
+        return None
+
+
+def queue_print_signed_view(request, token):
+    """
+    Public print view with a signed token — no login required.
+    Used by RawBT on the Android kiosk: RawBT fetches this URL in its
+    own WebView (which doesn't share browser cookies), renders the HTML,
+    and sends the rendered output to the Bluetooth thermal printer.
+    Token expires after 5 minutes.
+    """
+    ticket_id = _verify_ticket_token(token)
+    if ticket_id is None:
+        from django.http import HttpResponseForbidden
+        return HttpResponseForbidden('Invalid or expired print token')
+
+    ticket = get_object_or_404(QueueTicket, pk=ticket_id)
+    qr_data = _generate_qr_base64(
+        f'Q{ticket.number:03d}|{ticket.user.staff_id}|{ticket.date}',
         box_size=5,
     )
     return render(request, 'accounts/queue_print.html', {
@@ -284,6 +325,7 @@ def queue_kiosk_generate_ajax(request):
             'staff_name': user.display_name,
             'staff_id': user.staff_id,
             'qr_data': qr_data,
+            'print_token': _sign_ticket_id(existing.pk),
             'date': today.strftime('%d %B %Y'),
             'time': timezone.localtime().strftime('%H:%M:%S'),
             'message': f'You already have ticket Q{existing.number:03d}',
@@ -305,6 +347,7 @@ def queue_kiosk_generate_ajax(request):
         'staff_name': user.display_name,
         'staff_id': user.staff_id,
         'qr_data': qr_data,
+        'print_token': _sign_ticket_id(ticket.pk),
         'date': today.strftime('%d %B %Y'),
         'time': timezone.localtime().strftime('%H:%M:%S'),
         'message': f'Queue ticket Q{number:03d} generated!',

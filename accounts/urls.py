@@ -40,6 +40,7 @@ urlpatterns = [
     path('queue/', queue_views.queue_dashboard_view, name='queue_dashboard'),
     path('queue/my-ticket/', queue_views.queue_my_ticket_view, name='queue_my_ticket'),
     path('queue/print/<int:ticket_id>/', queue_views.queue_print_view, name='queue_print'),
+    path('queue/print-r/<str:token>/', queue_views.queue_print_signed_view, name='queue_print_signed'),
     path('queue/display/', queue_views.queue_display_view, name='queue_display'),
     path('queue/manage/', queue_views.queue_manage_view, name='queue_manage'),
     path('queue/api/status/', queue_views.queue_status_ajax, name='queue_status'),
