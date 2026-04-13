@@ -150,6 +150,7 @@ let matchEncodings = [];
 let idleTimer = null;
 let countdownTimer = null;
 let currentPrintToken = '';
+let currentStaffId = '';
 
 const video = document.getElementById('videoEl');
 const ring = document.getElementById('cameraRing');
@@ -265,6 +266,7 @@ async function generateQueueTicket() {
     if (data.success) {
       // Populate ticket screen.
       currentPrintToken = data.print_token || '';
+      currentStaffId = data.staff_id || '';
       document.getElementById('ticketNum').textContent = data.number_display;
       document.getElementById('ticketName').textContent = data.staff_name;
       document.getElementById('ticketQR').src = data.qr_data;
@@ -292,33 +294,78 @@ function printTicket() {
   const date = document.getElementById('ticketDate').textContent;
   const time = document.getElementById('ticketTime').textContent;
   const brand = '{{ brand_name|default:"FaceID Portal" }}';
+  const qrData = num + '|' + currentStaffId + '|' + date;
 
-  // Build a plain-text receipt for the 58mm thermal printer.
-  // rawbt:base64,<text> sends plain text directly to the printer
-  // with ZERO dialogs, ZERO previews — instant print.
-  // QR code stays visible on the kiosk screen for scanning.
-  const line = '================================';
-  const receipt = [
-    line,
-    center(brand, 32),
-    line,
-    '',
-    center(name, 32),
-    '',
-    center(num, 32),
-    '',
-    center(date, 32),
-    center(time, 32),
-    '',
-    line,
-    center('Thank you for waiting', 32),
-    line,
-    '', '', '',  // feed paper
-  ].join('\n');
+  // Build ESC/POS byte commands for the MPT-2 58mm thermal printer.
+  // This prints formatted text + a native QR code with zero dialogs.
+  const bytes = [];
+  const push = (...b) => bytes.push(...b);
+  const text = (s) => { for (let i = 0; i < s.length; i++) bytes.push(s.charCodeAt(i)); };
+  const LF = () => push(0x0A);
 
-  const b64 = btoa(unescape(encodeURIComponent(receipt)));
+  // ── Initialize printer
+  push(0x1B, 0x40);           // ESC @ — reset
 
-  // Send directly to RawBT → MPT-2 printer. No dialog.
+  // ── Center align
+  push(0x1B, 0x61, 0x01);     // ESC a 1 — center
+
+  // ── Brand name
+  push(0x1B, 0x45, 0x01);     // ESC E 1 — bold ON
+  text(brand); LF();
+  push(0x1B, 0x45, 0x00);     // ESC E 0 — bold OFF
+
+  // ── Divider
+  text('--------------------------------'); LF();
+  LF();
+
+  // ── Staff name
+  text(name); LF();
+  LF();
+
+  // ── Queue number (large)
+  push(0x1D, 0x21, 0x11);     // GS ! 0x11 — double width + double height
+  push(0x1B, 0x45, 0x01);     // bold ON
+  text(num); LF();
+  push(0x1D, 0x21, 0x00);     // GS ! 0x00 — normal size
+  push(0x1B, 0x45, 0x00);     // bold OFF
+  LF();
+
+  // ── QR Code (native ESC/POS)
+  // Select QR model 2
+  push(0x1D, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00);
+  // Set module size (6 = medium-large)
+  push(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x06);
+  // Error correction level M
+  push(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x31);
+  // Store QR data
+  const qrBytes = [];
+  for (let i = 0; i < qrData.length; i++) qrBytes.push(qrData.charCodeAt(i));
+  const storeLen = qrBytes.length + 3;
+  push(0x1D, 0x28, 0x6B, storeLen & 0xFF, (storeLen >> 8) & 0xFF, 0x31, 0x50, 0x30);
+  push(...qrBytes);
+  // Print QR code
+  push(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30);
+  LF();
+
+  // ── Date & time
+  text(date); LF();
+  text(time); LF();
+
+  // ── Divider + footer
+  text('--------------------------------'); LF();
+  text('Thank you for waiting'); LF();
+  text('--------------------------------'); LF();
+
+  // ── Feed + cut (partial cut if supported)
+  push(0x1B, 0x64, 0x04);     // ESC d 4 — feed 4 lines
+  push(0x1D, 0x56, 0x01);     // GS V 1 — partial cut (ignored if no cutter)
+
+  // Convert to base64 and send via RawBT — instant, zero dialogs.
+  const uint8 = new Uint8Array(bytes);
+  let binary = '';
+  for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i]);
+  const b64 = btoa(binary);
+
   const a = document.createElement('a');
   a.href = 'rawbt:base64,' + b64;
   a.style.display = 'none';
