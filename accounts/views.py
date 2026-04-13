@@ -1,5 +1,6 @@
 import json
 import logging
+import mimetypes
 import os
 import tempfile
 from django.shortcuts import render, redirect, get_object_or_404
@@ -223,6 +224,33 @@ def profile_view(request):
         ],
     }
     return render(request, 'accounts/profile.html', context)
+
+
+@login_required
+def my_face_photo_view(request):
+    """
+    Serve the current user's own face photo. This is the ONLY way to
+    retrieve a face photo over HTTP — the generic /media/face_photos/
+    route returns 404 unconditionally. Because this view reads
+    request.user.face_photo, it is impossible for one user to fetch
+    another user's biometric image.
+    """
+    user = request.user
+    if not user.face_photo:
+        from django.http import Http404
+        raise Http404("No face photo on file")
+
+    try:
+        f = user.face_photo.open('rb')
+        content_type = mimetypes.guess_type(user.face_photo.name)[0] or 'image/jpeg'
+        from django.http import FileResponse
+        response = FileResponse(f, content_type=content_type)
+        # Prevent browser from caching the photo in shared caches.
+        response['Cache-Control'] = 'private, no-store'
+        return response
+    except Exception:
+        from django.http import Http404
+        raise Http404("Face photo not accessible")
 
 
 @login_required

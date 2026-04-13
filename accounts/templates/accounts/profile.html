@@ -123,12 +123,18 @@
       </div>
 
       <div id="enrolledBadge" class="enrolled-badge{% if not user.face_registered %} hidden{% endif %}">
+        {% if user.face_photo %}
+        <img id="enrolledPhoto" class="current-face" alt="Your enrolled face"
+             src="{% url 'my_face_photo' %}"
+             onerror="this.style.display='none'">
+        {% else %}
         <div class="enrolled-icon" aria-hidden="true">
           <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
             <polyline points="22 4 12 14.01 9 11.01"/>
           </svg>
         </div>
+        {% endif %}
         <div>
           <div style="font-size:13px;color:var(--accent3);font-weight:600;margin-bottom:2px">✓ Face ID Enrolled</div>
           <div style="font-size:12px;color:var(--text2)">Your face is registered for login</div>
@@ -270,7 +276,28 @@ async function captureAndEnroll() {
     if (data.success) {
       setEnrollStatus('ok', '✓ ' + data.message);
       const badge = document.getElementById('enrolledBadge');
-      if (badge) badge.classList.remove('hidden');
+      if (badge) {
+        badge.classList.remove('hidden');
+        // Show the user's face photo via the secure owner-only endpoint.
+        // If the img element doesn't exist yet (first enrollment),
+        // create it and insert before the text.
+        let photo = document.getElementById('enrolledPhoto');
+        if (!photo) {
+          photo = document.createElement('img');
+          photo.id = 'enrolledPhoto';
+          photo.className = 'current-face';
+          photo.alt = 'Your enrolled face';
+          photo.onerror = function() { this.style.display = 'none'; };
+          // Insert before the first child (the icon or text div).
+          badge.insertBefore(photo, badge.firstChild);
+          // Hide the SVG icon if present.
+          const icon = badge.querySelector('.enrolled-icon');
+          if (icon) icon.style.display = 'none';
+        }
+        // Cache-bust so the new photo shows immediately.
+        photo.src = '{% url "my_face_photo" %}?t=' + Date.now();
+        photo.style.display = '';
+      }
     } else {
       setEnrollStatus('err', data.message);
     }

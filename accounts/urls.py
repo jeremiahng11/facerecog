@@ -15,6 +15,7 @@ urlpatterns = [
     # Dashboard / Profile
     path('dashboard/', views.dashboard_view, name='dashboard'),
     path('profile/', views.profile_view, name='profile'),
+    path('api/my-face-photo/', views.my_face_photo_view, name='my_face_photo'),
 
     # Admin user management
     path('admin-panel/users/', views.admin_users_view, name='admin_users'),
