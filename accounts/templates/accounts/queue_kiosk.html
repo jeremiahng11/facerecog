@@ -95,11 +95,12 @@
     <div class="name" id="ticketName"></div>
     <div class="qr"><img id="ticketQR" width="220" height="220" style="border-radius:12px" alt="QR"></div>
     <div class="meta"><span id="ticketDate"></span> · <span id="ticketTime"></span></div>
+    <div style="margin-top:16px;font-size:14px;color:var(--accent3)" id="printStatus">Printing…</div>
   </div>
 
-  <button class="print-btn" id="printBtn" onclick="printTicket()">
+  <button class="print-btn" id="printBtn" onclick="printTicket()" style="display:none">
     <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:8px"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-    Print Ticket
+    Reprint
   </button>
   <div class="countdown" id="countdown"></div>
 </div>
@@ -237,7 +238,7 @@ async function generateQueueTicket() {
     });
     const data = await resp.json();
     if (data.success) {
-      // Populate ticket screen and store print token for RawBT.
+      // Populate ticket screen.
       currentPrintToken = data.print_token || '';
       document.getElementById('ticketNum').textContent = data.number_display;
       document.getElementById('ticketName').textContent = data.staff_name;
@@ -245,7 +246,11 @@ async function generateQueueTicket() {
       document.getElementById('ticketDate').textContent = data.date;
       document.getElementById('ticketTime').textContent = data.time;
       showScreen('screenTicket');
-      resetIdleTimer();
+
+      // Auto-print immediately — no button tap needed.
+      // Print fires via hidden iframe, then countdown starts.
+      printTicket();
+      startPostPrintCountdown();
     } else {
       scanStatus.textContent = data.message;
       setTimeout(resetKiosk, 3000);
@@ -256,10 +261,7 @@ async function generateQueueTicket() {
   }
 }
 
-// ── Print ticket via hidden iframe + window.print() ──────────────
-// Android routes window.print() through the default print service.
-// With RawBT set as default + auto-print enabled, this goes straight
-// to the MPT-2 Bluetooth thermal printer with zero dialogs.
+// ── Print: fires immediately after ticket generation (no tap needed) ──
 function printTicket() {
   const num = document.getElementById('ticketNum').textContent;
   const name = document.getElementById('ticketName').textContent;
@@ -297,11 +299,12 @@ function printTicket() {
     try { frame.contentWindow.print(); } catch(e) {}
   };
 
-  // Update button and start countdown.
-  const btn = document.getElementById('printBtn');
-  btn.textContent = 'Sent to printer';
-  btn.disabled = true;
+  document.getElementById('printStatus').textContent = 'Sent to printer';
+  // Show reprint button in case user needs another copy.
+  document.getElementById('printBtn').style.display = '';
+}
 
+function startPostPrintCountdown() {
   let secs = Math.round(POST_PRINT_TIMEOUT / 1000);
   const cdEl = document.getElementById('countdown');
   cdEl.textContent = `Auto-reset in ${secs}s`;
