@@ -70,6 +70,31 @@
   .kiosk-footer { position: fixed; bottom: 16px; font-size: 11px; color: var(--text3); font-family: var(--mono); letter-spacing: 1px; }
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   .spinning { animation: spin 1s linear infinite; }
+
+  /* Print content: hidden on screen */
+  #printContent { display: none; }
+
+  /* When printing: hide kiosk UI, show only the receipt */
+  @media print {
+    body { background: #fff !important; }
+    .screen, .kiosk-footer { display: none !important; }
+    #printContent {
+      display: block !important;
+      width: 48mm;
+      font-family: 'Courier New', monospace;
+      color: #000;
+      background: #fff;
+      padding: 3mm 2mm;
+      text-align: center;
+    }
+    #printContent .brand { font-size: 9pt; font-weight: bold; margin-bottom: 2mm; }
+    #printContent .div { border-top: 1px dashed #000; margin: 2mm 0; }
+    #printContent .name { font-size: 9pt; margin-bottom: 1mm; }
+    #printContent .num { font-size: 32pt; font-weight: bold; letter-spacing: 2mm; margin: 2mm 0; }
+    #printContent .qr img { width: 28mm; height: 28mm; margin: 2mm auto; display: block; }
+    #printContent .time { font-size: 7pt; color: #333; }
+    #printContent .foot { font-size: 7pt; color: #666; margin-top: 2mm; }
+  }
 </style>
 </head>
 <body>
@@ -105,8 +130,8 @@
   <div class="countdown" id="countdown"></div>
 </div>
 
-<!-- Hidden iframe for thermal printing -->
-<iframe id="printFrame" style="position:fixed;left:-9999px;top:-9999px;width:0;height:0"></iframe>
+<!-- Print content: hidden on screen, shown only when printing -->
+<div id="printContent"></div>
 
 <div class="kiosk-footer">{{ brand_name|default:"FaceID Portal" }} — Queue Kiosk</div>
 
@@ -262,6 +287,9 @@ async function generateQueueTicket() {
 }
 
 // ── Print: fires immediately after ticket generation (no tap needed) ──
+// No iframes, no popups. Populates a hidden #printContent div and calls
+// window.print() on the main page. @media print CSS hides the kiosk UI
+// and shows only the receipt content. Works in Fully Kiosk Browser.
 function printTicket() {
   const num = document.getElementById('ticketNum').textContent;
   const name = document.getElementById('ticketName').textContent;
@@ -270,55 +298,19 @@ function printTicket() {
   const time = document.getElementById('ticketTime').textContent;
   const brand = '{{ brand_name|default:"FaceID Portal" }}';
 
-  const printHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<style>
-  @page { size: 58mm auto; margin: 0; }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { width: 48mm; font-family: 'Courier New', monospace; color: #000; background: #fff; padding: 3mm 2mm; text-align: center; }
-  .brand { font-size: 9pt; font-weight: bold; margin-bottom: 2mm; }
-  .div { border-top: 1px dashed #000; margin: 2mm 0; }
-  .name { font-size: 9pt; margin-bottom: 1mm; }
-  .num { font-size: 32pt; font-weight: bold; letter-spacing: 2mm; margin: 2mm 0; }
-  .qr img { width: 28mm; height: 28mm; margin: 2mm auto; display: block; }
-  .time { font-size: 7pt; color: #333; }
-  .foot { font-size: 7pt; color: #666; margin-top: 2mm; }
-</style></head><body>
-<div class="brand">${brand}</div>
-<div class="div"></div>
-<div class="name">${name}</div>
-<div class="num">${num}</div>
-<div class="qr"><img src="${qrSrc}" alt="QR"></div>
-<div class="time">${date}<br>${time}</div>
-<div class="div"></div>
-<div class="foot">Thank you for waiting</div>
-</body></html>`;
+  // Populate the hidden print div (visible only in @media print).
+  document.getElementById('printContent').innerHTML =
+    '<div class="brand">' + brand + '</div>' +
+    '<div class="div"></div>' +
+    '<div class="name">' + name + '</div>' +
+    '<div class="num">' + num + '</div>' +
+    '<div class="qr"><img src="' + qrSrc + '" width="120" alt="QR"></div>' +
+    '<div class="time">' + date + '<br>' + time + '</div>' +
+    '<div class="div"></div>' +
+    '<div class="foot">Thank you for waiting</div>';
 
-  // Detect Fully Kiosk Browser and use its native silent print API.
-  // Fully blocks iframe.contentWindow.print() but provides its own
-  // printHtml() method that prints directly without any dialog.
-  if (typeof fully !== 'undefined' && typeof fully.printHtml === 'function') {
-    fully.printHtml(printHtml);
-  } else if (typeof fully !== 'undefined' && typeof fully.print === 'function') {
-    // Older Fully: inject content into page, print, then clean up.
-    const overlay = document.createElement('div');
-    overlay.id = '_printOverlay';
-    overlay.innerHTML = printHtml;
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#fff';
-    document.body.appendChild(overlay);
-    fully.print();
-    setTimeout(() => { const el = document.getElementById('_printOverlay'); if (el) el.remove(); }, 2000);
-  } else {
-    // Standard browser: hidden iframe approach.
-    const frame = document.getElementById('printFrame');
-    frame.onload = null;
-    frame.srcdoc = '';
-    setTimeout(() => {
-      frame.onload = function() {
-        try { frame.contentWindow.print(); } catch(e) {}
-      };
-      frame.srcdoc = printHtml;
-    }, 50);
-  }
+  // Small delay to let the QR image load before printing.
+  setTimeout(() => { window.print(); }, 200);
 
   document.getElementById('printStatus').textContent = 'Sent to printer';
   document.getElementById('printBtn').style.display = '';
