@@ -305,59 +305,38 @@ function printTicket() {
 
   // ── Initialize printer
   push(0x1B, 0x40);           // ESC @ — reset
-
-  // ── Center align
   push(0x1B, 0x61, 0x01);     // ESC a 1 — center
 
   // ── Brand name
-  push(0x1B, 0x45, 0x01);     // ESC E 1 — bold ON
+  push(0x1B, 0x45, 0x01);     // bold ON
   text(brand); LF();
-  push(0x1B, 0x45, 0x00);     // ESC E 0 — bold OFF
-
-  // ── Divider
+  push(0x1B, 0x45, 0x00);     // bold OFF
   text('--------------------------------'); LF();
-  LF();
 
   // ── Staff name
   text(name); LF();
-  LF();
 
   // ── Queue number (large)
-  push(0x1D, 0x21, 0x11);     // GS ! 0x11 — double width + double height
+  push(0x1D, 0x21, 0x11);     // double width + double height
   push(0x1B, 0x45, 0x01);     // bold ON
   text(num); LF();
-  push(0x1D, 0x21, 0x00);     // GS ! 0x00 — normal size
+  push(0x1D, 0x21, 0x00);     // normal size
   push(0x1B, 0x45, 0x00);     // bold OFF
-  LF();
 
   // ── QR Code (native ESC/POS)
-  // Select QR model 2
-  push(0x1D, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00);
-  // Set module size (6 = medium-large)
-  push(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x06);
-  // Error correction level M
-  push(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x31);
-  // Store QR data
+  push(0x1D, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00); // model 2
+  push(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x06);       // size 6
+  push(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x31);       // error M
   const qrBytes = [];
   for (let i = 0; i < qrData.length; i++) qrBytes.push(qrData.charCodeAt(i));
   const storeLen = qrBytes.length + 3;
   push(0x1D, 0x28, 0x6B, storeLen & 0xFF, (storeLen >> 8) & 0xFF, 0x31, 0x50, 0x30);
   push(...qrBytes);
-  // Print QR code
-  push(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30);
-  LF();
+  push(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30);       // print QR
 
-  // ── Date & time
-  text(date); LF();
-  text(time); LF();
-
-  // ── Divider + footer
+  // ── Date & time + footer (no extra blank lines)
+  text(date + ' ' + time); LF();
   text('--------------------------------'); LF();
-  text('Thank you for waiting'); LF();
-  text('--------------------------------'); LF();
-
-  // ── Minimal feed (just enough to tear the receipt)
-  push(0x1B, 0x64, 0x01);     // ESC d 1 — feed 1 line
 
   // Convert to base64 and send via RawBT — instant, zero dialogs.
   const uint8 = new Uint8Array(bytes);
