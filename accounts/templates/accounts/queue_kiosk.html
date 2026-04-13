@@ -110,6 +110,47 @@
   </div>
 
   <div class="scan-status" id="scanStatus">Initialising camera…</div>
+
+  <button onclick="showScreen('screenPin')" style="
+    margin-top:20px; padding:12px 28px; border-radius:10px; font-size:14px;
+    background:transparent; border:1px solid var(--border); color:var(--text2);
+    cursor:pointer; font-family:var(--sans);
+  ">Use Staff ID &amp; PIN instead</button>
+</div>
+
+<!-- ═══════════════ SCREEN 1b: Staff ID + PIN Login ═══════════════ -->
+<div class="screen" id="screenPin">
+  <div class="kiosk-brand">{{ brand_name|default:"FaceID Portal" }}</div>
+  <div class="kiosk-subtitle">Enter your Staff ID and PIN</div>
+
+  <div style="width:100%;max-width:340px;margin-top:20px">
+    <div style="margin-bottom:14px">
+      <input type="text" id="pinStaffId" placeholder="Staff ID" autocomplete="off" style="
+        width:100%; padding:14px 16px; font-size:16px; border-radius:10px;
+        background:var(--card); border:1px solid var(--border); color:var(--text);
+        font-family:var(--sans); outline:none;
+      ">
+    </div>
+    <div style="margin-bottom:14px">
+      <input type="password" id="pinCode" placeholder="PIN" maxlength="6" inputmode="numeric" autocomplete="off" style="
+        width:100%; padding:14px 16px; font-size:24px; letter-spacing:8px;
+        text-align:center; border-radius:10px;
+        background:var(--card); border:1px solid var(--border); color:var(--text);
+        font-family:var(--mono); outline:none;
+      ">
+    </div>
+    <button onclick="pinLogin()" id="pinLoginBtn" style="
+      width:100%; padding:14px; font-size:16px; font-weight:600;
+      border-radius:10px; background:var(--accent); color:#000;
+      border:none; cursor:pointer; font-family:var(--sans);
+    ">Get Queue Number</button>
+    <div id="pinError" style="margin-top:12px;font-size:14px;color:var(--danger);text-align:center;display:none"></div>
+    <button onclick="showScreen('screenScan'); resetIdleTimer();" style="
+      margin-top:16px; width:100%; padding:10px; font-size:13px;
+      background:transparent; border:1px solid var(--border); color:var(--text2);
+      border-radius:8px; cursor:pointer; font-family:var(--sans);
+    ">Back to Face Scan</button>
+  </div>
 </div>
 
 <!-- ═══════════════ SCREEN 2: Ticket ═══════════════ -->
@@ -196,6 +237,11 @@ async function resetKiosk() {
   scanStatus.className = 'scan-status';
   scanStatus.textContent = 'Scanning…';
   document.getElementById('countdown').textContent = '';
+  document.getElementById('pinStaffId').value = '';
+  document.getElementById('pinCode').value = '';
+  document.getElementById('pinError').style.display = 'none';
+  document.getElementById('printBtn').style.display = '';
+  document.getElementById('printStatus').style.display = 'none';
   showScreen('screenScan');
 
   // Restart scanning.
@@ -322,6 +368,7 @@ function printTicket() {
   text(num); LF();
   push(0x1D, 0x21, 0x00);     // normal size
   push(0x1B, 0x45, 0x00);     // bold OFF
+  LF();
 
   // ── QR Code (native ESC/POS)
   push(0x1D, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00); // model 2
@@ -333,8 +380,9 @@ function printTicket() {
   push(0x1D, 0x28, 0x6B, storeLen & 0xFF, (storeLen >> 8) & 0xFF, 0x31, 0x50, 0x30);
   push(...qrBytes);
   push(0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30);       // print QR
+  LF();
 
-  // ── Date & time + footer (no extra blank lines)
+  // ── Date & time + footer
   text(date + ' ' + time); LF();
   text('--------------------------------'); LF();
 
@@ -372,6 +420,56 @@ function startPostPrintCountdown() {
       cdEl.textContent = `Auto-reset in ${secs}s`;
     }
   }, 1000);
+}
+
+// ── Staff ID + PIN login ──────────────────────────────────────────
+async function pinLogin() {
+  const staffId = document.getElementById('pinStaffId').value.trim();
+  const pin = document.getElementById('pinCode').value.trim();
+  const errEl = document.getElementById('pinError');
+  const btn = document.getElementById('pinLoginBtn');
+
+  errEl.style.display = 'none';
+  if (!staffId || !pin) {
+    errEl.textContent = 'Please enter both Staff ID and PIN';
+    errEl.style.display = '';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Verifying…';
+
+  try {
+    const resp = await fetch('{% url "queue_kiosk_pin_login" %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+      body: JSON.stringify({ staff_id: staffId, pin: pin }),
+    });
+    const data = await resp.json();
+    if (data.success) {
+      // Show ticket screen (same as face scan success).
+      currentPrintToken = data.print_token || '';
+      currentStaffId = data.staff_id || '';
+      document.getElementById('ticketNum').textContent = data.number_display;
+      document.getElementById('ticketName').textContent = data.staff_name;
+      document.getElementById('ticketQR').src = data.qr_data;
+      document.getElementById('ticketDate').textContent = data.date;
+      document.getElementById('ticketTime').textContent = data.time;
+      showScreen('screenTicket');
+      resetIdleTimer();
+    } else {
+      errEl.textContent = data.message;
+      errEl.style.display = '';
+    }
+  } catch (e) {
+    errEl.textContent = 'Network error. Try again.';
+    errEl.style.display = '';
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Get Queue Number';
+  // Clear PIN field for security.
+  document.getElementById('pinCode').value = '';
 }
 
 function printAndCountdown() {

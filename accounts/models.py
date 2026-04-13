@@ -51,6 +51,10 @@ class StaffUser(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
     last_face_login = models.DateTimeField(null=True, blank=True)
+    kiosk_pin = models.CharField(
+        max_length=6, blank=True,
+        help_text='4-6 digit PIN for kiosk queue login (set in Profile)'
+    )
 
     objects = StaffUserManager()
 

@@ -302,6 +302,66 @@ def queue_kiosk_view(request):
 
 
 @require_POST
+def queue_kiosk_pin_login_ajax(request):
+    """
+    AJAX: authenticate via Staff ID + PIN on the kiosk.
+    Only works if the user has set a kiosk_pin in their profile.
+    Logs the user in and returns the same data as kiosk_generate.
+    """
+    try:
+        data = json.loads(request.body)
+        staff_id = (data.get('staff_id') or '').strip()
+        pin = (data.get('pin') or '').strip()
+
+        if not staff_id or not pin:
+            return JsonResponse({'success': False, 'message': 'Staff ID and PIN required'})
+
+        try:
+            user = StaffUser.objects.get(staff_id=staff_id, is_active=True)
+        except StaffUser.DoesNotExist:
+            return JsonResponse({'success': False, 'message': 'Invalid Staff ID or PIN'})
+
+        if not user.kiosk_pin:
+            return JsonResponse({'success': False, 'message': 'No kiosk PIN set. Please set one in your Profile.'})
+
+        if user.kiosk_pin != pin:
+            return JsonResponse({'success': False, 'message': 'Invalid Staff ID or PIN'})
+
+        # Log the user in.
+        from django.contrib.auth import login
+        login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+
+        # Generate queue ticket.
+        today = _today()
+        existing = _active_ticket_for_user(user)
+        if existing:
+            ticket = existing
+        else:
+            number = QueueTicket.next_number(today)
+            ticket = QueueTicket.objects.create(user=user, number=number, date=today)
+
+        qr_data = _generate_qr_base64(
+            f'Q{ticket.number:03d}|{user.staff_id}|{today}', box_size=8
+        )
+        return JsonResponse({
+            'success': True,
+            'existing': existing is not None,
+            'ticket_id': ticket.pk,
+            'number': ticket.number,
+            'number_display': f'Q{ticket.number:03d}',
+            'staff_name': user.display_name,
+            'staff_id': user.staff_id,
+            'qr_data': qr_data,
+            'print_token': _sign_ticket_id(ticket.pk),
+            'date': today.strftime('%d %B %Y'),
+            'time': timezone.localtime().strftime('%H:%M:%S'),
+            'message': f'Queue ticket Q{ticket.number:03d}',
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)})
+
+
+@require_POST
 def queue_kiosk_generate_ajax(request):
     """
     AJAX: generate a queue ticket for the currently logged-in kiosk user.

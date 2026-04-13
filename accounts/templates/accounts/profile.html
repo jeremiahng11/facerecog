@@ -154,10 +154,17 @@
           <div class="hint">Shown in navigation and dashboard</div>
         </div>
 
+        <div class="divider"></div>
+
+        <div class="form-group">
+          <label>Kiosk PIN</label>
+          <input type="password" name="kiosk_pin" value="{{ user.kiosk_pin }}" placeholder="4-6 digit PIN" maxlength="6" pattern="[0-9]{4,6}" inputmode="numeric" autocomplete="off">
+          <div class="hint">Set a 4-6 digit PIN to use Staff ID + PIN login on the queue kiosk. Leave blank to disable PIN login.</div>
+        </div>
+
         <button type="submit" class="btn btn-primary btn-full">
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-          Save Profile Picture
-        </button>
+          Save Profile
       </form>
     </div>
 

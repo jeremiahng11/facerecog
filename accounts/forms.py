@@ -71,8 +71,7 @@ class StaffUserEditForm(forms.ModelForm):
 
 
 class FacePhotoUploadForm(forms.ModelForm):
-    """Form for users to update their profile picture (face_photo
-    removed — Face ID enrollment is live-camera only)."""
+    """Form for users to update their profile picture and kiosk PIN."""
     class Meta:
         model = StaffUser
-        fields = ['profile_picture']
+        fields = ['profile_picture', 'kiosk_pin']
