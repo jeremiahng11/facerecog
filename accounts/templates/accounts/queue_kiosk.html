@@ -120,12 +120,12 @@
     <div class="name" id="ticketName"></div>
     <div class="qr"><img id="ticketQR" width="220" height="220" style="border-radius:12px" alt="QR"></div>
     <div class="meta"><span id="ticketDate"></span> · <span id="ticketTime"></span></div>
-    <div style="margin-top:16px;font-size:14px;color:var(--accent3)" id="printStatus">Printing…</div>
+    <div style="margin-top:16px;font-size:14px;color:var(--accent3);display:none" id="printStatus"></div>
   </div>
 
-  <button class="print-btn" id="printBtn" onclick="printTicket(); clearInterval(countdownTimer); startPostPrintCountdown();" style="display:none">
+  <button class="print-btn" id="printBtn" onclick="printAndCountdown()">
     <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:8px"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-    Reprint
+    Print Ticket
   </button>
   <div class="countdown" id="countdown"></div>
 </div>
@@ -271,11 +271,7 @@ async function generateQueueTicket() {
       document.getElementById('ticketDate').textContent = data.date;
       document.getElementById('ticketTime').textContent = data.time;
       showScreen('screenTicket');
-
-      // Auto-print immediately — no button tap needed.
-      // Print fires via hidden iframe, then countdown starts.
-      printTicket();
-      startPostPrintCountdown();
+      resetIdleTimer();
     } else {
       scanStatus.textContent = data.message;
       setTimeout(resetKiosk, 3000);
@@ -330,6 +326,16 @@ function startPostPrintCountdown() {
       cdEl.textContent = `Auto-reset in ${secs}s`;
     }
   }, 1000);
+}
+
+function printAndCountdown() {
+  printTicket();
+  // Hide print button, show status, start countdown.
+  document.getElementById('printBtn').style.display = 'none';
+  const ps = document.getElementById('printStatus');
+  ps.textContent = 'Sent to printer';
+  ps.style.display = '';
+  startPostPrintCountdown();
 }
 
 // ── Init camera ──────────────────────────────────────────────────
