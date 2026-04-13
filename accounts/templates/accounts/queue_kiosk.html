@@ -289,27 +289,48 @@ async function generateQueueTicket() {
 function printTicket() {
   const num = document.getElementById('ticketNum').textContent;
   const name = document.getElementById('ticketName').textContent;
-  const qrSrc = document.getElementById('ticketQR').src;
   const date = document.getElementById('ticketDate').textContent;
   const time = document.getElementById('ticketTime').textContent;
   const brand = '{{ brand_name|default:"FaceID Portal" }}';
 
-  // Populate the hidden print div (visible only in @media print).
-  document.getElementById('printContent').innerHTML =
-    '<div class="brand">' + brand + '</div>' +
-    '<div class="div"></div>' +
-    '<div class="name">' + name + '</div>' +
-    '<div class="num">' + num + '</div>' +
-    '<div class="qr"><img src="' + qrSrc + '" width="120" alt="QR"></div>' +
-    '<div class="time">' + date + '<br>' + time + '</div>' +
-    '<div class="div"></div>' +
-    '<div class="foot">Thank you for waiting</div>';
+  // Build a plain-text receipt for the 58mm thermal printer.
+  // rawbt:base64,<text> sends plain text directly to the printer
+  // with ZERO dialogs, ZERO previews — instant print.
+  // QR code stays visible on the kiosk screen for scanning.
+  const line = '================================';
+  const receipt = [
+    line,
+    center(brand, 32),
+    line,
+    '',
+    center(name, 32),
+    '',
+    center(num, 32),
+    '',
+    center(date, 32),
+    center(time, 32),
+    '',
+    line,
+    center('Thank you for waiting', 32),
+    line,
+    '', '', '',  // feed paper
+  ].join('\n');
 
-  // Small delay to let the QR image load before printing.
-  setTimeout(() => { window.print(); }, 200);
+  const b64 = btoa(unescape(encodeURIComponent(receipt)));
 
-  document.getElementById('printStatus').textContent = 'Sent to printer';
-  document.getElementById('printBtn').style.display = '';
+  // Send directly to RawBT → MPT-2 printer. No dialog.
+  const a = document.createElement('a');
+  a.href = 'rawbt:base64,' + b64;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function center(text, width) {
+  if (text.length >= width) return text;
+  const pad = Math.floor((width - text.length) / 2);
+  return ' '.repeat(pad) + text;
 }
 
 
