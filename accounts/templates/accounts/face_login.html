@@ -241,6 +241,8 @@ const CSRF_TOKEN = '{{ csrf_token }}';
 let stream = null;
 let scanning = false;
 let attemptCount = 0;
+let matchUser = null;                  // staff_id of current consecutive match streak
+let matchCount = 0;                    // consecutive match counter
 const MAX_ATTEMPTS = 40;              // up to ~15 seconds of scanning
 const CAPTURE_MAX_DIM = 480;           // downscale video frames to this max dimension
 const CAPTURE_JPEG_QUALITY = 0.75;     // lower quality = smaller payload, still plenty for face recognition
@@ -345,28 +347,39 @@ async function captureAndVerify() {
     const resp = await fetch('{% url "face_verify_ajax" %}', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
-      body: JSON.stringify({ image: imageData }),
+      body: JSON.stringify({
+        image: imageData,
+        match_user: matchUser,
+        match_count: matchCount,
+      }),
     });
     const data = await resp.json();
 
+    // Track consecutive match state returned by the server.
+    matchUser = data.match_user || null;
+    matchCount = data.match_count || 0;
+
     if (data.success) {
-      // Stop the scan loop AND release the camera immediately so the
-      // browser doesn't have to tear down the MediaStream during
-      // navigation (which can add 1-3 seconds of apparent lag).
+      // Stop the scan loop AND release the camera immediately.
       stopScan();
       stopCamera();
       setStatus('success', 'Identity Confirmed!', data.message, data.confidence);
       scanBtn.innerHTML = `<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Access Granted`;
       scanBtn.style.background = 'var(--accent3)';
-      // replace() is slightly faster than href assignment and also
-      // removes this page from the history stack, so the back button
-      // from the dashboard doesn't bounce back into a stale scanner.
       window.location.replace(data.redirect || '/dashboard/');
       return;
+    } else if (data.verifying) {
+      // Partial match — server needs more consecutive frames.
+      setStatus('scanning', 'Verifying Identity…', data.message);
     } else if (data.face_detected === false) {
+      matchUser = null;
+      matchCount = 0;
       setStatus('scanning', 'No Face Detected', 'Please centre your face in the circle.');
+    } else {
+      // Face detected but not matched — reset streak.
+      matchUser = null;
+      matchCount = 0;
     }
-    // else: face detected but not matched — keep scanning silently
   } catch (e) {
     // network error, keep trying
   }

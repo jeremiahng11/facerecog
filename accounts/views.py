@@ -66,13 +66,27 @@ def face_login_view(request):
 def face_verify_ajax(request):
     """
     AJAX endpoint: receive base64 frame from webcam, compare against all
-    registered face encodings, return match result.
+    registered face encodings. Requires multiple consecutive matches to
+    the same user before granting login (prevents photo spoofing and
+    cross-user false positives).
+
+    The client tracks consecutive_match_user and consecutive_match_count
+    and sends them back so the server can enforce the threshold.
     """
     try:
         data = json.loads(request.body)
         image_data = data.get('image')
         if not image_data:
             return JsonResponse({'success': False, 'message': 'No image received'})
+
+        # Track consecutive matches sent by the client.
+        client_match_user = data.get('match_user')       # staff_id
+        client_match_count = data.get('match_count', 0)   # consecutive count
+
+        required_consecutive = getattr(
+            settings, 'FACE_VERIFY_CONSECUTIVE_MATCHES', 2
+        )
+        min_confidence = getattr(settings, 'FACE_MIN_CONFIDENCE', 65)
 
         # Extract encoding from the live frame
         candidate_encoding = face_utils.extract_encoding_from_b64(image_data)
@@ -81,10 +95,12 @@ def face_verify_ajax(request):
                 'success': False,
                 'message': 'No face detected in frame. Please look at the camera.',
                 'face_detected': False,
+                'match_user': None,
+                'match_count': 0,
             })
 
         # Compare against all users with face_enabled and registered encoding
-        tolerance = getattr(settings, 'FACE_RECOGNITION_TOLERANCE', 0.5)
+        tolerance = getattr(settings, 'FACE_RECOGNITION_TOLERANCE', 0.4)
         users_with_face = StaffUser.objects.filter(
             face_enabled=True,
             face_registered=True,
@@ -98,25 +114,45 @@ def face_verify_ajax(request):
             known_encoding = user.get_face_encoding()
             if not known_encoding:
                 continue
-            result = face_utils.compare_faces(known_encoding, candidate_encoding, tolerance)
+            result = face_utils.compare_faces(
+                known_encoding, candidate_encoding, tolerance
+            )
             if result['match'] and result['confidence'] > best_confidence:
                 best_match = user
                 best_confidence = result['confidence']
 
         ip_addr = request.META.get('REMOTE_ADDR')
 
-        if best_match:
-            # Log success
+        if best_match and best_confidence >= min_confidence:
+            # Count consecutive matches to the same user.
+            if client_match_user == best_match.staff_id:
+                consecutive = client_match_count + 1
+            else:
+                consecutive = 1
+
+            if consecutive < required_consecutive:
+                # Partial match — tell the client to keep going.
+                return JsonResponse({
+                    'success': False,
+                    'face_detected': True,
+                    'message': f'Verifying… ({consecutive}/{required_consecutive})',
+                    'match_user': best_match.staff_id,
+                    'match_count': consecutive,
+                    'confidence': best_confidence,
+                    'verifying': True,
+                })
+
+            # ── Enough consecutive matches — grant login ──────────────
             FaceLoginLog.objects.create(
                 user=best_match,
                 success=True,
                 confidence=best_confidence,
                 ip_address=ip_addr,
+                notes=f'{required_consecutive} consecutive matches',
             )
             best_match.last_face_login = timezone.now()
             best_match.save(update_fields=['last_face_login'])
 
-            # Log the user in
             login(request, best_match,
                   backend='django.contrib.auth.backends.ModelBackend')
 
@@ -125,8 +161,11 @@ def face_verify_ajax(request):
                 'message': f'Welcome, {best_match.display_name}!',
                 'confidence': best_confidence,
                 'redirect': '/dashboard/',
+                'match_user': None,
+                'match_count': 0,
             })
         else:
+            # No match or below confidence threshold — reset streak.
             FaceLoginLog.objects.create(
                 success=False,
                 ip_address=ip_addr,
@@ -137,6 +176,8 @@ def face_verify_ajax(request):
                 'face_detected': True,
                 'message': 'Face not recognised. Try again or use Staff ID login.',
                 'confidence': 0,
+                'match_user': None,
+                'match_count': 0,
             })
 
     except Exception as e:
@@ -164,30 +205,15 @@ def profile_view(request):
     if request.method == 'POST':
         form = FacePhotoUploadForm(request.POST, request.FILES, instance=user)
         if form.is_valid():
-            saved_user = form.save(commit=False)
-            # If a new face_photo was uploaded, re-extract encoding
-            if 'face_photo' in request.FILES:
-                saved_user.save()  # save first so the storage backend has the file
-                encoding = face_utils.extract_encoding_from_field_file(saved_user.face_photo)
-                if encoding:
-                    saved_user.set_face_encoding(encoding)
-                    saved_user.face_registered = True
-                    messages.success(request, 'Face photo saved and face registered successfully!')
-                else:
-                    saved_user.face_registered = False
-                    messages.warning(request,
-                        'Photo saved but no face was detected. '
-                        'Please upload a clear frontal face photo.')
-                saved_user.save()
-            else:
-                saved_user.save()
-                messages.success(request, 'Profile updated.')
+            form.save()
+            messages.success(request, 'Profile updated.')
             return redirect('profile')
     else:
         form = FacePhotoUploadForm(instance=user)
     context = {
         'form': form,
         'user': user,
+        'enroll_num_samples': getattr(settings, 'FACE_ENROLL_NUM_SAMPLES', 5),
         'requirements': [
             'Good lighting',
             'Face clearly visible',
@@ -203,52 +229,101 @@ def profile_view(request):
 @require_POST
 def enroll_face_ajax(request):
     """
-    AJAX: receive a captured webcam snapshot, save it as face_photo,
-    extract and store the encoding.
+    AJAX: receive multiple captured webcam snapshots (base64 array),
+    extract a jittered encoding from each, check for duplicates in the
+    system, average them into a single robust template, and store it.
     """
     try:
         data = json.loads(request.body)
-        image_data = data.get('image')
-        if not image_data:
-            return JsonResponse({'success': False, 'message': 'No image data'})
+        images = data.get('images', [])
 
-        # Detect face first
-        n_faces = face_utils.detect_faces_in_b64(image_data)
-        if n_faces == 0:
-            return JsonResponse({'success': False, 'message': 'No face detected. Please centre your face.'})
-        if n_faces > 1:
-            return JsonResponse({'success': False, 'message': 'Multiple faces detected. Please be alone in frame.'})
+        # Accept a single image for backwards compat, but prefer array.
+        if not images and data.get('image'):
+            images = [data['image']]
 
-        # Save snapshot to a temporary local file for encoding extraction.
-        # Using a temp directory means this works regardless of whether
-        # MEDIA_ROOT is defined (it may not be when Cloudinary is active).
+        num_samples_required = getattr(settings, 'FACE_ENROLL_NUM_SAMPLES', 5)
+        num_jitters = getattr(settings, 'FACE_ENROLL_NUM_JITTERS', 3)
+        dup_tolerance = getattr(settings, 'FACE_ENROLL_DUPLICATE_TOLERANCE', 0.35)
+
+        if len(images) < num_samples_required:
+            return JsonResponse({
+                'success': False,
+                'message': f'Need {num_samples_required} captures, got {len(images)}.',
+            })
+
         user = request.user
-        filename = f"{user.staff_id}_face.jpg"
+        encodings = []
 
+        for idx, image_data in enumerate(images):
+            # Validate exactly one face per frame
+            n_faces = face_utils.detect_faces_in_b64(image_data)
+            if n_faces == 0:
+                return JsonResponse({
+                    'success': False,
+                    'message': f'No face detected in capture {idx + 1}. Please keep your face visible.',
+                })
+            if n_faces > 1:
+                return JsonResponse({
+                    'success': False,
+                    'message': f'Multiple faces in capture {idx + 1}. Please be alone in frame.',
+                })
+
+            # Extract high-quality encoding with jitter
+            enc = face_utils.extract_encoding_from_b64_jittered(
+                image_data, num_jitters=num_jitters
+            )
+            if enc is None:
+                return JsonResponse({
+                    'success': False,
+                    'message': f'Could not extract face data from capture {idx + 1}.',
+                })
+            encodings.append(enc)
+
+        # Average all sample encodings into a single robust template.
+        final_encoding = face_utils.average_encodings(encodings)
+
+        # ── Duplicate face check ──────────────────────────────────────
+        # Before enrolling, make sure this face is not too similar to
+        # any existing enrolled user. This prevents cross-login between
+        # people with similar features.
+        dup = face_utils.check_duplicate_face(
+            final_encoding,
+            tolerance=dup_tolerance,
+            exclude_user_pk=user.pk,
+        )
+        if dup:
+            dup_user = dup['user']
+            logger.warning(
+                f"Enrollment rejected for {user.staff_id}: face too similar "
+                f"to {dup_user.staff_id} (distance={dup['distance']})"
+            )
+            return JsonResponse({
+                'success': False,
+                'message': (
+                    'Enrollment failed: your face is too similar to another '
+                    'enrolled user. Please contact an administrator.'
+                ),
+            })
+
+        # ── Save face photo ───────────────────────────────────────────
+        # Use the first capture as the stored face_photo reference.
+        filename = f"{user.staff_id}_face.jpg"
         with tempfile.TemporaryDirectory() as tmp_dir:
             save_path = os.path.join(tmp_dir, filename)
-            saved = face_utils.save_face_snapshot(image_data, save_path)
-            if not saved:
-                return JsonResponse({'success': False, 'message': 'Failed to save image.'})
+            saved = face_utils.save_face_snapshot(images[0], save_path)
+            if saved:
+                with open(save_path, 'rb') as f:
+                    user.face_photo.save(
+                        f'face_photos/{filename}', DjangoFile(f), save=False
+                    )
 
-            # Extract encoding from the local temp file
-            encoding = face_utils.extract_encoding_from_file(save_path)
-            if not encoding:
-                return JsonResponse({'success': False, 'message': 'Could not extract face data.'})
-
-            # Persist the photo via Django's storage backend (works for both
-            # local filesystem and Cloudinary).
-            with open(save_path, 'rb') as f:
-                user.face_photo.save(f'face_photos/{filename}', DjangoFile(f), save=False)
-
-        user.set_face_encoding(encoding)
+        user.set_face_encoding(final_encoding)
         user.face_registered = True
         user.face_enabled = True
-        user.save(update_fields=['face_photo', 'face_encoding', 'face_registered', 'face_enabled'])
+        user.save(update_fields=[
+            'face_photo', 'face_encoding', 'face_registered', 'face_enabled'
+        ])
 
-        # Do NOT return face_photo.url — face photos are biometric data
-        # and are never exposed over HTTP. The client only needs a
-        # success signal to flip the enrolled badge.
         return JsonResponse({
             'success': True,
             'message': 'Face enrolled successfully! You can now use Face ID login.',
@@ -274,23 +349,8 @@ def admin_add_user_view(request):
     if request.method == 'POST':
         form = StaffUserCreationForm(request.POST, request.FILES)
         if form.is_valid():
-            user = form.save(commit=False)
-            # If face photo provided, extract encoding
-            if user.face_photo:
-                user.save()  # save so the storage backend has the file
-                encoding = face_utils.extract_encoding_from_field_file(user.face_photo)
-                if encoding:
-                    user.set_face_encoding(encoding)
-                    user.face_registered = True
-                    messages.success(request,
-                        f'User {user.staff_id} created with face registration!')
-                else:
-                    messages.warning(request,
-                        f'User {user.staff_id} created but no face detected in photo.')
-                user.save()
-            else:
-                user.save()
-                messages.success(request, f'User {user.staff_id} created successfully.')
+            user = form.save()
+            messages.success(request, f'User {user.staff_id} created successfully.')
             return redirect('admin_users')
     else:
         form = StaffUserCreationForm()
@@ -304,21 +364,8 @@ def admin_edit_user_view(request, user_id):
     if request.method == 'POST':
         form = StaffUserEditForm(request.POST, request.FILES, instance=target_user)
         if form.is_valid():
-            user = form.save(commit=False)
-            if 'face_photo' in request.FILES:
-                user.save()
-                encoding = face_utils.extract_encoding_from_field_file(user.face_photo)
-                if encoding:
-                    user.set_face_encoding(encoding)
-                    user.face_registered = True
-                    messages.success(request, 'User updated with new face registration.')
-                else:
-                    user.face_registered = False
-                    messages.warning(request, 'User updated but face not detected in photo.')
-                user.save()
-            else:
-                user.save()
-                messages.success(request, 'User updated successfully.')
+            form.save()
+            messages.success(request, 'User updated successfully.')
             return redirect('admin_users')
     else:
         form = StaffUserEditForm(instance=target_user)

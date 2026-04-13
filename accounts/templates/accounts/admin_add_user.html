@@ -68,30 +68,19 @@
 
       <div class="divider"></div>
       <div class="card-header" style="margin-bottom:16px">
-        <h2>Face ID Setup</h2>
-        <p>Optional — you can also enroll face later from Profile page</p>
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label>Profile Picture</label>
-          <input type="file" name="profile_picture" accept="image/*">
-          <div class="hint">Shown in the app UI</div>
-        </div>
-        <div class="form-group">
-          <label>Face Recognition Photo</label>
-          <input type="file" name="face_photo" accept="image/*">
-          <div class="hint">Clear frontal face — used for Face ID login</div>
-        </div>
+        <h2>Profile &amp; Face ID</h2>
+        <p>Face ID enrollment is done via live camera on the user's Profile page</p>
       </div>
 
       <div class="form-group">
-        <div class="form-check">
-          <input type="checkbox" name="face_enabled" id="face_enabled" value="True"
-            {% if form.face_enabled.value %}checked{% endif %}>
-          <label for="face_enabled">Enable Face ID login for this user</label>
-        </div>
-        <div class="hint" style="margin-top:6px;margin-left:28px">User can login via Face ID once their face photo is enrolled</div>
+        <label>Profile Picture</label>
+        <input type="file" name="profile_picture" accept="image/*">
+        <div class="hint">Shown in the app UI</div>
+      </div>
+
+      <div class="form-group" style="padding:12px;background:rgba(0,212,255,0.05);border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text2)">
+        <svg width="14" height="14" fill="none" stroke="var(--accent)" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:6px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Face ID can only be enrolled via the live camera on the user's Profile page. Photo upload is not allowed for security.
       </div>
 
       <div style="display:flex;gap:12px;margin-top:8px">

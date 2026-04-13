@@ -24,7 +24,7 @@ class StaffUserAdmin(UserAdmin):
             'fields': ('staff_id', 'email', 'full_name', 'password1', 'password2'),
         }),
     )
-    readonly_fields = ['last_face_login']
+    readonly_fields = ['last_face_login', 'face_photo']
 
 
 @admin.register(FaceLoginLog)
