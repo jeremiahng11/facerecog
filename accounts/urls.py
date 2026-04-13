@@ -1,4 +1,5 @@
 from django.urls import path
+from django.contrib.auth import views as auth_views
 from . import views
 
 urlpatterns = [
@@ -6,6 +7,24 @@ urlpatterns = [
     path('', views.login_view, name='login'),
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
+
+    # Password reset (Django built-in views)
+    path('password-reset/', auth_views.PasswordResetView.as_view(
+        template_name='accounts/password_reset.html',
+        email_template_name='accounts/password_reset_email.html',
+        subject_template_name='accounts/password_reset_subject.txt',
+        success_url='/password-reset/done/',
+    ), name='password_reset'),
+    path('password-reset/done/', auth_views.PasswordResetDoneView.as_view(
+        template_name='accounts/password_reset_done.html',
+    ), name='password_reset_done'),
+    path('password-reset-confirm/<uidb64>/<token>/', auth_views.PasswordResetConfirmView.as_view(
+        template_name='accounts/password_reset_confirm.html',
+        success_url='/password-reset-complete/',
+    ), name='password_reset_confirm'),
+    path('password-reset-complete/', auth_views.PasswordResetCompleteView.as_view(
+        template_name='accounts/password_reset_complete.html',
+    ), name='password_reset_complete'),
 
     # Face ID
     path('face-login/', views.face_login_view, name='face_login'),
@@ -17,11 +36,13 @@ urlpatterns = [
     path('profile/', views.profile_view, name='profile'),
     path('api/my-face-photo/', views.my_face_photo_view, name='my_face_photo'),
 
-    # Admin user management
+    # Admin
+    path('admin-panel/', views.admin_dashboard_view, name='admin_dashboard'),
     path('admin-panel/users/', views.admin_users_view, name='admin_users'),
     path('admin-panel/users/add/', views.admin_add_user_view, name='admin_add_user'),
     path('admin-panel/users/<int:user_id>/edit/', views.admin_edit_user_view, name='admin_edit_user'),
     path('admin-panel/users/<int:user_id>/delete/', views.admin_delete_user_view, name='admin_delete_user'),
     path('admin-panel/users/<int:user_id>/reencode/', views.admin_reencode_user, name='admin_reencode_user'),
     path('admin-panel/face-logs/', views.admin_face_logs_view, name='admin_face_logs'),
+    path('admin-panel/action-logs/', views.admin_action_logs_view, name='admin_action_logs'),
 ]

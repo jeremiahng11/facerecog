@@ -274,6 +274,25 @@ def average_encodings(encodings: list[list]) -> list:
     return np.mean(arr, axis=0).tolist()
 
 
+def check_encoding_variance(encodings: list[list], min_std: float = 0.01) -> bool:
+    """
+    Basic liveness check: verify that multiple face encodings exhibit
+    enough variance to indicate a live person rather than a static photo.
+
+    Real faces produce slight encoding variation across frames due to
+    micro-expressions, blinking, and head micro-movements. A static
+    photo held up to the camera produces nearly identical encodings.
+
+    Returns True if the variance is sufficient (likely live), False if
+    the encodings are suspiciously identical (likely a static image).
+    """
+    if len(encodings) < 2:
+        return True  # can't check variance with fewer than 2 samples
+    arr = np.array(encodings)
+    mean_std = float(np.mean(np.std(arr, axis=0)))
+    return mean_std >= min_std
+
+
 def check_duplicate_face(
     candidate_encoding: list,
     tolerance: float,
@@ -291,23 +310,31 @@ def check_duplicate_face(
     # Import here to avoid circular imports (face_utils ← models).
     from .models import StaffUser
 
-    users_with_face = StaffUser.objects.filter(
+    qs = StaffUser.objects.filter(
         face_registered=True,
         is_active=True,
     ).exclude(face_encoding__isnull=True).exclude(face_encoding='')
 
     if exclude_user_pk is not None:
-        users_with_face = users_with_face.exclude(pk=exclude_user_pk)
+        qs = qs.exclude(pk=exclude_user_pk)
 
-    for user in users_with_face:
-        known_encoding = user.get_face_encoding()
-        if not known_encoding:
+    # Batch-load only the fields we need to avoid pulling full model
+    # instances with profile pictures etc.
+    rows = qs.values_list('pk', 'staff_id', 'full_name', 'face_encoding')
+    candidate_np = np.array(candidate_encoding)
+
+    for pk, staff_id, full_name, face_encoding_json in rows:
+        try:
+            known = json.loads(face_encoding_json)
+        except (json.JSONDecodeError, TypeError):
             continue
-        result = compare_faces(known_encoding, candidate_encoding, tolerance)
-        if result['match']:
+        known_np = np.array(known)
+        distance = float(face_recognition.face_distance([known_np], candidate_np)[0])
+        if distance <= tolerance:
+            # Return a lightweight dict (no full model instance needed).
             return {
-                'user': user,
-                'distance': result['distance'],
-                'confidence': result['confidence'],
+                'user': type('User', (), {'pk': pk, 'staff_id': staff_id, 'full_name': full_name})(),
+                'distance': round(distance, 4),
+                'confidence': round(max(0.0, min(100.0, (1.0 - distance) * 100)), 1),
             }
     return None

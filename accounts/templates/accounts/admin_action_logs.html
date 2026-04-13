@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+{% block title %}Admin Action Logs — FaceID Portal{% endblock %}
+{% block content %}
+<div class="page">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:24px">
+    <div>
+      <div class="page-title">Admin Action Audit Log</div>
+      <div class="page-subtitle">User create, edit, delete, and re-encode actions</div>
+    </div>
+    <a href="{% url 'admin_dashboard' %}" class="btn btn-secondary">← Back to Dashboard</a>
+  </div>
+
+  <div class="card" style="padding:0">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Action</th>
+            <th>Admin</th>
+            <th>Target User</th>
+            <th>Name</th>
+            <th>Details</th>
+            <th>Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in logs %}
+          <tr>
+            <td>
+              {% if log.action == 'create' %}<span class="badge badge-green">Create</span>
+              {% elif log.action == 'edit' %}<span class="badge" style="background:rgba(0,212,255,0.1);color:var(--accent);border-color:rgba(0,212,255,0.3)">Edit</span>
+              {% elif log.action == 'delete' %}<span class="badge badge-red">Delete</span>
+              {% elif log.action == 'reencode' %}<span class="badge" style="background:rgba(124,58,237,0.1);color:#a78bfa;border-color:rgba(124,58,237,0.3)">Re-encode</span>
+              {% else %}<span class="badge">{{ log.action }}</span>{% endif %}
+            </td>
+            <td class="td-main">{{ log.admin_user.full_name|default:"—" }}</td>
+            <td><span class="mono text-sm text-accent">{{ log.target_staff_id }}</span></td>
+            <td class="text-sm text-muted">{{ log.target_name|default:"—" }}</td>
+            <td class="text-sm text-dim">{{ log.details|default:"—" }}</td>
+            <td class="text-sm text-muted">{{ log.timestamp|date:"d M Y H:i:s" }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3)">No admin actions recorded yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if logs.has_other_pages %}
+  <div style="display:flex;justify-content:center;gap:8px;margin-top:20px">
+    {% if logs.has_previous %}
+    <a href="?page={{ logs.previous_page_number }}" class="btn btn-secondary">← Prev</a>
+    {% endif %}
+    <span style="padding:8px 16px;color:var(--text2);font-size:13px">Page {{ logs.number }} of {{ logs.paginator.num_pages }}</span>
+    {% if logs.has_next %}
+    <a href="?page={{ logs.next_page_number }}" class="btn btn-secondary">Next →</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

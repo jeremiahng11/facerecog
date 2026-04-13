@@ -101,3 +101,28 @@ class FaceLoginLog(models.Model):
     def __str__(self):
         status = "✓" if self.success else "✗"
         return f"{status} {self.user} @ {self.timestamp.strftime('%Y-%m-%d %H:%M')}"
+
+
+class AdminActionLog(models.Model):
+    """Audit trail for admin actions (user create/edit/delete)"""
+    ACTION_CHOICES = [
+        ('create', 'Created user'),
+        ('edit', 'Edited user'),
+        ('delete', 'Deleted user'),
+        ('reencode', 'Re-encoded face'),
+    ]
+    admin_user = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True,
+        related_name='admin_actions'
+    )
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    target_staff_id = models.CharField(max_length=50)
+    target_name = models.CharField(max_length=150, blank=True)
+    details = models.CharField(max_length=300, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"{self.admin_user} {self.action} {self.target_staff_id} @ {self.timestamp.strftime('%Y-%m-%d %H:%M')}"

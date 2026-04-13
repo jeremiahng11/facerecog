@@ -123,11 +123,29 @@ CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL', '')
 if CLOUDINARY_URL:
     DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
+# ─── Session ─────────────────────────────────────────────────────────────────
+SESSION_COOKIE_AGE = int(os.environ.get('SESSION_COOKIE_AGE', '28800'))  # 8 hours
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+SESSION_SAVE_EVERY_REQUEST = True   # refresh timeout on each request
+
 # ─── Security (auto-enabled when not DEBUG) ───────────────────────────────────
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+
+# ─── Email (for password reset + security notifications) ─────────────────────
+# Configure via env vars. Falls back to console backend for local dev.
+EMAIL_BACKEND = os.environ.get(
+    'EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend'
+)
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@faceid-portal.com')
+ADMIN_NOTIFICATION_EMAIL = os.environ.get('ADMIN_NOTIFICATION_EMAIL', '')
 
 # ─── Face recognition ─────────────────────────────────────────────────────────
 # Verification tolerance: maximum face_distance to accept a login match.
@@ -156,5 +174,13 @@ FACE_MIN_CONFIDENCE = float(os.environ.get('FACE_MIN_CONFIDENCE', '65'))
 FACE_VERIFY_CONSECUTIVE_MATCHES = int(os.environ.get('FACE_VERIFY_CONSECUTIVE_MATCHES', '2'))
 
 FACE_PHOTOS_DIR = 'face_photos'
+
+# Rate limiting: max face verify requests per IP per minute.
+FACE_VERIFY_RATE_LIMIT = int(os.environ.get('FACE_VERIFY_RATE_LIMIT', '30'))
+
+# IP lockout: after this many consecutive failed attempts, block the IP
+# for FACE_LOCKOUT_DURATION_MINUTES.
+FACE_LOCKOUT_THRESHOLD = int(os.environ.get('FACE_LOCKOUT_THRESHOLD', '15'))
+FACE_LOCKOUT_DURATION_MINUTES = int(os.environ.get('FACE_LOCKOUT_DURATION_MINUTES', '5'))
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

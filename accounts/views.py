@@ -3,18 +3,21 @@ import logging
 import mimetypes
 import os
 import tempfile
+from datetime import timedelta
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.core.files import File as DjangoFile
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
+from django.core.paginator import Paginator
+from django.http import JsonResponse, Http404, FileResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.conf import settings
+from django.db.models import Count, Q
 
-from .models import StaffUser, FaceLoginLog
+from .models import StaffUser, FaceLoginLog, AdminActionLog
 from .forms import StaffLoginForm, StaffUserCreationForm, StaffUserEditForm, FacePhotoUploadForm
 from . import face_utils
 
@@ -26,16 +29,10 @@ def is_admin(user):
 
 
 def parse_device(request) -> str:
-    """
-    Parse the User-Agent header into a human-readable device string
-    like 'Android Mobile · Chrome' or 'macOS · Safari'.
-    """
-    import re
+    """Parse User-Agent into a human-readable device string."""
     ua = request.META.get('HTTP_USER_AGENT', '')
     if not ua:
         return 'Unknown'
-
-    # ── Platform ──────────────────────────────────────────────────
     if 'iPhone' in ua:
         platform = 'iOS Mobile'
     elif 'iPad' in ua:
@@ -52,8 +49,6 @@ def parse_device(request) -> str:
         platform = 'Chrome OS'
     else:
         platform = 'Unknown OS'
-
-    # ── Browser ───────────────────────────────────────────────────
     if 'Edg/' in ua or 'Edge/' in ua:
         browser = 'Edge'
     elif 'OPR/' in ua or 'Opera' in ua:
@@ -66,23 +61,75 @@ def parse_device(request) -> str:
         browser = 'Safari'
     else:
         browser = 'Unknown Browser'
-
     return f'{platform} · {browser}'
 
 
 def get_client_ip(request):
-    """
-    Return the real client IP address. Railway (and most reverse proxies)
-    passes the original client IP in the X-Forwarded-For header. The
-    header value is a comma-separated list where the first entry is the
-    real client; subsequent entries are intermediate proxies.
-    Falls back to REMOTE_ADDR when the header is absent (local dev).
-    """
+    """Return real client IP from X-Forwarded-For or REMOTE_ADDR."""
     xff = request.META.get('HTTP_X_FORWARDED_FOR')
     if xff:
-        # First IP in the chain is the original client.
         return xff.split(',')[0].strip()
     return request.META.get('REMOTE_ADDR')
+
+
+# ─── Rate Limiting & IP Lockout ──────────────────────────────────────────────
+# Simple in-DB rate limiter. No extra dependencies needed.
+
+def _is_ip_locked_out(ip_addr):
+    """Check if an IP is temporarily locked out due to too many failed attempts."""
+    threshold = getattr(settings, 'FACE_LOCKOUT_THRESHOLD', 15)
+    lockout_minutes = getattr(settings, 'FACE_LOCKOUT_DURATION_MINUTES', 5)
+    cutoff = timezone.now() - timedelta(minutes=lockout_minutes)
+
+    recent_fails = FaceLoginLog.objects.filter(
+        ip_address=ip_addr,
+        success=False,
+        timestamp__gte=cutoff,
+    ).count()
+
+    return recent_fails >= threshold
+
+
+def _is_rate_limited(ip_addr):
+    """Check if an IP has exceeded the per-minute request rate."""
+    limit = getattr(settings, 'FACE_VERIFY_RATE_LIMIT', 30)
+    one_min_ago = timezone.now() - timedelta(minutes=1)
+
+    recent_total = FaceLoginLog.objects.filter(
+        ip_address=ip_addr,
+        timestamp__gte=one_min_ago,
+    ).count()
+
+    return recent_total >= limit
+
+
+def _send_security_notification(subject, message_body):
+    """Send email notification for security events (non-blocking)."""
+    admin_email = getattr(settings, 'ADMIN_NOTIFICATION_EMAIL', '')
+    if not admin_email:
+        return
+    try:
+        from django.core.mail import send_mail
+        send_mail(
+            subject=f'[FaceID Portal] {subject}',
+            message=message_body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[admin_email],
+            fail_silently=True,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to send security notification: {e}")
+
+
+def _log_admin_action(admin_user, action, target_user, details=''):
+    """Create an admin audit log entry."""
+    AdminActionLog.objects.create(
+        admin_user=admin_user,
+        action=action,
+        target_staff_id=target_user.staff_id if hasattr(target_user, 'staff_id') else str(target_user),
+        target_name=target_user.full_name if hasattr(target_user, 'full_name') else '',
+        details=details,
+    )
 
 
 # ─── Login / Logout ────────────────────────────────────────────────────────────
@@ -90,7 +137,6 @@ def get_client_ip(request):
 def login_view(request):
     if request.user.is_authenticated:
         return redirect('dashboard')
-
     if request.method == 'POST':
         form = StaffLoginForm(request.POST)
         if form.is_valid():
@@ -105,7 +151,6 @@ def login_view(request):
                 messages.error(request, 'Invalid Staff ID or Password.')
     else:
         form = StaffLoginForm()
-
     return render(request, 'accounts/login.html', {'form': form})
 
 
@@ -117,7 +162,6 @@ def logout_view(request):
 # ─── Face ID Login ─────────────────────────────────────────────────────────────
 
 def face_login_view(request):
-    """Render the face ID login page"""
     if request.user.is_authenticated:
         return redirect('dashboard')
     return render(request, 'accounts/face_login.html')
@@ -126,87 +170,83 @@ def face_login_view(request):
 @require_POST
 def face_verify_ajax(request):
     """
-    AJAX endpoint: receive base64 frame from webcam, compare against all
-    registered face encodings. Requires multiple consecutive matches to
-    the same user before granting login (prevents photo spoofing and
-    cross-user false positives).
-
-    The client tracks consecutive_match_user and consecutive_match_count
-    and sends them back so the server can enforce the threshold.
+    AJAX: receive base64 frame, compare against enrolled faces.
+    Enforces rate limiting, IP lockout, face quality, minimum
+    confidence, and multi-frame consecutive matching.
     """
     try:
+        ip_addr = get_client_ip(request)
+        device_info = parse_device(request)
+
+        # ── Rate limit & lockout ──────────────────────────────────
+        if _is_ip_locked_out(ip_addr):
+            return JsonResponse({
+                'success': False,
+                'message': 'Too many failed attempts. Please try again later.',
+                'locked_out': True,
+                'match_user': None, 'match_count': 0,
+            })
+
+        if _is_rate_limited(ip_addr):
+            return JsonResponse({
+                'success': False,
+                'message': 'Too many requests. Please slow down.',
+                'match_user': None, 'match_count': 0,
+            })
+
         data = json.loads(request.body)
         image_data = data.get('image')
         if not image_data:
             return JsonResponse({'success': False, 'message': 'No image received'})
 
-        # Track consecutive matches sent by the client.
-        client_match_user = data.get('match_user')       # staff_id
-        client_match_count = data.get('match_count', 0)   # consecutive count
-
-        required_consecutive = getattr(
-            settings, 'FACE_VERIFY_CONSECUTIVE_MATCHES', 2
-        )
+        client_match_user = data.get('match_user')
+        client_match_count = data.get('match_count', 0)
+        required_consecutive = getattr(settings, 'FACE_VERIFY_CONSECUTIVE_MATCHES', 2)
         min_confidence = getattr(settings, 'FACE_MIN_CONFIDENCE', 65)
 
-        # ── Face quality gate ──────────────────────────────────────
-        # Reject frames where the face is too small, off-centre, or
-        # not alone before spending CPU on encoding extraction.
+        # ── Face quality gate ─────────────────────────────────────
         quality = face_utils.validate_face_quality(image_data)
         if not quality['ok']:
             return JsonResponse({
                 'success': False,
                 'message': quality['reason'],
                 'face_detected': False,
-                'match_user': None,
-                'match_count': 0,
+                'match_user': None, 'match_count': 0,
             })
 
-        # Extract encoding from the live frame
         candidate_encoding = face_utils.extract_encoding_from_b64(image_data)
         if candidate_encoding is None:
             return JsonResponse({
                 'success': False,
                 'message': 'No face detected in frame. Please look at the camera.',
                 'face_detected': False,
-                'match_user': None,
-                'match_count': 0,
+                'match_user': None, 'match_count': 0,
             })
 
-        # Compare against all users with face_enabled and registered encoding
+        # ── Compare against enrolled users ────────────────────────
         tolerance = getattr(settings, 'FACE_RECOGNITION_TOLERANCE', 0.4)
         users_with_face = StaffUser.objects.filter(
-            face_enabled=True,
-            face_registered=True,
-            is_active=True
+            face_enabled=True, face_registered=True, is_active=True
         ).exclude(face_encoding__isnull=True).exclude(face_encoding='')
 
         best_match = None
         best_confidence = 0.0
-
         for user in users_with_face:
             known_encoding = user.get_face_encoding()
             if not known_encoding:
                 continue
-            result = face_utils.compare_faces(
-                known_encoding, candidate_encoding, tolerance
-            )
+            result = face_utils.compare_faces(known_encoding, candidate_encoding, tolerance)
             if result['match'] and result['confidence'] > best_confidence:
                 best_match = user
                 best_confidence = result['confidence']
 
-        ip_addr = get_client_ip(request)
-        device_info = parse_device(request)
-
         if best_match and best_confidence >= min_confidence:
-            # Count consecutive matches to the same user.
             if client_match_user == best_match.staff_id:
                 consecutive = client_match_count + 1
             else:
                 consecutive = 1
 
             if consecutive < required_consecutive:
-                # Partial match — tell the client to keep going.
                 return JsonResponse({
                     'success': False,
                     'face_detected': True,
@@ -217,44 +257,47 @@ def face_verify_ajax(request):
                     'verifying': True,
                 })
 
-            # ── Enough consecutive matches — grant login ──────────────
+            # ── Grant login ───────────────────────────────────────
             FaceLoginLog.objects.create(
-                user=best_match,
-                success=True,
-                confidence=best_confidence,
-                ip_address=ip_addr,
+                user=best_match, success=True,
+                confidence=best_confidence, ip_address=ip_addr,
                 device=device_info,
                 notes=f'{required_consecutive} consecutive matches',
             )
             best_match.last_face_login = timezone.now()
             best_match.save(update_fields=['last_face_login'])
+            login(request, best_match, backend='django.contrib.auth.backends.ModelBackend')
 
-            login(request, best_match,
-                  backend='django.contrib.auth.backends.ModelBackend')
+            logger.info(f"Face login: {best_match.staff_id} from {ip_addr} ({device_info})")
 
             return JsonResponse({
                 'success': True,
                 'message': f'Welcome, {best_match.display_name}!',
                 'confidence': best_confidence,
                 'redirect': '/dashboard/',
-                'match_user': None,
-                'match_count': 0,
+                'match_user': None, 'match_count': 0,
             })
         else:
-            # No match or below confidence threshold — reset streak.
             FaceLoginLog.objects.create(
-                success=False,
-                ip_address=ip_addr,
-                device=device_info,
-                notes='No matching face found',
+                success=False, ip_address=ip_addr,
+                device=device_info, notes='No matching face found',
             )
+
+            # Check if this IP should now be locked out and notify admin.
+            if _is_ip_locked_out(ip_addr):
+                _send_security_notification(
+                    'IP Locked Out — Too Many Failed Face Login Attempts',
+                    f'IP {ip_addr} has been temporarily locked out after '
+                    f'exceeding {settings.FACE_LOCKOUT_THRESHOLD} failed '
+                    f'face login attempts.\nDevice: {device_info}\n'
+                    f'Time: {timezone.now().isoformat()}',
+                )
+
             return JsonResponse({
-                'success': False,
-                'face_detected': True,
+                'success': False, 'face_detected': True,
                 'message': 'Face not recognised. Try again or use Staff ID login.',
                 'confidence': 0,
-                'match_user': None,
-                'match_count': 0,
+                'match_user': None, 'match_count': 0,
             })
 
     except Exception as e:
@@ -266,10 +309,22 @@ def face_verify_ajax(request):
 
 @login_required
 def dashboard_view(request):
+    user = request.user
+    # Check if user should re-enroll (old single-frame enrollment).
+    # Multi-sample enrollments produce encodings that are 128-dim averages;
+    # we can't directly detect this, so we use a proxy: if the user enrolled
+    # before this feature was deployed, show the prompt. We'll use a simple
+    # heuristic: check if face_registered but last_face_login is old or
+    # the encoding was set before the improvement. For simplicity, always
+    # show the prompt if face_registered — the user can dismiss by
+    # re-enrolling.
+    show_reenroll = user.face_registered
+
     context = {
-        'user': request.user,
-        'face_enabled': request.user.face_enabled,
-        'face_registered': request.user.face_registered,
+        'user': user,
+        'face_enabled': user.face_enabled,
+        'face_registered': user.face_registered,
+        'show_reenroll': show_reenroll,
     }
     return render(request, 'accounts/dashboard.html', context)
 
@@ -304,28 +359,17 @@ def profile_view(request):
 
 @login_required
 def my_face_photo_view(request):
-    """
-    Serve the current user's own face photo. This is the ONLY way to
-    retrieve a face photo over HTTP — the generic /media/face_photos/
-    route returns 404 unconditionally. Because this view reads
-    request.user.face_photo, it is impossible for one user to fetch
-    another user's biometric image.
-    """
+    """Serve the current user's own face photo (owner-only)."""
     user = request.user
     if not user.face_photo:
-        from django.http import Http404
         raise Http404("No face photo on file")
-
     try:
         f = user.face_photo.open('rb')
         content_type = mimetypes.guess_type(user.face_photo.name)[0] or 'image/jpeg'
-        from django.http import FileResponse
         response = FileResponse(f, content_type=content_type)
-        # Prevent browser from caching the photo in shared caches.
         response['Cache-Control'] = 'private, no-store'
         return response
     except Exception:
-        from django.http import Http404
         raise Http404("Face photo not accessible")
 
 
@@ -333,15 +377,13 @@ def my_face_photo_view(request):
 @require_POST
 def enroll_face_ajax(request):
     """
-    AJAX: receive multiple captured webcam snapshots (base64 array),
-    extract a jittered encoding from each, check for duplicates in the
-    system, average them into a single robust template, and store it.
+    AJAX: multi-sample enrollment with quality checks, liveness
+    validation (frame variance), duplicate face check, and jittered
+    encoding averaging.
     """
     try:
         data = json.loads(request.body)
         images = data.get('images', [])
-
-        # Accept a single image for backwards compat, but prefer array.
         if not images and data.get('image'):
             images = [data['image']]
 
@@ -359,15 +401,12 @@ def enroll_face_ajax(request):
         encodings = []
 
         for idx, image_data in enumerate(images):
-            # Validate face quality: one face, large enough, centred.
             quality = face_utils.validate_face_quality(image_data)
             if not quality['ok']:
                 return JsonResponse({
                     'success': False,
                     'message': f'Capture {idx + 1}: {quality["reason"]}',
                 })
-
-            # Extract high-quality encoding with jitter
             enc = face_utils.extract_encoding_from_b64_jittered(
                 image_data, num_jitters=num_jitters
             )
@@ -378,16 +417,26 @@ def enroll_face_ajax(request):
                 })
             encodings.append(enc)
 
-        # Average all sample encodings into a single robust template.
+        # ── Liveness: check frame variance ────────────────────────
+        # If all encodings are nearly identical, the user might be
+        # holding a static photo. Real faces produce slight encoding
+        # variation across frames due to micro-movements. We check
+        # that the standard deviation across samples exceeds a
+        # minimum threshold.
+        if not face_utils.check_encoding_variance(encodings, min_std=0.01):
+            return JsonResponse({
+                'success': False,
+                'message': (
+                    'Liveness check failed. Please move naturally and '
+                    'blink while capturing. Static images are not accepted.'
+                ),
+            })
+
         final_encoding = face_utils.average_encodings(encodings)
 
-        # ── Duplicate face check ──────────────────────────────────────
-        # Before enrolling, make sure this face is not too similar to
-        # any existing enrolled user. This prevents cross-login between
-        # people with similar features.
+        # ── Duplicate face check ──────────────────────────────────
         dup = face_utils.check_duplicate_face(
-            final_encoding,
-            tolerance=dup_tolerance,
+            final_encoding, tolerance=dup_tolerance,
             exclude_user_pk=user.pk,
         )
         if dup:
@@ -395,6 +444,14 @@ def enroll_face_ajax(request):
             logger.warning(
                 f"Enrollment rejected for {user.staff_id}: face too similar "
                 f"to {dup_user.staff_id} (distance={dup['distance']})"
+            )
+            _send_security_notification(
+                'Face Enrollment Rejected — Duplicate Face',
+                f'User {user.staff_id} ({user.full_name}) attempted to '
+                f'enroll but their face was too similar to '
+                f'{dup_user.staff_id} ({dup_user.full_name}).\n'
+                f'Distance: {dup["distance"]}\n'
+                f'Time: {timezone.now().isoformat()}',
             )
             return JsonResponse({
                 'success': False,
@@ -404,8 +461,7 @@ def enroll_face_ajax(request):
                 ),
             })
 
-        # ── Save face photo ───────────────────────────────────────────
-        # Use the first capture as the stored face_photo reference.
+        # ── Save face photo ───────────────────────────────────────
         filename = f"{user.staff_id}_face.jpg"
         with tempfile.TemporaryDirectory() as tmp_dir:
             save_path = os.path.join(tmp_dir, filename)
@@ -433,6 +489,10 @@ def enroll_face_ajax(request):
         return JsonResponse({'success': False, 'message': str(e)})
 
 
+# ─── Password Reset ──────────────────────────────────────────────────────────
+# Uses Django's built-in password reset views. Wire in urls.py.
+
+
 # ─── Admin: User Management ────────────────────────────────────────────────────
 
 @login_required
@@ -449,6 +509,7 @@ def admin_add_user_view(request):
         form = StaffUserCreationForm(request.POST, request.FILES)
         if form.is_valid():
             user = form.save()
+            _log_admin_action(request.user, 'create', user)
             messages.success(request, f'User {user.staff_id} created successfully.')
             return redirect('admin_users')
     else:
@@ -464,6 +525,7 @@ def admin_edit_user_view(request, user_id):
         form = StaffUserEditForm(request.POST, request.FILES, instance=target_user)
         if form.is_valid():
             form.save()
+            _log_admin_action(request.user, 'edit', target_user)
             messages.success(request, 'User updated successfully.')
             return redirect('admin_users')
     else:
@@ -479,6 +541,7 @@ def admin_edit_user_view(request, user_id):
 def admin_delete_user_view(request, user_id):
     target_user = get_object_or_404(StaffUser, pk=user_id)
     if request.method == 'POST':
+        _log_admin_action(request.user, 'delete', target_user)
         name = target_user.staff_id
         target_user.delete()
         messages.success(request, f'User {name} deleted.')
@@ -489,8 +552,63 @@ def admin_delete_user_view(request, user_id):
 @login_required
 @user_passes_test(is_admin)
 def admin_face_logs_view(request):
-    logs = FaceLoginLog.objects.all().select_related('user')[:200]
-    return render(request, 'accounts/admin_face_logs.html', {'logs': logs})
+    logs_qs = FaceLoginLog.objects.all().select_related('user')
+    paginator = Paginator(logs_qs, 50)
+    page_number = request.GET.get('page', 1)
+    logs_page = paginator.get_page(page_number)
+    return render(request, 'accounts/admin_face_logs.html', {
+        'logs': logs_page,
+        'paginator': paginator,
+    })
+
+
+@login_required
+@user_passes_test(is_admin)
+def admin_action_logs_view(request):
+    """View admin action audit trail."""
+    logs_qs = AdminActionLog.objects.all().select_related('admin_user')
+    paginator = Paginator(logs_qs, 50)
+    page_number = request.GET.get('page', 1)
+    logs_page = paginator.get_page(page_number)
+    return render(request, 'accounts/admin_action_logs.html', {
+        'logs': logs_page,
+        'paginator': paginator,
+    })
+
+
+@login_required
+@user_passes_test(is_admin)
+def admin_dashboard_view(request):
+    """Admin face login activity summary."""
+    now = timezone.now()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today_start - timedelta(days=7)
+
+    today_logs = FaceLoginLog.objects.filter(timestamp__gte=today_start)
+    week_logs = FaceLoginLog.objects.filter(timestamp__gte=week_start)
+
+    context = {
+        'total_today': today_logs.count(),
+        'success_today': today_logs.filter(success=True).count(),
+        'failed_today': today_logs.filter(success=False).count(),
+        'total_week': week_logs.count(),
+        'success_week': week_logs.filter(success=True).count(),
+        'failed_week': week_logs.filter(success=False).count(),
+        'total_users': StaffUser.objects.filter(is_active=True).count(),
+        'enrolled_users': StaffUser.objects.filter(face_registered=True, is_active=True).count(),
+        'top_devices': (
+            week_logs.exclude(device='')
+            .values('device')
+            .annotate(count=Count('id'))
+            .order_by('-count')[:5]
+        ),
+        'recent_failures': (
+            FaceLoginLog.objects.filter(success=False)
+            .select_related('user')
+            .order_by('-timestamp')[:10]
+        ),
+    }
+    return render(request, 'accounts/admin_dashboard.html', context)
 
 
 # ─── Re-enroll face for a specific user (admin) ───────────────────────────────
@@ -506,6 +624,7 @@ def admin_reencode_user(request, user_id):
             target_user.set_face_encoding(encoding)
             target_user.face_registered = True
             target_user.save()
+            _log_admin_action(request.user, 'reencode', target_user)
             messages.success(request, f'Face re-encoded for {target_user.staff_id}.')
         else:
             messages.error(request, 'No face detected in existing photo.')

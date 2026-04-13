@@ -151,6 +151,19 @@
       <a href="{% url 'profile' %}" class="btn btn-secondary">Manage →</a>
     </div>
   </div>
+
+  {% if show_reenroll %}
+  <div class="card" style="border-color:rgba(0,212,255,0.3);margin-top:16px">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:200px;">
+        <div style="font-family:var(--mono);font-size:13px;color:var(--accent);margin-bottom:4px">IMPROVE ACCURACY</div>
+        <div style="font-size:14px;color:var(--text2)">Re-enroll your face with multi-sample capture for better accuracy and faster logins.</div>
+      </div>
+      <a href="{% url 'profile' %}" class="btn btn-primary" style="white-space:nowrap">Re-enroll Face →</a>
+    </div>
+  </div>
+  {% endif %}
+
   {% endif %}
 </div>
 {% endblock %}

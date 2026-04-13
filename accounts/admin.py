@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import StaffUser, FaceLoginLog
+from .models import StaffUser, FaceLoginLog, AdminActionLog
 
 
 @admin.register(StaffUser)
@@ -32,3 +32,10 @@ class FaceLoginLogAdmin(admin.ModelAdmin):
     list_display = ['user', 'timestamp', 'success', 'confidence', 'ip_address', 'device']
     list_filter = ['success', 'device']
     readonly_fields = ['user', 'timestamp', 'success', 'confidence', 'ip_address', 'device', 'notes']
+
+
+@admin.register(AdminActionLog)
+class AdminActionLogAdmin(admin.ModelAdmin):
+    list_display = ['admin_user', 'action', 'target_staff_id', 'target_name', 'timestamp']
+    list_filter = ['action']
+    readonly_fields = ['admin_user', 'action', 'target_staff_id', 'target_name', 'details', 'timestamp']

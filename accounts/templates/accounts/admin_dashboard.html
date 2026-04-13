@@ -1,0 +1,119 @@
+{% extends 'base.html' %}
+{% block title %}Admin Dashboard — FaceID Portal{% endblock %}
+{% block extra_head %}
+<style>
+  .admin-stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .admin-stat {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px; text-align: center;
+  }
+  .admin-stat .num { font-family: var(--mono); font-size: 28px; color: var(--text); }
+  .admin-stat .label { font-size: 12px; color: var(--text3); margin-top: 4px; }
+  .admin-stat .num.green { color: var(--accent3); }
+  .admin-stat .num.red { color: var(--danger); }
+  .admin-stat .num.blue { color: var(--accent); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:24px">
+    <div>
+      <div class="page-title">Admin Dashboard</div>
+      <div class="page-subtitle">Face login activity overview</div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <a href="{% url 'admin_users' %}" class="btn btn-secondary">Users</a>
+      <a href="{% url 'admin_face_logs' %}" class="btn btn-secondary">Face Logs</a>
+      <a href="{% url 'admin_action_logs' %}" class="btn btn-secondary">Admin Logs</a>
+    </div>
+  </div>
+
+  <!-- Today -->
+  <div class="section-label" style="font-family:var(--mono);font-size:11px;color:var(--text3);letter-spacing:2px;margin-bottom:12px">TODAY</div>
+  <div class="admin-stat-grid">
+    <div class="admin-stat">
+      <div class="num blue">{{ total_today }}</div>
+      <div class="label">Total Attempts</div>
+    </div>
+    <div class="admin-stat">
+      <div class="num green">{{ success_today }}</div>
+      <div class="label">Successful</div>
+    </div>
+    <div class="admin-stat">
+      <div class="num red">{{ failed_today }}</div>
+      <div class="label">Failed</div>
+    </div>
+    <div class="admin-stat">
+      <div class="num">{% if total_today %}{{ success_today|floatformat:0 }}%{% else %}—{% endif %}</div>
+      <div class="label">Success Rate</div>
+    </div>
+  </div>
+
+  <!-- This Week -->
+  <div class="section-label" style="font-family:var(--mono);font-size:11px;color:var(--text3);letter-spacing:2px;margin-bottom:12px">THIS WEEK</div>
+  <div class="admin-stat-grid">
+    <div class="admin-stat">
+      <div class="num blue">{{ total_week }}</div>
+      <div class="label">Total Attempts</div>
+    </div>
+    <div class="admin-stat">
+      <div class="num green">{{ success_week }}</div>
+      <div class="label">Successful</div>
+    </div>
+    <div class="admin-stat">
+      <div class="num red">{{ failed_week }}</div>
+      <div class="label">Failed</div>
+    </div>
+  </div>
+
+  <!-- Users -->
+  <div class="section-label" style="font-family:var(--mono);font-size:11px;color:var(--text3);letter-spacing:2px;margin-bottom:12px">USERS</div>
+  <div class="admin-stat-grid">
+    <div class="admin-stat">
+      <div class="num">{{ total_users }}</div>
+      <div class="label">Active Users</div>
+    </div>
+    <div class="admin-stat">
+      <div class="num green">{{ enrolled_users }}</div>
+      <div class="label">Face ID Enrolled</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <!-- Top Devices -->
+    <div class="card">
+      <div class="card-header"><h2>Top Devices (7 days)</h2></div>
+      {% if top_devices %}
+      <ul style="list-style:none;display:flex;flex-direction:column;gap:10px">
+        {% for d in top_devices %}
+        <li style="display:flex;justify-content:space-between;align-items:center;font-size:13px">
+          <span style="color:var(--text2)">{{ d.device }}</span>
+          <span class="mono" style="color:var(--accent)">{{ d.count }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p style="color:var(--text3);font-size:13px">No data yet</p>
+      {% endif %}
+    </div>
+
+    <!-- Recent Failures -->
+    <div class="card">
+      <div class="card-header"><h2>Recent Failures</h2></div>
+      {% if recent_failures %}
+      <ul style="list-style:none;display:flex;flex-direction:column;gap:8px">
+        {% for log in recent_failures %}
+        <li style="font-size:12px;color:var(--text2);display:flex;justify-content:space-between">
+          <span>{{ log.ip_address|default:"—" }} · {{ log.device|default:"" }}</span>
+          <span style="color:var(--text3)">{{ log.timestamp|date:"d M H:i" }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p style="color:var(--text3);font-size:13px">No failures recorded</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
