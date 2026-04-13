@@ -130,7 +130,31 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
 
 # ─── Face recognition ─────────────────────────────────────────────────────────
-FACE_RECOGNITION_TOLERANCE = float(os.environ.get('FACE_TOLERANCE', '0.5'))
+# Verification tolerance: maximum face_distance to accept a login match.
+# Lower = stricter. Default library value is 0.6; we use 0.4 for security.
+FACE_RECOGNITION_TOLERANCE = float(os.environ.get('FACE_TOLERANCE', '0.4'))
+
+# Enrollment duplicate-check tolerance: how close a new face can be to an
+# existing enrolled face before we reject the enrollment as a potential
+# duplicate. Must be tighter than verification tolerance.
+FACE_ENROLL_DUPLICATE_TOLERANCE = float(os.environ.get('FACE_ENROLL_DUPLICATE_TOLERANCE', '0.35'))
+
+# Number of jitters (re-samples) when extracting an enrollment encoding.
+# Higher = more accurate template but slower. 3 is a good balance.
+FACE_ENROLL_NUM_JITTERS = int(os.environ.get('FACE_ENROLL_NUM_JITTERS', '3'))
+
+# Number of separate captures to average during enrollment. More samples
+# produce a more robust template that handles lighting/angle variation.
+FACE_ENROLL_NUM_SAMPLES = int(os.environ.get('FACE_ENROLL_NUM_SAMPLES', '5'))
+
+# Minimum confidence (0-100) required for a verification match. Even if
+# the distance is within tolerance, reject if confidence is below this.
+FACE_MIN_CONFIDENCE = float(os.environ.get('FACE_MIN_CONFIDENCE', '65'))
+
+# Number of consecutive successful matches to the same user required
+# before granting login. Prevents single-frame spoofing with photos.
+FACE_VERIFY_CONSECUTIVE_MATCHES = int(os.environ.get('FACE_VERIFY_CONSECUTIVE_MATCHES', '2'))
+
 FACE_PHOTOS_DIR = 'face_photos'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

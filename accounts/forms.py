@@ -31,8 +31,9 @@ class StaffUserCreationForm(forms.ModelForm):
 
     class Meta:
         model = StaffUser
+        # face_photo removed: Face ID enrollment is live-camera only.
         fields = ['staff_id', 'email', 'full_name', 'department',
-                  'profile_picture', 'face_photo', 'face_enabled']
+                  'profile_picture']
         widgets = {
             'staff_id': forms.TextInput(attrs={'placeholder': 'e.g. EMP-001'}),
             'email': forms.EmailInput(attrs={'placeholder': 'staff@company.com'}),
@@ -59,8 +60,9 @@ class StaffUserCreationForm(forms.ModelForm):
 class StaffUserEditForm(forms.ModelForm):
     class Meta:
         model = StaffUser
+        # face_photo removed: Face ID enrollment is live-camera only.
         fields = ['email', 'full_name', 'department',
-                  'profile_picture', 'face_photo', 'face_enabled', 'is_active']
+                  'profile_picture', 'face_enabled', 'is_active']
         widgets = {
             'email': forms.EmailInput(attrs={'placeholder': 'staff@company.com'}),
             'full_name': forms.TextInput(attrs={'placeholder': 'Full Name'}),
@@ -69,7 +71,8 @@ class StaffUserEditForm(forms.ModelForm):
 
 
 class FacePhotoUploadForm(forms.ModelForm):
-    """Form for users to upload their own face photo"""
+    """Form for users to update their profile picture (face_photo
+    removed — Face ID enrollment is live-camera only)."""
     class Meta:
         model = StaffUser
-        fields = ['face_photo', 'profile_picture']
+        fields = ['profile_picture']

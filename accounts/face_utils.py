@@ -48,15 +48,19 @@ def image_file_to_array(image_path: str) -> np.ndarray | None:
         return None
 
 
-def extract_face_encoding(image_array: np.ndarray) -> list | None:
+def extract_face_encoding(image_array: np.ndarray, num_jitters: int = 1) -> list | None:
     """
     Extract face encoding from an image array.
+    num_jitters: re-sample the face N times and average the encodings.
+    Higher values produce more accurate encodings at the cost of speed.
     Returns a list (128-dim vector) or None if no face detected.
     """
     if not FACE_RECOGNITION_AVAILABLE:
         return None
     try:
-        encodings = face_recognition.face_encodings(image_array)
+        encodings = face_recognition.face_encodings(
+            image_array, num_jitters=num_jitters
+        )
         if encodings:
             return encodings[0].tolist()
         return None
@@ -172,3 +176,68 @@ def detect_faces_in_b64(data_url: str) -> int:
     except Exception as e:
         logger.error(f"Error detecting faces: {e}")
         return 0
+
+
+# ─── Accuracy helpers ────────────────────────────────────────────────────────
+
+
+def extract_encoding_from_b64_jittered(data_url: str, num_jitters: int = 3) -> list | None:
+    """
+    Extract a higher-quality face encoding from a base64 image by
+    re-sampling the face num_jitters times and averaging. Use this
+    during enrollment for a more robust template.
+    """
+    arr = decode_base64_image(data_url)
+    if arr is None:
+        return None
+    return extract_face_encoding(arr, num_jitters=num_jitters)
+
+
+def average_encodings(encodings: list[list]) -> list:
+    """
+    Average multiple 128-dim face encoding vectors into a single
+    representative template. Averaging across multiple captures reduces
+    noise from lighting variation, slight head angle differences, and
+    expression changes — producing a more reliable template for matching.
+    """
+    arr = np.array(encodings)
+    return np.mean(arr, axis=0).tolist()
+
+
+def check_duplicate_face(
+    candidate_encoding: list,
+    tolerance: float,
+    exclude_user_pk: int | None = None,
+) -> dict | None:
+    """
+    Compare a candidate face encoding against every enrolled user in
+    the database. If any existing user's encoding is within tolerance,
+    return {'user': StaffUser, 'distance': float, 'confidence': float}.
+    Otherwise return None (no duplicate).
+
+    exclude_user_pk: skip this user (used when re-enrolling an existing
+    user's face so they don't match against themselves).
+    """
+    # Import here to avoid circular imports (face_utils ← models).
+    from .models import StaffUser
+
+    users_with_face = StaffUser.objects.filter(
+        face_registered=True,
+        is_active=True,
+    ).exclude(face_encoding__isnull=True).exclude(face_encoding='')
+
+    if exclude_user_pk is not None:
+        users_with_face = users_with_face.exclude(pk=exclude_user_pk)
+
+    for user in users_with_face:
+        known_encoding = user.get_face_encoding()
+        if not known_encoding:
+            continue
+        result = compare_faces(known_encoding, candidate_encoding, tolerance)
+        if result['match']:
+            return {
+                'user': user,
+                'distance': result['distance'],
+                'confidence': result['confidence'],
+            }
+    return None

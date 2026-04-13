@@ -115,11 +115,11 @@
 
   <div class="profile-grid">
 
-    <!-- Left: Photo upload form -->
+    <!-- Left: Profile picture + enrolled status -->
     <div class="card">
       <div class="card-header">
-        <h2>Profile Photos</h2>
-        <p>Upload profile picture and face recognition photo</p>
+        <h2>Profile Picture</h2>
+        <p>Upload your profile picture</p>
       </div>
 
       <div id="enrolledBadge" class="enrolled-badge{% if not user.face_registered %} hidden{% endif %}">
@@ -148,15 +148,9 @@
           <div class="hint">Shown in navigation and dashboard</div>
         </div>
 
-        <div class="form-group">
-          <label>Face Recognition Photo</label>
-          <input type="file" name="face_photo" accept="image/*">
-          <div class="hint">Upload a clear frontal face photo to register for Face ID. Or use the live camera below.</div>
-        </div>
-
         <button type="submit" class="btn btn-primary btn-full">
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-          Save Photos
+          Save Profile Picture
         </button>
       </form>
     </div>
@@ -236,29 +230,45 @@ async function startEnrollCamera() {
   }
 }
 
+// Multi-sample enrollment: captures NUM_SAMPLES frames spaced apart,
+// sends them all to the server which extracts a jittered encoding from
+// each, averages them into one robust template, and checks for duplicate
+// faces before storing.
+const NUM_SAMPLES = {{ enroll_num_samples|default:"5" }};
+const SAMPLE_DELAY_MS = 600;  // time between auto-captures
+
 async function captureAndEnroll() {
   if (!enrollStream) { setEnrollStatus('err', 'Please start camera first.'); return; }
   captureBtn.disabled = true;
-  captureBtn.innerHTML = `<svg class="spinning" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg> Processing…`;
-  setEnrollStatus('info', 'Capturing face data…');
 
-  const canvas = document.createElement('canvas');
-  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-  canvas.getContext('2d').drawImage(video, 0, 0);
-  const imageData = canvas.toDataURL('image/jpeg', 0.92);
+  const frames = [];
+  for (let i = 0; i < NUM_SAMPLES; i++) {
+    const n = i + 1;
+    captureBtn.innerHTML = `<svg class="spinning" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg> Capturing ${n}/${NUM_SAMPLES}…`;
+    setEnrollStatus('info', `Capturing sample ${n} of ${NUM_SAMPLES} — hold still`);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    frames.push(canvas.toDataURL('image/jpeg', 0.92));
+
+    if (i < NUM_SAMPLES - 1) {
+      await new Promise(r => setTimeout(r, SAMPLE_DELAY_MS));
+    }
+  }
+
+  captureBtn.innerHTML = `<svg class="spinning" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg> Processing…`;
+  setEnrollStatus('info', 'Processing face data and checking for duplicates…');
 
   try {
     const resp = await fetch('{% url "enroll_face_ajax" %}', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
-      body: JSON.stringify({ image: imageData }),
+      body: JSON.stringify({ images: frames }),
     });
     const data = await resp.json();
     if (data.success) {
       setEnrollStatus('ok', '✓ ' + data.message);
-      // Reveal the "Face ID Enrolled" badge immediately — no refresh.
-      // We deliberately do NOT show a thumbnail of the captured face;
-      // face photos are biometric data and are never exposed in the UI.
       const badge = document.getElementById('enrolledBadge');
       if (badge) badge.classList.remove('hidden');
     } else {
