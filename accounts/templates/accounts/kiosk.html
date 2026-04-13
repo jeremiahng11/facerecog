@@ -94,6 +94,7 @@ let stream = null;
 let scanning = false;
 let matchUser = null;
 let matchCount = 0;
+let matchEncodings = [];
 
 const video = document.getElementById('videoEl');
 const ring = document.getElementById('cameraRing');
@@ -122,11 +123,13 @@ async function scanLoop() {
           image: captureFrame(),
           match_user: matchUser,
           match_count: matchCount,
+          match_encodings: matchEncodings,
         }),
       });
       const data = await resp.json();
       matchUser = data.match_user || null;
       matchCount = data.match_count || 0;
+      matchEncodings = data.match_encodings || [];
 
       if (data.success) {
         scanning = false;
@@ -159,6 +162,7 @@ async function scanLoop() {
       } else {
         matchUser = null;
         matchCount = 0;
+        matchEncodings = [];
       }
     } catch (e) {
       // network error, keep trying

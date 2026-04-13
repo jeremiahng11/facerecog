@@ -201,7 +201,10 @@ def face_verify_ajax(request):
 
         client_match_user = data.get('match_user')
         client_match_count = data.get('match_count', 0)
-        required_consecutive = getattr(settings, 'FACE_VERIFY_CONSECUTIVE_MATCHES', 2)
+        # Client sends accumulated encodings from previous match frames
+        # so the server can check liveness variance before granting login.
+        client_encodings = data.get('match_encodings', [])
+        required_consecutive = getattr(settings, 'FACE_VERIFY_CONSECUTIVE_MATCHES', 3)
         min_confidence = getattr(settings, 'FACE_MIN_CONFIDENCE', 65)
 
         # ── Face quality gate ─────────────────────────────────────
@@ -245,6 +248,10 @@ def face_verify_ajax(request):
                 consecutive = client_match_count + 1
             else:
                 consecutive = 1
+                client_encodings = []  # reset if user changed
+
+            # Accumulate this frame's encoding for liveness check.
+            all_encodings = client_encodings + [candidate_encoding]
 
             if consecutive < required_consecutive:
                 return JsonResponse({
@@ -253,8 +260,38 @@ def face_verify_ajax(request):
                     'message': f'Verifying… ({consecutive}/{required_consecutive})',
                     'match_user': best_match.staff_id,
                     'match_count': consecutive,
+                    'match_encodings': all_encodings,
                     'confidence': best_confidence,
                     'verifying': True,
+                })
+
+            # ── Liveness check: verify frame variance ─────────────
+            # A printed photo or phone screen produces nearly identical
+            # encodings across frames. A real person's micro-movements
+            # and blinking create measurable variance.
+            if not face_utils.check_encoding_variance(all_encodings, min_std=0.008):
+                FaceLoginLog.objects.create(
+                    success=False, ip_address=ip_addr,
+                    device=device_info,
+                    notes='Liveness check failed — possible photo spoofing',
+                )
+                logger.warning(f"Liveness check failed during login from {ip_addr}")
+                _send_security_notification(
+                    'Possible Photo Spoofing Attempt',
+                    f'A face login attempt from IP {ip_addr} failed the '
+                    f'liveness check (zero encoding variance across '
+                    f'{len(all_encodings)} frames). This may indicate a '
+                    f'printed photo or phone screen was used.\n'
+                    f'Device: {device_info}\n'
+                    f'Matched user: {best_match.staff_id}\n'
+                    f'Time: {timezone.now().isoformat()}',
+                )
+                return JsonResponse({
+                    'success': False,
+                    'face_detected': True,
+                    'message': 'Liveness check failed. Please look directly at the camera and blink naturally.',
+                    'match_user': None, 'match_count': 0,
+                    'match_encodings': [],
                 })
 
             # ── Grant login ───────────────────────────────────────

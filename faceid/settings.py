@@ -178,7 +178,7 @@ FACE_MIN_CONFIDENCE = float(os.environ.get('FACE_MIN_CONFIDENCE', '65'))
 
 # Number of consecutive successful matches to the same user required
 # before granting login. Prevents single-frame spoofing with photos.
-FACE_VERIFY_CONSECUTIVE_MATCHES = int(os.environ.get('FACE_VERIFY_CONSECUTIVE_MATCHES', '2'))
+FACE_VERIFY_CONSECUTIVE_MATCHES = int(os.environ.get('FACE_VERIFY_CONSECUTIVE_MATCHES', '3'))
 
 FACE_PHOTOS_DIR = 'face_photos'
 

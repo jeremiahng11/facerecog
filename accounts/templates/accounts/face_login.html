@@ -243,6 +243,7 @@ let scanning = false;
 let attemptCount = 0;
 let matchUser = null;                  // staff_id of current consecutive match streak
 let matchCount = 0;                    // consecutive match counter
+let matchEncodings = [];               // accumulated encodings for liveness check
 const MAX_ATTEMPTS = 40;              // up to ~15 seconds of scanning
 const CAPTURE_MAX_DIM = 480;           // downscale video frames to this max dimension
 const CAPTURE_JPEG_QUALITY = 0.75;     // lower quality = smaller payload, still plenty for face recognition
@@ -351,6 +352,7 @@ async function captureAndVerify() {
         image: imageData,
         match_user: matchUser,
         match_count: matchCount,
+        match_encodings: matchEncodings,
       }),
     });
     const data = await resp.json();
@@ -358,6 +360,7 @@ async function captureAndVerify() {
     // Track consecutive match state returned by the server.
     matchUser = data.match_user || null;
     matchCount = data.match_count || 0;
+    matchEncodings = data.match_encodings || [];
 
     if (data.success) {
       // Stop the scan loop AND release the camera immediately.
@@ -374,11 +377,13 @@ async function captureAndVerify() {
     } else if (data.face_detected === false) {
       matchUser = null;
       matchCount = 0;
+      matchEncodings = [];
       setStatus('scanning', 'No Face Detected', 'Please centre your face in the circle.');
     } else {
       // Face detected but not matched — reset streak.
       matchUser = null;
       matchCount = 0;
+      matchEncodings = [];
     }
   } catch (e) {
     // network error, keep trying
