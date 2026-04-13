@@ -104,6 +104,9 @@
   <div class="countdown" id="countdown"></div>
 </div>
 
+<!-- Hidden iframe for thermal printing -->
+<iframe id="printFrame" style="position:fixed;left:-9999px;top:-9999px;width:0;height:0"></iframe>
+
 <div class="kiosk-footer">{{ brand_name|default:"FaceID Portal" }} — Queue Kiosk</div>
 
 <script>
@@ -253,28 +256,46 @@ async function generateQueueTicket() {
   }
 }
 
-// ── Print ticket via RawBT (instant, no dialog) ─────────────────
-// RawBT fetches a signed URL (no login required, expires in 5 min),
-// renders the HTML in its WebView, and sends the rendered output
-// directly to the paired Bluetooth thermal printer (MPT-2).
+// ── Print ticket via hidden iframe + window.print() ──────────────
+// Android routes window.print() through the default print service.
+// With RawBT set as default + auto-print enabled, this goes straight
+// to the MPT-2 Bluetooth thermal printer with zero dialogs.
 function printTicket() {
-  if (!currentPrintToken) {
-    alert('Print token missing. Please try again.');
-    return;
-  }
+  const num = document.getElementById('ticketNum').textContent;
+  const name = document.getElementById('ticketName').textContent;
+  const qrSrc = document.getElementById('ticketQR').src;
+  const date = document.getElementById('ticketDate').textContent;
+  const time = document.getElementById('ticketTime').textContent;
+  const brand = '{{ brand_name|default:"FaceID Portal" }}';
 
-  // Build the full signed print URL that RawBT will fetch.
-  const printUrl = window.location.origin + '/queue/print-r/' + currentPrintToken + '/';
+  const printHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+  @page { size: 58mm auto; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 48mm; font-family: 'Courier New', monospace; color: #000; background: #fff; padding: 3mm 2mm; text-align: center; }
+  .brand { font-size: 9pt; font-weight: bold; margin-bottom: 2mm; }
+  .div { border-top: 1px dashed #000; margin: 2mm 0; }
+  .name { font-size: 9pt; margin-bottom: 1mm; }
+  .num { font-size: 32pt; font-weight: bold; letter-spacing: 2mm; margin: 2mm 0; }
+  .qr img { width: 28mm; height: 28mm; margin: 2mm auto; display: block; }
+  .time { font-size: 7pt; color: #333; }
+  .foot { font-size: 7pt; color: #666; margin-top: 2mm; }
+</style></head><body>
+<div class="brand">${brand}</div>
+<div class="div"></div>
+<div class="name">${name}</div>
+<div class="num">${num}</div>
+<div class="qr"><img src="${qrSrc}" alt="QR"></div>
+<div class="time">${date}<br>${time}</div>
+<div class="div"></div>
+<div class="foot">Thank you for waiting</div>
+</body></html>`;
 
-  // Trigger RawBT: rawbt:<url> — RawBT opens the URL in its
-  // internal WebView, renders it, and prints the rendered page.
-  // Do NOT encodeURIComponent — RawBT expects a plain URL after rawbt:
-  const a = document.createElement('a');
-  a.href = 'rawbt:' + printUrl;
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  const frame = document.getElementById('printFrame');
+  frame.srcdoc = printHtml;
+  frame.onload = function() {
+    try { frame.contentWindow.print(); } catch(e) {}
+  };
 
   // Update button and start countdown.
   const btn = document.getElementById('printBtn');
