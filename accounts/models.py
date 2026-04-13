@@ -126,3 +126,38 @@ class AdminActionLog(models.Model):
 
     def __str__(self):
         return f"{self.admin_user} {self.action} {self.target_staff_id} @ {self.timestamp.strftime('%Y-%m-%d %H:%M')}"
+
+
+class QueueTicket(models.Model):
+    """Queue ticket issued to a user."""
+    STATUS_CHOICES = [
+        ('waiting', 'Waiting'),
+        ('serving', 'Now Serving'),
+        ('served', 'Served'),
+        ('cancelled', 'Cancelled'),
+    ]
+    user = models.ForeignKey(
+        StaffUser, on_delete=models.CASCADE, related_name='queue_tickets'
+    )
+    number = models.PositiveIntegerField(
+        help_text='Queue number for the day (auto-incremented)'
+    )
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='waiting')
+    created_at = models.DateTimeField(auto_now_add=True)
+    served_at = models.DateTimeField(null=True, blank=True)
+    date = models.DateField(default=timezone.now, help_text='Queue date (resets daily)')
+
+    class Meta:
+        ordering = ['date', 'number']
+        unique_together = ['date', 'number']
+
+    def __str__(self):
+        return f"Q{self.number:03d} — {self.user.display_name} ({self.get_status_display()})"
+
+    @classmethod
+    def next_number(cls, date=None):
+        """Get the next queue number for the given date."""
+        if date is None:
+            date = timezone.localdate()
+        last = cls.objects.filter(date=date).order_by('-number').first()
+        return (last.number + 1) if last else 1

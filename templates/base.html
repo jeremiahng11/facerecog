@@ -351,7 +351,9 @@
   <div class="nav-links" id="navLinks">
     <a href="{% url 'dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}class="active"{% endif %}>Dashboard</a>
     <a href="{% url 'profile' %}" {% if request.resolver_match.url_name == 'profile' %}class="active"{% endif %}>Profile &amp; Face ID</a>
+    <a href="{% url 'queue_dashboard' %}" {% if 'queue' in request.resolver_match.url_name %}class="active"{% endif %}>Queue</a>
     {% if user.is_staff %}
+    <a href="{% url 'queue_manage' %}" {% if request.resolver_match.url_name == 'queue_manage' %}class="active"{% endif %}>Queue Manager</a>
     <a href="{% url 'admin_users' %}" {% if 'admin' in request.resolver_match.url_name %}class="active"{% endif %}>Manage Users</a>
     {% endif %}
     <form method="post" action="{% url 'logout' %}" style="display:inline">

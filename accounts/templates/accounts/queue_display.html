@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Queue Display</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080c12; --card: #0f1928; --border: #1e3050;
+    --accent: {{ brand_accent|default:"#00d4ff" }}; --accent3: #10b981;
+    --warn: #f59e0b; --text: #e2eaf8; --text2: #8ba4c8; --text3: #4a6080;
+    --mono: 'Space Mono', monospace; --sans: 'DM Sans', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--sans);
+    height: 100vh; overflow: hidden; display: flex; flex-direction: column;
+    padding: 32px 40px;
+  }
+  .display-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 32px;
+  }
+  .display-brand {
+    font-family: var(--mono); font-size: 18px; color: var(--accent);
+    letter-spacing: 3px; text-transform: uppercase;
+  }
+  .display-date { font-size: 16px; color: var(--text2); font-family: var(--mono); }
+  .display-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; flex: 1; min-height: 0; }
+
+  .section-title {
+    font-family: var(--mono); font-size: 14px; letter-spacing: 3px;
+    text-transform: uppercase; margin-bottom: 20px; padding-bottom: 12px;
+    border-bottom: 2px solid var(--border);
+  }
+  .section-title.serving { color: var(--accent3); border-color: rgba(16,185,129,0.4); }
+  .section-title.waiting { color: var(--warn); border-color: rgba(245,158,11,0.3); }
+
+  .serving-list { display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+  .serving-card {
+    background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.3);
+    border-radius: 16px; padding: 24px; display: flex;
+    align-items: center; justify-content: space-between;
+    animation: slideIn 0.4s ease;
+  }
+  .serving-card .num {
+    font-family: var(--mono); font-size: 48px; font-weight: 700;
+    color: var(--accent3); letter-spacing: 3px;
+  }
+  .serving-card .name { font-size: 18px; color: var(--text2); }
+
+  .waiting-list { display: flex; flex-wrap: wrap; gap: 12px; align-content: flex-start; overflow-y: auto; }
+  .waiting-chip {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 20px; font-family: var(--mono); font-size: 22px;
+    color: var(--warn); letter-spacing: 2px;
+    animation: slideIn 0.3s ease;
+  }
+
+  .empty-state {
+    color: var(--text3); font-size: 16px; padding: 40px;
+    text-align: center; font-style: italic;
+  }
+
+  @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body>
+  <div class="display-header">
+    <div class="display-brand">{{ brand_name|default:"FaceID Portal" }} — Queue</div>
+    <div class="display-date" id="dateDisplay"></div>
+  </div>
+
+  <div class="display-grid">
+    <!-- Now Serving -->
+    <div>
+      <div class="section-title serving">Now Serving</div>
+      <div class="serving-list" id="servingList">
+        <div class="empty-state">No one being served</div>
+      </div>
+    </div>
+
+    <!-- Waiting -->
+    <div>
+      <div class="section-title waiting">Waiting</div>
+      <div class="waiting-list" id="waitingList">
+        <div class="empty-state">No one in queue</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const REFRESH_MS = 3000; // refresh every 3 seconds
+
+async function refreshQueue() {
+  try {
+    const resp = await fetch('{% url "queue_status" %}');
+    const data = await resp.json();
+
+    document.getElementById('dateDisplay').textContent = data.date;
+
+    const servingEl = document.getElementById('servingList');
+    if (data.now_serving.length) {
+      servingEl.innerHTML = data.now_serving.map(t =>
+        `<div class="serving-card">
+          <div>
+            <div class="num">${t.number_display}</div>
+            <div class="name">${t.name}</div>
+          </div>
+        </div>`
+      ).join('');
+    } else {
+      servingEl.innerHTML = '<div class="empty-state">No one being served</div>';
+    }
+
+    const waitingEl = document.getElementById('waitingList');
+    if (data.waiting.length) {
+      waitingEl.innerHTML = data.waiting.map(t =>
+        `<div class="waiting-chip">${t.number_display}</div>`
+      ).join('');
+    } else {
+      waitingEl.innerHTML = '<div class="empty-state">No one in queue</div>';
+    }
+  } catch (e) {
+    // Network error, keep trying
+  }
+}
+
+refreshQueue();
+setInterval(refreshQueue, REFRESH_MS);
+</script>
+</body>
+</html>

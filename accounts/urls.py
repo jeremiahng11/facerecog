@@ -1,6 +1,7 @@
 from django.urls import path
 from django.contrib.auth import views as auth_views
 from . import views
+from . import queue_views
 
 urlpatterns = [
     # Auth
@@ -31,6 +32,16 @@ urlpatterns = [
     path('dashboard/', views.dashboard_view, name='dashboard'),
     path('profile/', views.profile_view, name='profile'),
     path('api/my-face-photo/', views.my_face_photo_view, name='my_face_photo'),
+
+    # Queue System
+    path('queue/', queue_views.queue_dashboard_view, name='queue_dashboard'),
+    path('queue/my-ticket/', queue_views.queue_my_ticket_view, name='queue_my_ticket'),
+    path('queue/print/<int:ticket_id>/', queue_views.queue_print_view, name='queue_print'),
+    path('queue/display/', queue_views.queue_display_view, name='queue_display'),
+    path('queue/manage/', queue_views.queue_manage_view, name='queue_manage'),
+    path('queue/api/status/', queue_views.queue_status_ajax, name='queue_status'),
+    path('queue/api/generate/', queue_views.queue_generate_ajax, name='queue_generate'),
+    path('queue/api/update/', queue_views.queue_update_ajax, name='queue_update'),
 
     # Admin
     path('admin-panel/', views.admin_dashboard_view, name='admin_dashboard'),

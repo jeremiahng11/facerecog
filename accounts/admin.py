@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import StaffUser, FaceLoginLog, AdminActionLog
+from .models import StaffUser, FaceLoginLog, AdminActionLog, QueueTicket
 
 
 @admin.register(StaffUser)
@@ -39,3 +39,10 @@ class AdminActionLogAdmin(admin.ModelAdmin):
     list_display = ['admin_user', 'action', 'target_staff_id', 'target_name', 'timestamp']
     list_filter = ['action']
     readonly_fields = ['admin_user', 'action', 'target_staff_id', 'target_name', 'details', 'timestamp']
+
+
+@admin.register(QueueTicket)
+class QueueTicketAdmin(admin.ModelAdmin):
+    list_display = ['number', 'user', 'status', 'date', 'created_at', 'served_at']
+    list_filter = ['status', 'date']
+    search_fields = ['user__staff_id', 'user__full_name']

@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+{% block title %}Queue — {{ brand_name|default:"FaceID Portal" }}{% endblock %}
+{% block extra_head %}
+<style>
+  .ticket-card {
+    text-align: center; padding: 32px;
+    background: linear-gradient(135deg, rgba(0,212,255,0.06), rgba(124,58,237,0.06));
+    border: 1px solid var(--border); border-radius: 16px;
+  }
+  .ticket-number {
+    font-family: var(--mono); font-size: 64px; font-weight: 700;
+    color: var(--accent); letter-spacing: 4px; margin: 16px 0 8px;
+  }
+  .ticket-status {
+    font-size: 14px; padding: 6px 16px; border-radius: 100px;
+    display: inline-block; font-weight: 600;
+  }
+  .ticket-status.waiting { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .ticket-status.serving { background: rgba(16,185,129,0.15); color: #34d399; }
+  .qr-img { margin: 20px auto; display: block; border-radius: 8px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width:560px">
+  <div style="margin-bottom:24px">
+    <div class="page-title">Queue</div>
+    <div class="page-subtitle">Get your queue number</div>
+  </div>
+
+  {% if ticket %}
+  <div class="ticket-card">
+    <div style="font-size:12px;color:var(--text3);font-family:var(--mono);letter-spacing:2px">YOUR QUEUE NUMBER</div>
+    <div class="ticket-number">Q{{ ticket.number|stringformat:"03d" }}</div>
+    <div class="ticket-status {{ ticket.status }}">
+      {% if ticket.status == 'waiting' %}Waiting{% elif ticket.status == 'serving' %}Now Serving{% endif %}
+    </div>
+    {% if ahead > 0 and ticket.status == 'waiting' %}
+    <div style="margin-top:12px;font-size:14px;color:var(--text2)">
+      {{ ahead }} person{{ ahead|pluralize }} ahead of you
+    </div>
+    {% elif ticket.status == 'waiting' %}
+    <div style="margin-top:12px;font-size:14px;color:var(--accent3)">You're next!</div>
+    {% endif %}
+
+    {% if qr_data %}
+    <img src="{{ qr_data }}" class="qr-img" width="180" height="180" alt="QR Code">
+    {% endif %}
+
+    <div style="font-size:12px;color:var(--text3);margin-top:8px">
+      {{ user.display_name }} · {{ ticket.created_at|date:"d M Y H:i" }}
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:center;margin-top:20px">
+      <a href="{% url 'queue_my_ticket' %}" class="btn btn-primary btn-sm">View on Phone</a>
+      <a href="{% url 'queue_print' ticket.pk %}" class="btn btn-secondary btn-sm" target="_blank">Print Ticket</a>
+    </div>
+  </div>
+  {% else %}
+  <div class="card" style="text-align:center;padding:40px">
+    <svg width="48" height="48" fill="none" stroke="var(--text3)" stroke-width="1.5" viewBox="0 0 24 24" style="margin-bottom:16px">
+      <rect x="2" y="3" width="20" height="18" rx="2"/><path d="M8 7h8M8 11h6M8 15h4"/>
+    </svg>
+    <div style="font-size:16px;color:var(--text);margin-bottom:8px">No Active Queue Ticket</div>
+    <div style="font-size:14px;color:var(--text2);margin-bottom:20px">Generate a queue number to get in line</div>
+    <button class="btn btn-primary" id="generateBtn" onclick="generateTicket()">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Get Queue Number
+    </button>
+    <div id="generateError" style="margin-top:12px;font-size:13px;color:var(--danger);display:none"></div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function generateTicket() {
+  const btn = document.getElementById('generateBtn');
+  const err = document.getElementById('generateError');
+  btn.disabled = true;
+  btn.textContent = 'Generating…';
+  err.style.display = 'none';
+  try {
+    const resp = await fetch('{% url "queue_generate" %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+      body: '{}',
+    });
+    const data = await resp.json();
+    if (data.success) {
+      window.location.reload();
+    } else {
+      err.textContent = data.message;
+      err.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Get Queue Number';
+    }
+  } catch (e) {
+    err.textContent = 'Network error. Try again.';
+    err.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Get Queue Number';
+  }
+}
+</script>
+{% endblock %}
