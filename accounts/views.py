@@ -25,6 +25,21 @@ def is_admin(user):
     return user.is_staff or user.is_superuser
 
 
+def get_client_ip(request):
+    """
+    Return the real client IP address. Railway (and most reverse proxies)
+    passes the original client IP in the X-Forwarded-For header. The
+    header value is a comma-separated list where the first entry is the
+    real client; subsequent entries are intermediate proxies.
+    Falls back to REMOTE_ADDR when the header is absent (local dev).
+    """
+    xff = request.META.get('HTTP_X_FORWARDED_FOR')
+    if xff:
+        # First IP in the chain is the original client.
+        return xff.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR')
+
+
 # ─── Login / Logout ────────────────────────────────────────────────────────────
 
 def login_view(request):
@@ -122,7 +137,7 @@ def face_verify_ajax(request):
                 best_match = user
                 best_confidence = result['confidence']
 
-        ip_addr = request.META.get('REMOTE_ADDR')
+        ip_addr = get_client_ip(request)
 
         if best_match and best_confidence >= min_confidence:
             # Count consecutive matches to the same user.
