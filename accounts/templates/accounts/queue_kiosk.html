@@ -293,23 +293,37 @@ function printTicket() {
 <div class="foot">Thank you for waiting</div>
 </body></html>`;
 
-  // Force iframe reload: clear first, then set content on next tick.
-  // Setting srcdoc to the same value doesn't trigger onload, so we
-  // need to clear → wait → set to force a fresh load cycle.
-  const frame = document.getElementById('printFrame');
-  frame.onload = null;
-  frame.srcdoc = '';
-  setTimeout(() => {
-    frame.onload = function() {
-      try { frame.contentWindow.print(); } catch(e) {}
-    };
-    frame.srcdoc = printHtml;
-  }, 50);
+  // Detect Fully Kiosk Browser and use its native silent print API.
+  // Fully blocks iframe.contentWindow.print() but provides its own
+  // printHtml() method that prints directly without any dialog.
+  if (typeof fully !== 'undefined' && typeof fully.printHtml === 'function') {
+    fully.printHtml(printHtml);
+  } else if (typeof fully !== 'undefined' && typeof fully.print === 'function') {
+    // Older Fully: inject content into page, print, then clean up.
+    const overlay = document.createElement('div');
+    overlay.id = '_printOverlay';
+    overlay.innerHTML = printHtml;
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#fff';
+    document.body.appendChild(overlay);
+    fully.print();
+    setTimeout(() => { const el = document.getElementById('_printOverlay'); if (el) el.remove(); }, 2000);
+  } else {
+    // Standard browser: hidden iframe approach.
+    const frame = document.getElementById('printFrame');
+    frame.onload = null;
+    frame.srcdoc = '';
+    setTimeout(() => {
+      frame.onload = function() {
+        try { frame.contentWindow.print(); } catch(e) {}
+      };
+      frame.srcdoc = printHtml;
+    }, 50);
+  }
 
   document.getElementById('printStatus').textContent = 'Sent to printer';
-  // Show reprint button in case user needs another copy.
   document.getElementById('printBtn').style.display = '';
 }
+
 
 function startPostPrintCountdown() {
   let secs = Math.round(POST_PRINT_TIMEOUT / 1000);
