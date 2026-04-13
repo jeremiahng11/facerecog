@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Queue Kiosk — {{ brand_name|default:"FaceID Portal" }}</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080c12; --card: #0f1928; --border: #1e3050;
+    --accent: {{ brand_accent|default:"#00d4ff" }}; --accent3: #10b981;
+    --danger: #ef4444; --warn: #f59e0b;
+    --text: #e2eaf8; --text2: #8ba4c8; --text3: #4a6080;
+    --mono: 'Space Mono', monospace; --sans: 'DM Sans', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--sans);
+    height: 100vh; overflow: hidden; user-select: none;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+
+  /* ── Screens ── */
+  .screen { display: none; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; padding: 32px; }
+  .screen.active { display: flex; }
+
+  /* ── Scan Screen ── */
+  .kiosk-brand { font-family: var(--mono); font-size: 16px; color: var(--accent); letter-spacing: 3px; text-transform: uppercase; margin-bottom: 8px; }
+  .kiosk-subtitle { font-size: 15px; color: var(--text2); margin-bottom: 28px; }
+  .camera-ring {
+    width: min(60vw, 340px); aspect-ratio: 1; border-radius: 50%;
+    overflow: hidden; border: 3px solid var(--text3); position: relative;
+    background: #000; box-shadow: 0 0 60px rgba(0,0,0,0.6);
+    transition: border-color 0.4s, box-shadow 0.4s;
+  }
+  .camera-ring.scanning { border-color: var(--accent); box-shadow: 0 0 60px rgba(0,212,255,0.15); }
+  .camera-ring.success { border-color: var(--accent3); box-shadow: 0 0 80px rgba(16,185,129,0.3); }
+  .camera-ring video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); display: block; }
+  .scan-line { display: none; position: absolute; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: scanline 2s linear infinite; top: 0; box-shadow: 0 0 8px var(--accent); }
+  .scanning .scan-line { display: block; }
+  @keyframes scanline { 0% { top: 0; } 100% { top: 100%; } }
+  .scan-status { margin-top: 24px; font-size: 16px; color: var(--text2); text-align: center; min-height: 32px; }
+  .scan-status.ok { color: var(--accent3); font-size: 20px; font-weight: 600; }
+
+  /* ── Ticket Screen ── */
+  .ticket-screen { background: var(--bg); }
+  .ticket-big {
+    text-align: center; padding: 40px 32px;
+    background: linear-gradient(135deg, rgba(0,212,255,0.06), rgba(124,58,237,0.06));
+    border: 2px solid var(--border); border-radius: 24px;
+    max-width: 420px; width: 100%;
+  }
+  .ticket-big .num {
+    font-family: var(--mono); font-size: 80px; font-weight: 700;
+    color: var(--accent); letter-spacing: 6px; line-height: 1; margin: 12px 0;
+  }
+  .ticket-big .name { font-size: 20px; color: var(--text); margin-bottom: 4px; }
+  .ticket-big .qr { margin: 20px auto; }
+  .ticket-big .meta { font-size: 13px; color: var(--text3); }
+
+  .print-btn {
+    margin-top: 24px; padding: 18px 48px; font-size: 18px; font-weight: 700;
+    background: var(--accent); color: #000; border: none; border-radius: 14px;
+    cursor: pointer; font-family: var(--sans); letter-spacing: 1px;
+    transition: transform 0.2s;
+  }
+  .print-btn:active { transform: scale(0.96); }
+  .countdown { margin-top: 16px; font-size: 14px; color: var(--text3); }
+
+  /* ── Print iframe (hidden) ── */
+  .print-frame { position: fixed; left: -9999px; top: -9999px; width: 0; height: 0; }
+
+  .kiosk-footer { position: fixed; bottom: 16px; font-size: 11px; color: var(--text3); font-family: var(--mono); letter-spacing: 1px; }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .spinning { animation: spin 1s linear infinite; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ SCREEN 1: Face Scan ═══════════════ -->
+<div class="screen active" id="screenScan">
+  <div class="kiosk-brand">{{ brand_name|default:"FaceID Portal" }}</div>
+  <div class="kiosk-subtitle">Scan your face to get a queue number</div>
+
+  <div class="camera-ring scanning" id="cameraRing">
+    <video id="videoEl" autoplay playsinline muted></video>
+    <div class="scan-line"></div>
+  </div>
+
+  <div class="scan-status" id="scanStatus">Initialising camera…</div>
+</div>
+
+<!-- ═══════════════ SCREEN 2: Ticket ═══════════════ -->
+<div class="screen" id="screenTicket">
+  <div class="ticket-big">
+    <div style="font-size:12px;color:var(--text3);font-family:var(--mono);letter-spacing:2px">YOUR QUEUE NUMBER</div>
+    <div class="num" id="ticketNum"></div>
+    <div class="name" id="ticketName"></div>
+    <div class="qr"><img id="ticketQR" width="220" height="220" style="border-radius:12px" alt="QR"></div>
+    <div class="meta"><span id="ticketDate"></span> · <span id="ticketTime"></span></div>
+  </div>
+
+  <button class="print-btn" id="printBtn" onclick="printTicket()">
+    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:8px"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+    Print Ticket
+  </button>
+  <div class="countdown" id="countdown"></div>
+</div>
+
+<!-- Hidden iframe for printing -->
+<iframe id="printFrame" class="print-frame"></iframe>
+
+<div class="kiosk-footer">{{ brand_name|default:"FaceID Portal" }} — Queue Kiosk</div>
+
+<script>
+const CSRF = '{{ csrf_token }}';
+const IDLE_TIMEOUT = {{ idle_timeout }} * 1000;
+const POST_PRINT_TIMEOUT = {{ post_print_timeout }} * 1000;
+const MAX_DIM = 480;
+const SCAN_GAP = 100;
+
+let stream = null;
+let scanning = false;
+let matchUser = null;
+let matchCount = 0;
+let matchEncodings = [];
+let idleTimer = null;
+let countdownTimer = null;
+
+const video = document.getElementById('videoEl');
+const ring = document.getElementById('cameraRing');
+const scanStatus = document.getElementById('scanStatus');
+
+// ── Screen switching ─────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ── Idle timer: resets kiosk to scan screen after inactivity ─────
+function resetIdleTimer() {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(resetKiosk, IDLE_TIMEOUT);
+}
+document.addEventListener('touchstart', resetIdleTimer);
+document.addEventListener('click', resetIdleTimer);
+
+// ── Full reset: logout + return to scan ──────────────────────────
+async function resetKiosk() {
+  clearTimeout(idleTimer);
+  clearTimeout(countdownTimer);
+  scanning = false;
+
+  // Logout the session silently.
+  try {
+    await fetch('{% url "logout" %}', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': CSRF },
+    });
+  } catch (e) {}
+
+  // Reset UI.
+  matchUser = null; matchCount = 0; matchEncodings = [];
+  ring.className = 'camera-ring scanning';
+  scanStatus.className = 'scan-status';
+  scanStatus.textContent = 'Scanning…';
+  document.getElementById('countdown').textContent = '';
+  showScreen('screenScan');
+
+  // Restart scanning.
+  scanning = true;
+  scanLoop();
+}
+
+// ── Camera + Face scan ───────────────────────────────────────────
+function captureFrame() {
+  const vw = video.videoWidth || 480, vh = video.videoHeight || 480;
+  const s = Math.min(1, MAX_DIM / Math.max(vw, vh));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(vw * s));
+  c.height = Math.max(1, Math.round(vh * s));
+  c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.75);
+}
+
+async function scanLoop() {
+  while (scanning) {
+    try {
+      const resp = await fetch('{% url "face_verify_ajax" %}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({
+          image: captureFrame(),
+          match_user: matchUser,
+          match_count: matchCount,
+          match_encodings: matchEncodings,
+        }),
+      });
+      const data = await resp.json();
+      matchUser = data.match_user || null;
+      matchCount = data.match_count || 0;
+      matchEncodings = data.match_encodings || [];
+
+      if (data.success) {
+        scanning = false;
+        ring.className = 'camera-ring success';
+        scanStatus.className = 'scan-status ok';
+        scanStatus.textContent = data.message;
+
+        // Face login succeeded — now auto-generate queue ticket.
+        setTimeout(() => generateQueueTicket(), 800);
+        return;
+      } else if (data.verifying) {
+        scanStatus.textContent = data.message;
+      } else if (data.face_detected === false) {
+        scanStatus.textContent = 'Position your face in the circle';
+      } else {
+        matchUser = null; matchCount = 0; matchEncodings = [];
+      }
+    } catch (e) {}
+    if (!scanning) break;
+    await new Promise(r => setTimeout(r, SCAN_GAP));
+  }
+}
+
+// ── Generate ticket after successful face login ──────────────────
+async function generateQueueTicket() {
+  try {
+    const resp = await fetch('{% url "queue_kiosk_generate" %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      body: '{}',
+    });
+    const data = await resp.json();
+    if (data.success) {
+      // Populate ticket screen.
+      document.getElementById('ticketNum').textContent = data.number_display;
+      document.getElementById('ticketName').textContent = data.staff_name;
+      document.getElementById('ticketQR').src = data.qr_data;
+      document.getElementById('ticketDate').textContent = data.date;
+      document.getElementById('ticketTime').textContent = data.time;
+      showScreen('screenTicket');
+      resetIdleTimer();
+    } else {
+      scanStatus.textContent = data.message;
+      setTimeout(resetKiosk, 3000);
+    }
+  } catch (e) {
+    scanStatus.textContent = 'Error generating ticket. Resetting…';
+    setTimeout(resetKiosk, 3000);
+  }
+}
+
+// ── Print ticket via hidden iframe ───────────────────────────────
+function printTicket() {
+  const num = document.getElementById('ticketNum').textContent;
+  const name = document.getElementById('ticketName').textContent;
+  const qrSrc = document.getElementById('ticketQR').src;
+  const date = document.getElementById('ticketDate').textContent;
+  const time = document.getElementById('ticketTime').textContent;
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+  @page { size: 58mm auto; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 48mm; font-family: 'Courier New', monospace; color: #000; background: #fff; padding: 3mm 2mm; text-align: center; }
+  .brand { font-size: 9pt; font-weight: bold; margin-bottom: 2mm; }
+  .div { border-top: 1px dashed #000; margin: 2mm 0; }
+  .name { font-size: 9pt; margin-bottom: 1mm; }
+  .num { font-size: 32pt; font-weight: bold; letter-spacing: 2mm; margin: 2mm 0; }
+  .qr img { width: 28mm; height: 28mm; margin: 2mm auto; display: block; }
+  .time { font-size: 7pt; color: #333; }
+  .foot { font-size: 7pt; color: #666; margin-top: 2mm; }
+</style></head><body>
+<div class="brand">{{ brand_name|default:"FaceID Portal" }}</div>
+<div class="div"></div>
+<div class="name">${name}</div>
+<div class="num">${num}</div>
+<div class="qr"><img src="${qrSrc}" alt="QR"></div>
+<div class="time">${date}<br>${time}</div>
+<div class="div"></div>
+<div class="foot">Thank you for waiting</div>
+<script>window.onload=function(){window.print();}<\/script>
+</body></html>`;
+
+  const frame = document.getElementById('printFrame');
+  frame.srcdoc = html;
+
+  // Start post-print countdown.
+  const btn = document.getElementById('printBtn');
+  btn.textContent = 'Printing…';
+  btn.disabled = true;
+
+  let secs = Math.round(POST_PRINT_TIMEOUT / 1000);
+  const cdEl = document.getElementById('countdown');
+  cdEl.textContent = `Auto-reset in ${secs}s`;
+  countdownTimer = setInterval(() => {
+    secs--;
+    if (secs <= 0) {
+      clearInterval(countdownTimer);
+      resetKiosk();
+    } else {
+      cdEl.textContent = `Auto-reset in ${secs}s`;
+    }
+  }, 1000);
+}
+
+// ── Init camera ──────────────────────────────────────────────────
+async function init() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } }
+    });
+    video.srcObject = stream;
+    await new Promise(r => { if (video.readyState >= 1) return r(); video.onloadedmetadata = r; });
+    scanStatus.textContent = 'Scanning…';
+    scanning = true;
+    scanLoop();
+  } catch (e) {
+    scanStatus.textContent = 'Camera error: ' + (e.message || 'Permission denied');
+  }
+}
+
+init();
+</script>
+</body>
+</html>

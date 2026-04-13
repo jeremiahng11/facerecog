@@ -34,6 +34,8 @@ urlpatterns = [
     path('api/my-face-photo/', views.my_face_photo_view, name='my_face_photo'),
 
     # Queue System
+    path('queue/kiosk/', queue_views.queue_kiosk_view, name='queue_kiosk'),
+    path('queue/kiosk/generate/', queue_views.queue_kiosk_generate_ajax, name='queue_kiosk_generate'),
     path('queue/', queue_views.queue_dashboard_view, name='queue_dashboard'),
     path('queue/my-ticket/', queue_views.queue_my_ticket_view, name='queue_my_ticket'),
     path('queue/print/<int:ticket_id>/', queue_views.queue_print_view, name='queue_print'),

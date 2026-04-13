@@ -24,6 +24,9 @@ from django.utils import timezone
 from .models import StaffUser, QueueTicket
 
 
+from django.conf import settings as django_settings
+
+
 def is_admin(user):
     return user.is_staff or user.is_superuser
 
@@ -230,3 +233,79 @@ def queue_update_ajax(request):
         })
     except Exception as e:
         return JsonResponse({'success': False, 'message': str(e)})
+
+
+# ─── Queue Kiosk (32" Android touchscreen) ────────────────────────────────────
+
+def queue_kiosk_view(request):
+    """
+    Standalone queue kiosk for a 32" Android touchscreen with a
+    Bluetooth 58mm thermal printer. Flow:
+
+    1. Face ID scan (camera auto-starts)
+    2. On match → auto-generate queue ticket
+    3. Show ticket with QR code + "Print" button
+    4. After printing → auto-logout after KIOSK_POST_PRINT_TIMEOUT seconds
+    5. If idle → auto-reset after KIOSK_IDLE_TIMEOUT seconds
+
+    No nav bar, no other navigation. Fully self-contained loop.
+    """
+    context = {
+        'idle_timeout': getattr(django_settings, 'KIOSK_IDLE_TIMEOUT', 15),
+        'post_print_timeout': getattr(django_settings, 'KIOSK_POST_PRINT_TIMEOUT', 10),
+    }
+    return render(request, 'accounts/queue_kiosk.html', context)
+
+
+@require_POST
+def queue_kiosk_generate_ajax(request):
+    """
+    AJAX: generate a queue ticket for the currently logged-in kiosk user.
+    Called automatically after successful face ID login in kiosk mode.
+    Returns ticket data + QR code.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'message': 'Not authenticated'})
+
+    user = request.user
+    today = _today()
+
+    existing = _active_ticket_for_user(user)
+    if existing:
+        qr_data = _generate_qr_base64(
+            f'Q{existing.number:03d}|{user.staff_id}|{today}', box_size=8
+        )
+        return JsonResponse({
+            'success': True,
+            'existing': True,
+            'ticket_id': existing.pk,
+            'number': existing.number,
+            'number_display': f'Q{existing.number:03d}',
+            'staff_name': user.display_name,
+            'staff_id': user.staff_id,
+            'qr_data': qr_data,
+            'date': today.strftime('%d %B %Y'),
+            'time': timezone.localtime().strftime('%H:%M:%S'),
+            'message': f'You already have ticket Q{existing.number:03d}',
+        })
+
+    number = QueueTicket.next_number(today)
+    ticket = QueueTicket.objects.create(user=user, number=number, date=today)
+
+    qr_data = _generate_qr_base64(
+        f'Q{number:03d}|{user.staff_id}|{today}', box_size=8
+    )
+
+    return JsonResponse({
+        'success': True,
+        'existing': False,
+        'ticket_id': ticket.pk,
+        'number': number,
+        'number_display': f'Q{number:03d}',
+        'staff_name': user.display_name,
+        'staff_id': user.staff_id,
+        'qr_data': qr_data,
+        'date': today.strftime('%d %B %Y'),
+        'time': timezone.localtime().strftime('%H:%M:%S'),
+        'message': f'Queue ticket Q{number:03d} generated!',
+    })

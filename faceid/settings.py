@@ -195,4 +195,10 @@ BRAND_NAME = os.environ.get('BRAND_NAME', 'FaceID Portal')
 BRAND_COMPANY = os.environ.get('BRAND_COMPANY', '')
 BRAND_ACCENT_COLOR = os.environ.get('BRAND_ACCENT_COLOR', '#00d4ff')
 
+# ─── Kiosk ────────────────────────────────────────────────────────────────────
+# Idle timeout: seconds of inactivity before the kiosk auto-resets to scan.
+KIOSK_IDLE_TIMEOUT = int(os.environ.get('KIOSK_IDLE_TIMEOUT', '15'))
+# After printing, auto-logout and reset after this many seconds.
+KIOSK_POST_PRINT_TIMEOUT = int(os.environ.get('KIOSK_POST_PRINT_TIMEOUT', '10'))
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
