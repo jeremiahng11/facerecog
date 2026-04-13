@@ -136,10 +136,17 @@ async function scanLoop() {
         nameEl.textContent = data.message;
         overlay.classList.add('show');
 
-        // Brief greeting, then navigate to dashboard.
+        // Auto-reset after greeting
         setTimeout(() => {
-          window.location.replace(data.redirect || '/dashboard/');
-        }, 1500);
+          overlay.classList.remove('show');
+          ring.className = 'camera-ring scanning';
+          statusEl.className = 'status-text';
+          statusEl.textContent = 'Scanning…';
+          matchUser = null;
+          matchCount = 0;
+          scanning = true;
+          scanLoop();
+        }, RESET_DELAY_MS);
         return;
       } else if (data.verifying) {
         statusEl.textContent = data.message;
