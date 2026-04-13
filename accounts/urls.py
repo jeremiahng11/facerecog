@@ -26,6 +26,7 @@ urlpatterns = [
     path('kiosk/', views.kiosk_view, name='kiosk'),
     path('face-login/', views.face_login_view, name='face_login'),
     path('api/face-verify/', views.face_verify_ajax, name='face_verify_ajax'),
+    path('api/face-verify-fail/', views.face_verify_fail_ajax, name='face_verify_fail'),
     path('api/enroll-face/', views.enroll_face_ajax, name='enroll_face_ajax'),
 
     # Dashboard / Profile

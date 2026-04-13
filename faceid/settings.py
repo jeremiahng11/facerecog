@@ -182,12 +182,9 @@ FACE_VERIFY_CONSECUTIVE_MATCHES = int(os.environ.get('FACE_VERIFY_CONSECUTIVE_MA
 
 FACE_PHOTOS_DIR = 'face_photos'
 
-# Rate limiting: max face verify requests per IP per minute.
-FACE_VERIFY_RATE_LIMIT = int(os.environ.get('FACE_VERIFY_RATE_LIMIT', '30'))
-
-# IP lockout: after this many consecutive failed attempts, block the IP
-# for FACE_LOCKOUT_DURATION_MINUTES.
-FACE_LOCKOUT_THRESHOLD = int(os.environ.get('FACE_LOCKOUT_THRESHOLD', '15'))
+# IP lockout: after this many failed scan sessions (not individual frames)
+# from the same IP within FACE_LOCKOUT_DURATION_MINUTES, block the IP.
+FACE_LOCKOUT_THRESHOLD = int(os.environ.get('FACE_LOCKOUT_THRESHOLD', '10'))
 FACE_LOCKOUT_DURATION_MINUTES = int(os.environ.get('FACE_LOCKOUT_DURATION_MINUTES', '5'))
 
 # ─── Branding (customise via env vars) ────────────────────────────────────────

@@ -340,6 +340,11 @@ async function captureAndVerify() {
   if (attemptCount > MAX_ATTEMPTS) {
     stopScan();
     setStatus('failed', 'Scan Timeout', 'Face not recognised after multiple attempts. Please try again or use Staff ID login.');
+    // Log a single failure for the IP lockout system.
+    fetch('{% url "face_verify_fail" %}', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': CSRF_TOKEN },
+    }).catch(() => {});
     return;
   }
 

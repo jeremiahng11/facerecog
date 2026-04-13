@@ -76,7 +76,7 @@ def get_client_ip(request):
 # Simple in-DB rate limiter. No extra dependencies needed.
 
 def _is_ip_locked_out(ip_addr):
-    """Check if an IP is temporarily locked out due to too many failed attempts."""
+    """Check if an IP is temporarily locked out due to too many failed scan sessions."""
     threshold = getattr(settings, 'FACE_LOCKOUT_THRESHOLD', 15)
     lockout_minutes = getattr(settings, 'FACE_LOCKOUT_DURATION_MINUTES', 5)
     cutoff = timezone.now() - timedelta(minutes=lockout_minutes)
@@ -88,19 +88,6 @@ def _is_ip_locked_out(ip_addr):
     ).count()
 
     return recent_fails >= threshold
-
-
-def _is_rate_limited(ip_addr):
-    """Check if an IP has exceeded the per-minute request rate."""
-    limit = getattr(settings, 'FACE_VERIFY_RATE_LIMIT', 30)
-    one_min_ago = timezone.now() - timedelta(minutes=1)
-
-    recent_total = FaceLoginLog.objects.filter(
-        ip_address=ip_addr,
-        timestamp__gte=one_min_ago,
-    ).count()
-
-    return recent_total >= limit
 
 
 def _send_security_notification(subject, message_body):
@@ -178,19 +165,12 @@ def face_verify_ajax(request):
         ip_addr = get_client_ip(request)
         device_info = parse_device(request)
 
-        # ── Rate limit & lockout ──────────────────────────────────
+        # ── IP lockout check ───────────────────────────────────────
         if _is_ip_locked_out(ip_addr):
             return JsonResponse({
                 'success': False,
                 'message': 'Too many failed attempts. Please try again later.',
                 'locked_out': True,
-                'match_user': None, 'match_count': 0,
-            })
-
-        if _is_rate_limited(ip_addr):
-            return JsonResponse({
-                'success': False,
-                'message': 'Too many requests. Please slow down.',
                 'match_user': None, 'match_count': 0,
             })
 
@@ -315,21 +295,14 @@ def face_verify_ajax(request):
                 'match_user': None, 'match_count': 0,
             })
         else:
-            FaceLoginLog.objects.create(
-                success=False, ip_address=ip_addr,
-                device=device_info, notes='No matching face found',
-            )
-
-            # Check if this IP should now be locked out and notify admin.
-            if _is_ip_locked_out(ip_addr):
-                _send_security_notification(
-                    'IP Locked Out — Too Many Failed Face Login Attempts',
-                    f'IP {ip_addr} has been temporarily locked out after '
-                    f'exceeding {settings.FACE_LOCKOUT_THRESHOLD} failed '
-                    f'face login attempts.\nDevice: {device_info}\n'
-                    f'Time: {timezone.now().isoformat()}',
-                )
-
+            # Don't log every individual non-match frame — the scan loop
+            # fires ~10 frames/second and logging each one would flood
+            # the database and trigger the IP lockout within seconds.
+            # Only log once when the client explicitly reports a failed
+            # scan session (see queue_kiosk timeout / face_login MAX_ATTEMPTS).
+            # The lockout system still works because it counts logged
+            # failure entries, which are created by the session-level
+            # failure endpoints.
             return JsonResponse({
                 'success': False, 'face_detected': True,
                 'message': 'Face not recognised. Try again or use Staff ID login.',
@@ -340,6 +313,35 @@ def face_verify_ajax(request):
     except Exception as e:
         logger.exception("Error in face_verify_ajax")
         return JsonResponse({'success': False, 'message': f'Server error: {str(e)}'})
+
+
+@require_POST
+def face_verify_fail_ajax(request):
+    """
+    AJAX: called once when a scan session exhausts its attempts without
+    finding a match. Logs a single failure entry for the IP lockout system.
+    Separated from face_verify_ajax so we don't log every individual frame.
+    """
+    ip_addr = get_client_ip(request)
+    device_info = parse_device(request)
+
+    FaceLoginLog.objects.create(
+        success=False,
+        ip_address=ip_addr,
+        device=device_info,
+        notes='Scan session timeout — no match found',
+    )
+
+    if _is_ip_locked_out(ip_addr):
+        _send_security_notification(
+            'IP Locked Out — Too Many Failed Face Login Attempts',
+            f'IP {ip_addr} has been temporarily locked out after '
+            f'exceeding {settings.FACE_LOCKOUT_THRESHOLD} failed '
+            f'face scan sessions.\nDevice: {device_info}\n'
+            f'Time: {timezone.now().isoformat()}',
+        )
+
+    return JsonResponse({'logged': True})
 
 
 # ─── Dashboard ─────────────────────────────────────────────────────────────────
