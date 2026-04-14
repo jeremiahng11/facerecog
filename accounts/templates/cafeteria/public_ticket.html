@@ -84,19 +84,15 @@
 </div>
 
 <script>
-  // Silent-print: prefer RawBT (Android thermal-printer bridge) when the
-  // server provided an ESC/POS payload — no browser print dialog. Fall back
-  // to window.print() otherwise (silent under Chromium --kiosk-printing).
+  // Silent print: navigate to ?print=1 so window.print() fires on load
+  // (Fully Kiosk treats page-load prints as silent/kiosk prints). A print
+  // triggered by a button click shows the dialog.
   function printReceipt() {
-    // Rely on the browser's native print pipeline (matches queue_print
-    // flow that already works on the kiosk). Fully Kiosk Browser prints
-    // silently to the default printer using the @media print CSS below;
-    // the QR is an <img> inside #ticketRoot so the printer just rasterises
-    // the page — no ESC/POS needed.
-    window.print();
+    const sep = window.location.search ? '&' : '?';
+    window.location.href = window.location.pathname + window.location.search + sep + 'print=1';
   }
-  {% if autoprint %}
-  window.addEventListener('load', () => setTimeout(printReceipt, 400));
+  {% if autoprint or request.GET.print == '1' %}
+  window.addEventListener('load', () => setTimeout(() => window.print(), 200));
   {% endif %}
 </script>
 {% endblock %}
