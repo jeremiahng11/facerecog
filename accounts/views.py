@@ -143,6 +143,10 @@ def login_view(request):
 
 def logout_view(request):
     logout(request)
+    next_url = request.POST.get('next') or request.GET.get('next') or ''
+    # Only allow safe, relative, in-app redirects.
+    if next_url.startswith('/') and not next_url.startswith('//'):
+        return redirect(next_url)
     return redirect('login')
 
 

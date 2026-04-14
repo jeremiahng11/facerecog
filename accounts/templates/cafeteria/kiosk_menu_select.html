@@ -119,6 +119,9 @@ function logout() {
   t.type = 'hidden'; t.name = 'csrfmiddlewaretoken';
   t.value = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
   f.appendChild(t);
+  const n = document.createElement('input');
+  n.type = 'hidden'; n.name = 'next'; n.value = '/cafeteria/kiosk/';
+  f.appendChild(n);
   document.body.appendChild(f); f.submit();
 }
 </script>
