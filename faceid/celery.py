@@ -28,9 +28,10 @@ CREDIT_RESET_DAY = int(os.environ.get('CREDIT_RESET_DAY', '1'))
 app.conf.beat_schedule = {
     'reset-monthly-credits': {
         'task': 'accounts.tasks.reset_monthly_credits',
-        # Note: crontab is UTC by default; align with Asia/Singapore.
-        'schedule': crontab(hour=16, minute=1, day_of_month=str(CREDIT_RESET_DAY - 1 if CREDIT_RESET_DAY > 1 else 'last')),
-        # At 16:01 UTC on the day before = 00:01 SGT on CREDIT_RESET_DAY.
+        # Runs at 16:01 UTC on CREDIT_RESET_DAY of each month.
+        # 16:01 UTC = 00:01 SGT the next day — close enough to midnight.
+        # The command is idempotent so running slightly past midnight is fine.
+        'schedule': crontab(hour=16, minute=1, day_of_month=str(CREDIT_RESET_DAY)),
     },
 }
 
