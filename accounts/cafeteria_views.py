@@ -846,7 +846,9 @@ def admin_stock_view(request):
         messages.success(request, 'Daily stock updated.')
         return redirect('cafeteria_admin_stock')
 
-    items = MenuItem.objects.all().order_by('menu_type', 'display_order', 'name')
+    items = list(MenuItem.objects.all().order_by('menu_type', 'display_order', 'name'))
+    for item in items:
+        item.sold_today = max(0, item.daily_quantity - item.quantity_remaining)
     return render(request, 'cafeteria/admin_stock.html', {'items': items})
 
 

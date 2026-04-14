@@ -30,7 +30,7 @@
               <input type="number" name="qty_{{ item.id }}" value="{{ item.daily_quantity }}" min="0" style="width:90px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)">
             </td>
             <td class="mono">{{ item.quantity_remaining }}</td>
-            <td class="mono text-dim">{{ item.daily_quantity|add:0 }}</td>
+            <td class="mono text-dim">{{ item.sold_today }}</td>
             <td>
               {% if item.is_sold_out %}<span class="badge badge-red">Sold Out</span>
               {% elif item.is_low_stock %}<span class="badge" style="background:#fef3c7;color:#c2410c">Low</span>
