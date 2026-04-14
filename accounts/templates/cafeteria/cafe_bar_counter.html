@@ -2,105 +2,258 @@
 {% block title %}Cafe Bar Counter{% endblock %}
 {% block extra_head %}
 <style>
-  body { background: var(--bg); }
-  .top { padding: 16px 24px; background: #fff; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-  .top h1 { font-size: 22px; font-weight: 800; }
-  .scan-hint { background: var(--primary-light); color: var(--primary); padding: 10px 16px; font-size: 13px; text-align: center; font-weight: 600; }
-  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 0; min-height: calc(100vh - 120px); }
-  @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
-  .pane { padding: 20px; overflow-y: auto; }
-  .pane.left { background: #fff; border-right: 1px solid var(--border); }
-  .pane-title { font-size: 13px; font-weight: 700; letter-spacing: 2px; color: var(--text3); text-transform: uppercase; margin-bottom: 16px; }
-  .order-card { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 12px; box-shadow: var(--shadow); }
-  .order-card.ready { background: var(--success-soft); border-color: var(--success); }
-  .oc-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-  .oc-num { font-size: 26px; font-weight: 800; color: var(--primary); letter-spacing: 1px; }
-  .oc-num.ready { color: var(--success); font-size: 38px; }
-  .oc-time { font-size: 11px; color: var(--text3); }
-  .oc-items { border-top: 1px dashed var(--border); padding-top: 8px; }
-  .oc-items li { list-style: none; padding: 3px 0; font-size: 13px; }
-  .oc-items .cust { color: var(--text3); font-size: 11px; margin-left: 14px; }
-  .oc-actions { margin-top: 10px; }
-  .oc-actions button { width: 100%; padding: 10px; border-radius: 8px; border: none; font-weight: 700; cursor: pointer; font-size: 14px; }
-  .empty { text-align: center; padding: 40px; color: var(--text3); font-size: 14px; }
+  body { background: var(--bg); display: flex; flex-direction: column; min-height: 100vh; }
+
+  .top {
+    padding: 12px 18px; background: #fff; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .top h1 { font-size: 20px; font-weight: 800; }
+  .top-stats { display: flex; gap: 14px; font-size: 12px; color: var(--text2); }
+  .top-stats .chip { background: var(--bg); padding: 4px 10px; border-radius: 100px; }
+  .top-stats .chip strong { color: var(--primary); }
+
+  /* Three-column layout */
+  .layout {
+    flex: 1; display: grid;
+    grid-template-columns: 280px 1fr 300px;
+    gap: 0; min-height: 0;
+  }
+  @media (max-width: 1100px) {
+    .layout { grid-template-columns: 240px 1fr 260px; }
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+
+  /* Left column: incoming + pending payment */
+  .left-pane {
+    background: #fff; border-right: 1px solid var(--border);
+    padding: 14px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .section-label {
+    font-size: 10px; font-weight: 700; color: var(--text3);
+    letter-spacing: 2px; text-transform: uppercase;
+    padding-bottom: 6px; border-bottom: 2px solid var(--border);
+    margin-bottom: 8px;
+  }
+  .section-label.warn { color: var(--warn); border-bottom-color: var(--warn); }
+  .section-label.cafe { color: var(--cafe); border-bottom-color: var(--cafe); }
+
+  .compact-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px; margin-bottom: 6px;
+    background: #fff; border: 1px solid var(--border); border-radius: 8px;
+    font-size: 12px; gap: 8px;
+  }
+  .compact-row.pending-pay { background: #fef3c7; border-color: #fbbf24; }
+  .compact-row .num { font-weight: 800; color: var(--primary); font-size: 14px; }
+  .compact-row.pending-pay .num { color: #c2410c; }
+  .compact-row .name { flex: 1; font-size: 11px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .compact-row .amt { font-weight: 700; font-size: 12px; color: var(--success); }
+  .compact-row .ready-btn {
+    padding: 4px 10px; font-size: 10px; font-weight: 700;
+    background: var(--primary); color: #fff; border: none; border-radius: 6px;
+    cursor: pointer;
+  }
+  .compact-row .items-preview {
+    font-size: 10px; color: var(--text3);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  .empty { color: var(--text3); font-size: 12px; text-align: center; padding: 16px 8px; }
+
+  /* Middle: ready grid (main focus) */
+  .ready-pane { padding: 16px; overflow-y: auto; }
+  .ready-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 10px;
+  }
+  .ready-card {
+    background: var(--success-soft); border: 2px solid var(--success);
+    border-radius: 12px; padding: 12px;
+    text-align: center;
+    animation: popIn 0.3s ease;
+  }
+  @keyframes popIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+  .ready-card .num {
+    font-size: 32px; font-weight: 800; color: var(--success);
+    letter-spacing: 2px; line-height: 1;
+  }
+  .ready-card .meta {
+    font-size: 10px; color: var(--text3); margin-top: 4px;
+  }
+  .ready-card .name {
+    font-size: 11px; color: var(--text); margin-top: 4px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .ready-card .items {
+    font-size: 10px; color: var(--text2); margin-top: 4px;
+    line-height: 1.3;
+  }
+  .ready-card.scheduled { border-color: var(--cafe); background: #fef3c7; }
+  .ready-card.scheduled .num { color: var(--cafe); }
+
+  /* Right: camera scanner */
+  .scanner-pane {
+    background: #fff; border-left: 1px solid var(--border);
+    padding: 14px;
+    display: flex; flex-direction: column;
+  }
+  .camera-frame {
+    width: 100%; aspect-ratio: 1; border-radius: 14px;
+    background: #000; overflow: hidden; position: relative;
+    border: 2px solid var(--primary);
+  }
+  .camera-frame video {
+    width: 100%; height: 100%; object-fit: cover;
+  }
+  .scan-line {
+    position: absolute; left: 8%; right: 8%; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: scanline 2s linear infinite; top: 10%;
+    box-shadow: 0 0 8px var(--accent);
+  }
+  @keyframes scanline { 0% { top: 10%; } 100% { top: 90%; } }
+  .camera-status {
+    margin-top: 10px; text-align: center; font-size: 12px;
+    color: var(--success); font-weight: 600; min-height: 18px;
+  }
+  .camera-status.err { color: var(--danger); }
+  .scanner-legend {
+    margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border);
+    font-size: 10px; color: var(--text3); line-height: 1.7;
+  }
+  .scanner-legend strong { display: block; font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+
+  /* Scan popup (shared) */
   .scan-popup { position: fixed; inset: 0; background: rgba(15,39,70,0.55); display: none; align-items: center; justify-content: center; z-index: 100; }
   .scan-popup.active { display: flex; }
-  .scan-modal { background: #fff; border-radius: 16px; padding: 28px; max-width: 420px; width: 90%; text-align: center; }
-  .scan-modal .emoji { font-size: 54px; }
-  .scan-modal h2 { font-size: 20px; font-weight: 800; margin: 10px 0; }
+  .scan-modal {
+    background: #fff; border-radius: 16px; padding: 28px;
+    max-width: 460px; width: 90%; text-align: center;
+    animation: fadeIn 0.2s ease;
+  }
+  .scan-modal.valid { border-top: 8px solid var(--success); }
+  .scan-modal.payment_pending { border-top: 8px solid var(--warn); }
+  .scan-modal.wrong_counter { border-top: 8px solid var(--warn); }
+  .scan-modal.duplicate { border-top: 8px solid var(--danger); }
+  .scan-modal.invalid { border-top: 8px solid var(--danger); }
+  .scan-modal.not_ready { border-top: 8px solid var(--primary); }
+  .scan-modal .emoji { font-size: 54px; margin-bottom: 10px; }
+  .scan-modal h2 { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+  .scan-modal p { color: var(--text2); margin-bottom: 10px; }
+  .scan-modal .big-num {
+    font-size: 36px; font-weight: 800; color: var(--primary);
+    letter-spacing: 3px; margin: 10px 0;
+  }
+  .scan-modal .amount-due {
+    background: #d5f5e8; color: var(--success);
+    font-size: 24px; font-weight: 800; padding: 12px; border-radius: 10px;
+    margin: 14px 0;
+  }
+  .scan-modal ul {
+    text-align: left; padding-left: 18px; margin: 10px 0;
+    font-size: 14px;
+  }
+  .scan-modal ul li { padding: 2px 0; }
+  .scan-modal .actions { display: flex; gap: 8px; margin-top: 14px; }
+  .scan-modal .actions button {
+    flex: 1; padding: 12px; font-weight: 700; border-radius: 8px; cursor: pointer; border: none; font-size: 14px;
+  }
 </style>
 {% endblock %}
 {% block content %}
 <div class="top">
-  <h1>☕ Cafe Bar Counter</h1>
-  <div class="text-sm text-muted">{{ pending_payment|length }} awaiting payment · {{ incoming|length }} preparing · {{ ready|length }} ready</div>
-</div>
-<div class="scan-hint">📷 Camera scanner active — scan customer's QR to validate, process payment, or mark collected
-  <input type="text" id="scanInput" style="position:absolute;left:-9999px" autofocus>
+  <div>
+    <h1>☕ Cafe Bar Counter</h1>
+    <div class="top-stats">
+      <span class="chip"><strong>{{ pending_payment|length }}</strong> awaiting payment</span>
+      <span class="chip"><strong>{{ incoming|length }}</strong> preparing</span>
+      <span class="chip"><strong>{{ ready|length }}</strong> ready</span>
+    </div>
+  </div>
+  <div class="text-sm text-muted">{{ user.display_name }}</div>
 </div>
 
-<!-- Pending payment (public terminal flow) -->
-{% if pending_payment %}
-<div style="background:#fef3c7;padding:10px 16px;border-bottom:1px solid #fbbf24">
-  <div style="font-size:11px;font-weight:700;color:#c2410c;letter-spacing:2px;margin-bottom:6px">⚠ AWAITING PAYMENT ({{ pending_payment|length }})</div>
-  {% for order in pending_payment %}
-  <div style="background:#fff;border:1px solid #fbbf24;border-radius:8px;padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
+<div class="layout">
+  <!-- LEFT: Compact incoming + pending payment -->
+  <div class="left-pane">
+    {% if pending_payment %}
     <div>
-      <strong style="color:#c2410c">{{ order.order_number }}</strong> · {{ order.public_name }} ·
-      <strong>S${{ order.subtotal|floatformat:2 }}</strong>
-      <div style="font-size:11px;color:var(--text3)">{{ order.created_at|time:"H:i" }}</div>
+      <div class="section-label warn">⚠ Awaiting Payment ({{ pending_payment|length }})</div>
+      {% for order in pending_payment %}
+      <div class="compact-row pending-pay">
+        <span class="num">{{ order.order_number }}</span>
+        <span class="name">{{ order.public_name }}</span>
+        <span class="amt">S${{ order.subtotal|floatformat:2 }}</span>
+      </div>
+      {% endfor %}
     </div>
-    <div style="font-size:11px;color:var(--text3)">Scan customer's payment QR</div>
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
+    {% endif %}
 
-<div class="split">
-  <div class="pane left">
-    <div class="pane-title">⏳ Incoming Orders ({{ incoming|length }})</div>
-    {% for order in incoming %}
-    <div class="order-card">
-      <div class="oc-head">
-        <div class="oc-num">{{ order.order_number }}</div>
-        <div class="oc-time">
-          {% if order.collection_time_minutes > 0 %}+{{ order.collection_time_minutes }} min{% else %}NOW{% endif %}
-          · {{ order.created_at|time:"H:i" }}
+    <div>
+      <div class="section-label">⏳ Preparing ({{ incoming|length }})</div>
+      {% for order in incoming %}
+      <div class="compact-row">
+        <div style="flex:1;min-width:0">
+          <div><span class="num">{{ order.order_number }}</span> {% if order.collection_time_minutes %}<span style="color:var(--cafe);font-size:10px;font-weight:700">+{{ order.collection_time_minutes }}m</span>{% endif %}</div>
+          <div class="items-preview">
+            {% for item in order.counter_items %}{{ item.quantity }}×{{ item.name_snapshot }}{% if not forloop.last %}, {% endif %}{% endfor %}
+          </div>
         </div>
+        <button class="ready-btn" onclick="markReady({{ order.id }})">Ready</button>
       </div>
-      <div class="text-sm text-muted">{{ order.customer.display_name|default:order.public_name }}</div>
-      <ul class="oc-items">
-        {% for item in order.counter_items %}
-        <li><strong>{{ item.quantity }}×</strong> {{ item.name_snapshot }}
-          {% if item.customizations %}<div class="cust">{% for k, v in item.customizations.items %}{{ k }}: {{ v }}{% if not forloop.last %} · {% endif %}{% endfor %}</div>{% endif %}
-        </li>
-        {% endfor %}
-        {% if order.is_mixed %}<li style="font-size:11px;color:var(--text3);font-style:italic;padding-top:4px;border-top:1px dashed var(--border)">🔀 Other items collected from Kitchen counter</li>{% endif %}
-      </ul>
-      <div class="oc-actions">
-        <button style="background:var(--success);color:#fff" onclick="markReady({{ order.id }})">Ready →</button>
-      </div>
+      {% empty %}<div class="empty">No orders</div>{% endfor %}
     </div>
-    {% empty %}<div class="empty">No orders</div>{% endfor %}
   </div>
 
-  <div class="pane right">
-    <div class="pane-title">✅ Ready for Collection ({{ ready|length }})</div>
-    {% for order in ready %}
-    <div class="order-card ready">
-      <div class="oc-head">
-        <div class="oc-num ready">{{ order.order_number }}</div>
-        <div class="oc-time">Ready {{ order.ready_at|time:"H:i" }}</div>
+  <!-- MIDDLE: Ready for collection (large) -->
+  <div class="ready-pane">
+    <div class="section-label" style="border-bottom-color:var(--success);color:var(--success);font-size:12px">✅ Ready for Collection ({{ ready|length }}) — scan customer QR on the right →</div>
+    {% if ready %}
+    <div class="ready-grid">
+      {% for order in ready %}
+      <div class="ready-card {% if order.collection_time_minutes %}scheduled{% endif %}">
+        <div class="num">{{ order.order_number }}</div>
+        <div class="meta">{{ order.ready_at|time:"H:i" }}{% if order.collection_time_minutes %} · +{{ order.collection_time_minutes }}m{% endif %}</div>
+        <div class="name">{{ order.customer.display_name|default:order.public_name }}</div>
+        <div class="items">{% for item in order.counter_items %}{{ item.quantity }}× {{ item.name_snapshot }}{% if not forloop.last %}<br>{% endif %}{% endfor %}</div>
+        {% if order.is_mixed %}<div style="margin-top:4px;font-size:9px;color:var(--text3)">🔀 Kitchen has other items</div>{% endif %}
       </div>
-      <div class="text-sm text-muted">{{ order.customer.display_name|default:order.public_name }}</div>
+      {% endfor %}
     </div>
-    {% empty %}<div class="empty">Nothing ready</div>{% endfor %}
+    {% else %}
+    <div class="empty" style="padding:40px 20px;font-size:14px">Nothing ready yet</div>
+    {% endif %}
+  </div>
+
+  <!-- RIGHT: Live camera scanner -->
+  <div class="scanner-pane">
+    <div class="section-label">📷 Camera Scanner</div>
+    <div class="camera-frame">
+      <video id="cam" autoplay playsinline muted></video>
+      <div class="scan-line"></div>
+    </div>
+    <div class="camera-status" id="camStatus">Initialising camera…</div>
+
+    <div class="scanner-legend">
+      <strong>Scans 2 types of QR:</strong>
+      ✅ <span style="color:var(--success)">Collection QR</span> — mark items collected<br>
+      💳 <span style="color:var(--warn)">Payment QR</span> — take cash/card, print collection slip
+      <hr style="border:none;border-top:1px dashed var(--border);margin:10px 0">
+      <strong>Results:</strong>
+      ⚠️ Wrong counter · 🚫 Duplicate · ⏳ Not ready · ❌ Invalid
+    </div>
   </div>
 </div>
 
 <!-- Scan popup -->
 <div class="scan-popup" id="scanPopup"><div class="scan-modal" id="scanModal"><div id="scanBody"></div></div></div>
 
+<!-- jsQR library for camera decoding -->
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script>
 const CSRF = '{{ csrf_token }}';
 function getCSRF() { const m = document.cookie.match(/csrftoken=([^;]+)/); return m ? m[1] : CSRF; }
@@ -109,6 +262,7 @@ async function markReady(id) {
   await fetch(`/cafeteria/api/kitchen/mark-ready/${id}/`, { method: 'POST', headers: { 'X-CSRFToken': getCSRF() } });
   location.reload();
 }
+
 async function markCollected(id) {
   await fetch(`/cafeteria/api/kitchen/mark-collected/${id}/`, {
     method: 'POST',
@@ -120,62 +274,159 @@ async function markCollected(id) {
 
 async function completePayment(orderId) {
   const resp = await fetch(`/cafeteria/api/cafe-bar/complete-payment/${orderId}/`, {
-    method: 'POST',
-    headers: { 'X-CSRFToken': getCSRF() },
+    method: 'POST', headers: { 'X-CSRFToken': getCSRF() },
   });
   const data = await resp.json();
   if (data.success) {
-    // Open the collection receipt in a new window for printing.
-    const w = window.open(data.collection_receipt_url + '?autoprint=1', '_blank');
+    // Open collection receipt in new window with autoprint=1 —
+    // customer gets the collection QR slip from the thermal printer.
+    window.open(data.collection_receipt_url + '?autoprint=1', '_blank');
     closePopup();
-    setTimeout(() => location.reload(), 400);
+    setTimeout(() => location.reload(), 500);
   } else {
     alert(data.message || 'Error');
   }
 }
-function closePopup() { document.getElementById('scanPopup').classList.remove('active'); document.getElementById('scanInput').focus(); }
 
-let scanBuffer = '', scanTimer = null;
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { if (scanBuffer.length > 10) processScan(scanBuffer); scanBuffer = ''; return; }
-  if (e.key.length === 1) scanBuffer += e.key;
-  clearTimeout(scanTimer); scanTimer = setTimeout(() => { scanBuffer = ''; }, 200);
-});
+function closePopup() {
+  document.getElementById('scanPopup').classList.remove('active');
+  setTimeout(() => { cooldown = false; }, 1500);
+}
+
+// ── Live camera QR scanner ─────────────────────────────────
+const video = document.getElementById('cam');
+const camStatus = document.getElementById('camStatus');
+let scanning = false;
+let cooldown = false;
+let lastScannedToken = '';
+let lastScanTime = 0;
+
+const canvas = document.createElement('canvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+async function initCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
+    });
+    video.srcObject = stream;
+    await new Promise(r => { if (video.readyState >= 1) return r(); video.onloadedmetadata = r; });
+    camStatus.textContent = '● Ready — scan customer QR';
+    scanning = true;
+    requestAnimationFrame(scanLoop);
+  } catch (e) {
+    camStatus.className = 'camera-status err';
+    camStatus.textContent = '⚠ Camera unavailable: ' + (e.message || 'denied');
+  }
+}
+
+function scanLoop() {
+  if (!scanning) return;
+  if (cooldown) { requestAnimationFrame(scanLoop); return; }
+
+  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+    if (code && code.data) {
+      const now = Date.now();
+      if (code.data !== lastScannedToken || now - lastScanTime > 3000) {
+        lastScannedToken = code.data;
+        lastScanTime = now;
+        cooldown = true;
+        processScan(code.data);
+      }
+    }
+  }
+  requestAnimationFrame(scanLoop);
+}
 
 async function processScan(token) {
-  const resp = await fetch('/cafeteria/api/scan-qr/', {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
-    body: JSON.stringify({ token, scanner_counter: 'cafe_bar' }),
-  });
-  const data = await resp.json();
+  try {
+    const resp = await fetch('/cafeteria/api/scan-qr/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+      body: JSON.stringify({ token, scanner_counter: 'cafe_bar' }),
+    });
+    const data = await resp.json();
+    showPopup(data);
+  } catch (e) {
+    showPopup({ result: 'invalid', message: 'Network error' });
+  }
+}
+
+function showPopup(data) {
+  const modal = document.getElementById('scanModal');
+  modal.className = 'scan-modal ' + (data.result || 'invalid');
   let html = '';
+
   if (data.result === 'payment_pending') {
     html = `<div class="emoji">💳</div>
       <h2 style="color:var(--warn)">Process Payment</h2>
-      <div style="font-size:32px;font-weight:800;color:var(--primary);margin:10px 0">${data.order_number}</div>
-      <div>${data.customer_name || 'Walk-in'}</div>
-      <ul style="text-align:left;margin:10px 0;padding-left:16px">${data.items.map(i => '<li>' + i.quantity + '× ' + i.name + ' — S$' + i.subtotal + '</li>').join('')}</ul>
-      <div style="font-size:26px;font-weight:800;color:var(--success);margin:14px 0">Amount Due: S$${parseFloat(data.amount_due).toFixed(2)}</div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-secondary" style="flex:1" onclick="closePopup()">Cancel</button>
-        <button class="btn btn-success" style="flex:2" onclick="completePayment(${data.order_id})">Received Payment — Print Collection QR</button>
+      <div class="big-num">${data.order_number}</div>
+      <div style="color:var(--text2)">${data.customer_name || 'Walk-in'}</div>
+      <ul>${data.items.map(i => '<li>' + i.quantity + '× ' + i.name + ' — S$' + i.subtotal + '</li>').join('')}</ul>
+      <div class="amount-due">Amount Due: S$${parseFloat(data.amount_due).toFixed(2)}</div>
+      <div style="font-size:11px;color:var(--text3)">Take cash/card payment, then tap below to print collection QR.</div>
+      <div class="actions">
+        <button style="background:#fff;border:1px solid var(--border);color:var(--text2)" onclick="closePopup()">Cancel</button>
+        <button style="background:var(--success);color:#fff;flex:2" onclick="completePayment(${data.order_id})">✓ Received — Print Collection QR</button>
       </div>`;
   } else if (data.result === 'valid') {
-    html = `<div class="emoji">✅</div><h2 style="color:var(--success)">Valid</h2>
-      <div style="font-size:32px;font-weight:800;color:var(--primary);margin:10px 0">${data.order_number}</div>
-      <div>${data.customer_name || ''}</div>
-      <ul style="text-align:left;margin:10px 0;padding-left:16px">${data.items.map(i => '<li>' + i.quantity + '× ' + i.name + '</li>').join('')}</ul>
-      ${data.is_mixed ? '<div style="font-size:11px;color:var(--text3);font-style:italic">🔀 Mixed order — other items at Kitchen counter</div>' : ''}
-      <button class="btn btn-success" style="width:100%;margin-top:10px" onclick="markCollected(${data.order_id})">Mark Collected</button>`;
+    html = `<div class="emoji">✅</div>
+      <h2 style="color:var(--success)">Valid — Confirm Collection</h2>
+      <div class="big-num">${data.order_number}</div>
+      <div style="color:var(--text2)">${data.customer_name || ''}</div>
+      <ul>${data.items.map(i => '<li>' + i.quantity + '× ' + i.name + '</li>').join('')}</ul>
+      ${data.is_mixed ? '<div style="font-size:11px;color:var(--text3);font-style:italic">🔀 Other items at Kitchen counter</div>' : ''}
+      <div class="actions">
+        <button style="background:#fff;border:1px solid var(--border);color:var(--text2)" onclick="closePopup()">Cancel</button>
+        <button style="background:var(--success);color:#fff" onclick="markCollected(${data.order_id})">Mark Collected</button>
+      </div>`;
+  } else if (data.result === 'wrong_counter') {
+    html = `<div class="emoji">⚠️</div>
+      <h2 style="color:var(--warn)">Wrong Counter</h2>
+      <p>Order <strong>${data.order_number || ''}</strong> is for <strong>${data.correct_counter}</strong>.</p>
+      <button class="btn" style="background:var(--warn);color:#000;width:100%;padding:12px;border-radius:8px;border:none;font-weight:700;cursor:pointer" onclick="closePopup()">Got It</button>`;
+  } else if (data.result === 'duplicate') {
+    html = `<div class="emoji">🚫</div>
+      <h2 style="color:var(--danger)">Duplicate</h2>
+      <p>Order <strong>${data.order_number}</strong> already used${data.original_collected_at ? ' at ' + data.original_collected_at : ''}.</p>
+      <button style="background:var(--danger);color:#fff;width:100%;padding:12px;border-radius:8px;border:none;font-weight:700;cursor:pointer" onclick="closePopup()">Close</button>`;
+  } else if (data.result === 'not_ready') {
+    html = `<div class="emoji">⏳</div>
+      <h2 style="color:var(--primary)">Not Ready Yet</h2>
+      <p>Order <strong>${data.order_number}</strong>: ${data.current_status}</p>
+      <button style="background:var(--primary);color:#fff;width:100%;padding:12px;border-radius:8px;border:none;font-weight:700;cursor:pointer" onclick="closePopup()">OK</button>`;
   } else {
-    html = `<div class="emoji">${data.result === 'wrong_counter' ? '⚠️' : data.result === 'duplicate' ? '🚫' : data.result === 'not_ready' ? '⏳' : '❌'}</div>
-      <h2>${data.message || 'Invalid'}</h2>
-      <button class="btn btn-secondary" style="width:100%" onclick="closePopup()">Close</button>`;
+    html = `<div class="emoji">❌</div>
+      <h2 style="color:var(--danger)">Invalid QR</h2>
+      <p>${data.message || 'Not recognised.'}</p>
+      <button style="background:var(--danger);color:#fff;width:100%;padding:12px;border-radius:8px;border:none;font-weight:700;cursor:pointer" onclick="closePopup()">Close</button>`;
   }
   document.getElementById('scanBody').innerHTML = html;
   document.getElementById('scanPopup').classList.add('active');
 }
-setInterval(() => { if (!document.getElementById('scanPopup').classList.contains('active')) document.getElementById('scanInput').focus(); }, 1000);
-setInterval(() => location.reload(), 30000);
+
+initCamera();
+
+// Auto-refresh + WebSocket push for real-time.
+setInterval(() => {
+  if (!document.getElementById('scanPopup').classList.contains('active')) location.reload();
+}, 30000);
+
+function connectWS() {
+  try {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${proto}//${location.host}/ws/cafeteria/kitchen/cafe_bar/`);
+    ws.onmessage = () => {
+      if (!document.getElementById('scanPopup').classList.contains('active')) location.reload();
+    };
+    ws.onclose = () => setTimeout(connectWS, 3000);
+  } catch (e) {}
+}
+connectWS();
 </script>
 {% endblock %}
