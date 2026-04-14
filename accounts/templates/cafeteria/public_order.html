@@ -169,5 +169,14 @@ async function checkout() {
     alert(data.message); btn.disabled = false; btn.textContent = 'Pay & Get QR →';
   }
 }
+
+// Idle auto-return to kiosk main page after N seconds of inactivity.
+(function(){
+  const IDLE_MS = {{ idle_timeout|default:30 }} * 1000;
+  let t;
+  function reset() { clearTimeout(t); t = setTimeout(() => { window.location.replace('/cafeteria/kiosk/'); }, IDLE_MS); }
+  ['touchstart','mousedown','keydown','scroll','pointerdown'].forEach(ev => document.addEventListener(ev, reset, { passive: true }));
+  reset();
+})();
 </script>
 {% endblock %}

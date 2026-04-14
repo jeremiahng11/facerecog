@@ -268,7 +268,9 @@ def kiosk_staff_login_view(request):
     """
     if request.user.is_authenticated and not request.user.is_anonymous:
         return redirect('cafeteria_menu_select')
-    return render(request, 'cafeteria/kiosk_staff_login.html')
+    return render(request, 'cafeteria/kiosk_staff_login.html', {
+        'idle_timeout': getattr(settings, 'STAFF_IDLE_TIMEOUT_SECONDS', 30),
+    })
 
 
 @require_POST
@@ -309,6 +311,7 @@ def kiosk_menu_select_view(request):
         'cafe_bar_open': cafe_bar_open,
         'kitchen_hours': OrderingHours.objects.filter(menu_type='kitchen', is_active=True),
         'cafe_bar_hours': OrderingHours.objects.filter(menu_type='cafe_bar', is_active=True),
+        'idle_timeout': getattr(settings, 'STAFF_IDLE_TIMEOUT_SECONDS', 30),
     }
     return render(request, 'cafeteria/kiosk_menu_select.html', context)
 
@@ -338,6 +341,7 @@ def kiosk_menu_view(request, menu_type):
         'menu_type': menu_type,
         'items_by_type': items_by_type,
         'cart': cart,
+        'idle_timeout': getattr(settings, 'STAFF_IDLE_TIMEOUT_SECONDS', 30),
     })
 
 
@@ -1222,6 +1226,7 @@ def public_order_view(request, menu_type):
     return render(request, 'cafeteria/public_order.html', {
         'menu_type': menu_type,
         'items_by_type': items_by_type,
+        'idle_timeout': getattr(settings, 'STAFF_IDLE_TIMEOUT_SECONDS', 30),
     })
 
 

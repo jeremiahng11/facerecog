@@ -382,8 +382,21 @@ function logout() {
   f.method = 'POST'; f.action = '/logout/';
   const t = document.createElement('input');
   t.type = 'hidden'; t.name = 'csrfmiddlewaretoken'; t.value = getCSRF();
-  f.appendChild(t); document.body.appendChild(f); f.submit();
+  f.appendChild(t);
+  const n = document.createElement('input');
+  n.type = 'hidden'; n.name = 'next'; n.value = '/cafeteria/kiosk/';
+  f.appendChild(n);
+  document.body.appendChild(f); f.submit();
 }
+
+// Idle auto-logout → kiosk main page after N seconds of inactivity.
+(function(){
+  const IDLE_MS = {{ idle_timeout|default:30 }} * 1000;
+  let t;
+  function reset() { clearTimeout(t); t = setTimeout(logout, IDLE_MS); }
+  ['touchstart','mousedown','keydown','scroll','pointerdown'].forEach(ev => document.addEventListener(ev, reset, { passive: true }));
+  reset();
+})();
 
 renderCart();
 </script>
