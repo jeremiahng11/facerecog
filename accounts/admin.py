@@ -19,7 +19,7 @@ class StaffUserAdmin(UserAdmin):
         ('Personal', {'fields': ('full_name', 'email', 'department', 'profile_picture')}),
         ('Role & Credits', {'fields': ('role', 'monthly_credit', 'credit_balance', 'kiosk_pin')}),
         ('Face Recognition', {'fields': ('face_photo', 'face_encoding', 'face_registered', 'face_enabled', 'last_face_login')}),
-        ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
+        ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'is_root', 'groups', 'user_permissions')}),
         ('Dates', {'fields': ('date_joined', 'last_login')}),
     )
     add_fieldsets = (
@@ -29,6 +29,25 @@ class StaffUserAdmin(UserAdmin):
         }),
     )
     readonly_fields = ['last_face_login', 'face_photo']
+
+    def get_queryset(self, request):
+        """Hide root users from non-root admins in Django's /admin/."""
+        qs = super().get_queryset(request)
+        if not getattr(request.user, 'is_root', False):
+            qs = qs.exclude(is_root=True)
+        return qs
+
+    def has_change_permission(self, request, obj=None):
+        """Non-root admins cannot edit root users."""
+        if obj is not None and obj.is_root and not getattr(request.user, 'is_root', False):
+            return False
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        """Non-root admins cannot delete root users."""
+        if obj is not None and obj.is_root and not getattr(request.user, 'is_root', False):
+            return False
+        return super().has_delete_permission(request, obj)
 
 
 @admin.register(FaceLoginLog)
@@ -80,6 +99,12 @@ class CreditTransactionAdmin(admin.ModelAdmin):
     list_filter = ['type']
     search_fields = ['user__staff_id']
     readonly_fields = ['user', 'type', 'amount', 'balance_after', 'related_order', 'notes', 'created_at']
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if not getattr(request.user, 'is_root', False):
+            qs = qs.exclude(user__is_root=True)
+        return qs
 
 
 @admin.register(QRScanLog)

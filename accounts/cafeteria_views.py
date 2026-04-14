@@ -66,6 +66,14 @@ def is_admin(user):
     return user.is_authenticated and (user.is_staff or user.is_superuser or getattr(user, 'role', '') == 'admin')
 
 
+def visible_staff_qs(viewer):
+    """Return StaffUser queryset hiding root accounts from non-root viewers."""
+    qs = StaffUser.objects.all()
+    if not getattr(viewer, 'is_root', False):
+        qs = qs.exclude(is_root=True)
+    return qs
+
+
 def is_kitchen_user(user):
     """Can access kitchen counter views (halal, non_halal)."""
     return user.is_authenticated and (is_admin(user) or getattr(user, 'role', '') == 'kitchen')
@@ -1381,7 +1389,7 @@ def cafeteria_refunds_view(request):
 @user_passes_test(is_admin)
 def cafeteria_staff_view(request):
     """Staff management with card layout + credit progress."""
-    staff = StaffUser.objects.filter(is_active=True).order_by('staff_id')
+    staff = visible_staff_qs(request.user).filter(is_active=True).order_by('staff_id')
     return render(request, 'cafeteria/admin_staff.html', {'staff': staff})
 
 
@@ -1391,6 +1399,9 @@ def cafeteria_staff_view(request):
 def cafeteria_staff_adjust_credit_ajax(request, user_id):
     """Admin: adjust a staff member's credit balance."""
     user = get_object_or_404(StaffUser, pk=user_id)
+    # Non-root admins cannot touch root users (pretend doesn't exist).
+    if user.is_root and not getattr(request.user, 'is_root', False):
+        raise Http404()
     try:
         amount = Decimal(request.POST.get('amount', '0'))
         notes = request.POST.get('notes', 'Admin adjustment')
@@ -1513,7 +1524,8 @@ def cafeteria_credits_bulk_view(request):
             apply_now = request.POST.get('apply_now') == 'on'
 
             with transaction.atomic():
-                users = StaffUser.objects.filter(is_active=True)
+                # Exclude root — bulk updates should never touch root accounts.
+                users = StaffUser.objects.filter(is_active=True, is_root=False)
                 updated = 0
                 for u in users:
                     old_allowance = u.monthly_credit
@@ -1546,8 +1558,8 @@ def cafeteria_credits_bulk_view(request):
         except Exception as e:
             messages.error(request, f'Error: {e}')
 
-    # Show current state.
-    staff = StaffUser.objects.filter(is_active=True).order_by('staff_id')
+    # Show current state (hide root).
+    staff = visible_staff_qs(request.user).filter(is_active=True).order_by('staff_id')
     distinct_allowances = staff.values_list('monthly_credit', flat=True).distinct()
     return render(request, 'cafeteria/admin_credits_bulk.html', {
         'staff': staff,
@@ -1565,9 +1577,14 @@ def cafeteria_credit_history_view(request, user_id=None):
     transactions. Otherwise shows the full system-wide ledger.
     """
     qs = CreditTransaction.objects.select_related('user', 'related_order').order_by('-created_at')
+    # Hide root users' transactions from non-root admins.
+    if not getattr(request.user, 'is_root', False):
+        qs = qs.exclude(user__is_root=True)
     target_user = None
     if user_id:
         target_user = get_object_or_404(StaffUser, pk=user_id)
+        if target_user.is_root and not getattr(request.user, 'is_root', False):
+            raise Http404()
         qs = qs.filter(user=target_user)
     from django.core.paginator import Paginator
     paginator = Paginator(qs, 100)
@@ -1584,6 +1601,9 @@ def cafeteria_credit_history_view(request, user_id=None):
 def cafeteria_staff_role_ajax(request, user_id):
     """Admin: set a staff member's workstation role."""
     user = get_object_or_404(StaffUser, pk=user_id)
+    # Block non-root admins from modifying root accounts.
+    if user.is_root and not getattr(request.user, 'is_root', False):
+        raise Http404()
     new_role = request.POST.get('role', '')
     if new_role not in ('', 'kitchen', 'cafe_bar', 'admin'):
         return JsonResponse({'success': False, 'message': 'Invalid role'})

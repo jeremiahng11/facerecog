@@ -579,6 +579,9 @@ def password_reset_view(request):
 @user_passes_test(is_admin)
 def admin_users_view(request):
     users = StaffUser.objects.all().order_by('-date_joined')
+    # Hide root users from anyone who isn't themselves a root user.
+    if not getattr(request.user, 'is_root', False):
+        users = users.filter(is_root=False)
     return render(request, 'accounts/admin_users.html', {'users': users})
 
 
@@ -601,6 +604,9 @@ def admin_add_user_view(request):
 @user_passes_test(is_admin)
 def admin_edit_user_view(request, user_id):
     target_user = get_object_or_404(StaffUser, pk=user_id)
+    # Non-root admins cannot edit root users — pretend they don't exist.
+    if target_user.is_root and not getattr(request.user, 'is_root', False):
+        raise Http404()
     if request.method == 'POST':
         form = StaffUserEditForm(request.POST, request.FILES, instance=target_user)
         if form.is_valid():
@@ -620,6 +626,9 @@ def admin_edit_user_view(request, user_id):
 @user_passes_test(is_admin)
 def admin_delete_user_view(request, user_id):
     target_user = get_object_or_404(StaffUser, pk=user_id)
+    # Non-root admins cannot see or delete root users.
+    if target_user.is_root and not getattr(request.user, 'is_root', False):
+        raise Http404()
     if request.method == 'POST':
         _log_admin_action(request.user, 'delete', target_user)
         name = target_user.staff_id
