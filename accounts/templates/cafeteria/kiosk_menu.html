@@ -1,0 +1,370 @@
+{% extends 'cafeteria/_base_cafeteria.html' %}
+{% block title %}Menu — Cafeteria{% endblock %}
+{% block extra_head %}
+<style>
+  body { display: flex; flex-direction: column; min-height: 100vh; }
+  .top-nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 24px; background: #fff; border-bottom: 1px solid var(--border);
+  }
+  .user-box { display: flex; align-items: center; gap: 10px; }
+  .user-box .av { width: 36px; height: 36px; border-radius: 50%; background: var(--primary); color: #fff; font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+  .user-box .name { font-size: 14px; font-weight: 600; }
+  .user-box .meta { font-size: 11px; color: var(--text3); }
+  .credit-chip {
+    background: var(--primary-light); border-radius: 100px;
+    padding: 6px 14px; font-size: 13px;
+    color: var(--primary); font-weight: 700;
+  }
+  .credit-chip .lbl { font-size: 10px; letter-spacing: 2px; color: var(--text3); display:block; }
+
+  .tabs {
+    display: flex; background: #fff; border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    flex: 1; padding: 14px; text-align: center; font-weight: 600;
+    color: var(--text2); cursor: pointer; border-bottom: 3px solid transparent;
+  }
+  .tab.active { color: var(--success); border-bottom-color: var(--success); }
+  .tab.non-halal.active { color: var(--non-halal); border-bottom-color: var(--non-halal); }
+
+  .main {
+    flex: 1; display: grid; grid-template-columns: 1fr 340px;
+    gap: 0;
+  }
+  @media (max-width: 900px) { .main { grid-template-columns: 1fr; } }
+  .items-pane { padding: 20px; overflow-y: auto; }
+  .cart-pane {
+    background: #fff; border-left: 1px solid var(--border);
+    padding: 20px; display: flex; flex-direction: column; min-height: 100%;
+  }
+
+  .section-title {
+    font-size: 11px; letter-spacing: 2px; color: var(--text3);
+    font-weight: 700; text-transform: uppercase; margin-bottom: 14px;
+  }
+
+  .items-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+  }
+  .item-card {
+    background: #fff; border: 1px solid var(--border); border-radius: 14px;
+    overflow: hidden; position: relative;
+    transition: box-shadow 0.15s;
+  }
+  .item-card:hover { box-shadow: var(--shadow-lg); }
+  .item-card .image {
+    height: 100px; background: #fef6e7;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 42px;
+    background-size: cover; background-position: center;
+  }
+  .item-card.non-halal .image { background: #e6f1fb; }
+  .item-card .badges {
+    position: absolute; top: 8px; left: 8px; display: flex; gap: 4px;
+  }
+  .item-card .stock-badge {
+    position: absolute; top: 8px; right: 8px;
+    background: #fff; border-radius: 4px; padding: 2px 6px;
+    font-size: 10px; color: var(--text2); font-weight: 600;
+  }
+  .item-card .body { padding: 12px; }
+  .item-card h4 { font-size: 14px; font-weight: 700; color: var(--text); }
+  .item-card .desc { font-size: 11px; color: var(--text3); margin: 4px 0 8px; min-height: 28px; }
+  .item-card .price-row { display: flex; justify-content: space-between; align-items: center; }
+  .item-card .price {
+    font-size: 16px; font-weight: 800; color: var(--primary);
+  }
+  .item-card .public-price {
+    font-size: 10px; color: var(--text3); text-decoration: line-through;
+  }
+  .add-btn {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: var(--success); color: #fff; border: none; cursor: pointer;
+    font-size: 18px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .add-btn.qty { background: var(--primary); }
+  .item-card.sold-out { opacity: 0.5; }
+  .item-card.sold-out .add-btn { background: #9ca3af; cursor: not-allowed; }
+
+  .cart-pane h3 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+  .cart-pane .sub { font-size: 12px; color: var(--text3); margin-bottom: 16px; }
+
+  .time-chips { display: flex; gap: 6px; margin-bottom: 14px; }
+  .time-chip {
+    flex: 1; padding: 8px; text-align: center; font-size: 13px;
+    border: 1.5px solid var(--border); border-radius: 8px;
+    cursor: pointer; background: #fff; font-weight: 600;
+  }
+  .time-chip.active { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+
+  .cart-items { flex: 1; overflow-y: auto; margin-bottom: 14px; }
+  .cart-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .cart-item .ci-img {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: var(--bg2); display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .cart-item .ci-body { flex: 1; }
+  .cart-item .ci-name { font-size: 13px; font-weight: 600; }
+  .cart-item .ci-each { font-size: 11px; color: var(--text3); }
+  .qty-ctrl { display: flex; align-items: center; gap: 4px; }
+  .qty-ctrl button {
+    width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border);
+    background: #fff; cursor: pointer; font-weight: 700; font-size: 14px;
+  }
+  .ci-line-total { font-weight: 700; color: var(--primary); font-size: 14px; min-width: 52px; text-align: right; }
+
+  .cart-summary {
+    border-top: 1.5px dashed var(--border);
+    padding-top: 14px;
+  }
+  .row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; color: var(--text2); }
+  .row.total {
+    font-size: 16px; font-weight: 800; color: var(--text);
+    border-top: 1px solid var(--border); padding-top: 10px; margin-top: 6px;
+  }
+  .row .credit-applied { color: var(--success); font-weight: 700; }
+  .checkout-btn {
+    width: 100%; padding: 14px; margin-top: 14px; font-size: 15px; font-weight: 700;
+    background: var(--primary); color: #fff; border: none; border-radius: 10px;
+    cursor: pointer;
+  }
+  .checkout-btn:disabled { background: #9ca3af; cursor: not-allowed; }
+  .cart-hint { font-size: 11px; color: var(--text3); text-align: center; margin-top: 8px; }
+
+  .empty-cart { color: var(--text3); text-align: center; padding: 30px 0; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="top-nav">
+  <div class="user-box">
+    <div class="av">{{ user.full_name|slice:":1"|upper }}{{ user.full_name|slice:"1:2"|upper }}</div>
+    <div>
+      <div class="name">{{ user.display_name }}</div>
+      <div class="meta">{{ user.staff_id }}</div>
+    </div>
+  </div>
+  <div class="credit-chip">
+    <span class="lbl">CREDITS</span>
+    S${{ user.credit_balance|floatformat:2 }}
+  </div>
+  <button class="btn btn-secondary" onclick="logout()" style="padding:6px 14px;font-size:13px">Logout</button>
+</div>
+
+{% if menu_type == 'kitchen' %}
+<div class="tabs">
+  <div class="tab active" data-tab="halal" onclick="switchTab('halal')">🟢 Halal Kitchen</div>
+  <div class="tab non-halal" data-tab="non_halal" onclick="switchTab('non_halal')">🔵 Non-Halal Kitchen</div>
+</div>
+{% endif %}
+
+<div class="main">
+  <div class="items-pane">
+    {% for type_key, items in items_by_type.items %}
+    <div class="tab-pane" data-pane="{{ type_key }}" {% if menu_type == 'kitchen' and type_key != 'halal' %}style="display:none"{% endif %}>
+      <div class="section-title">
+        {% if type_key == 'halal' %}Halal Items
+        {% elif type_key == 'non_halal' %}Non-Halal Items
+        {% else %}Cafe Bar{% endif %}
+      </div>
+      <div class="items-grid">
+        {% for item in items %}
+        <div class="item-card {% if type_key == 'non_halal' %}non-halal{% endif %} {% if item.is_sold_out %}sold-out{% endif %}" data-id="{{ item.id }}">
+          <div class="image" {% if item.photo %}style="background-image:url('{{ item.photo.url }}')"{% endif %}>
+            {% if not item.photo %}🍲{% endif %}
+          </div>
+          <div class="badges">
+            {% if item.menu_type == 'halal' %}<span class="badge badge-halal">HALAL</span>{% endif %}
+            {% if item.menu_type == 'non_halal' %}<span class="badge badge-nonhalal">NON-HALAL</span>{% endif %}
+            {% if item.menu_type == 'cafe_bar' %}<span class="badge badge-cafe">CAFE</span>{% endif %}
+          </div>
+          <div class="stock-badge">
+            {% if item.is_sold_out %}SOLD OUT
+            {% elif item.is_low_stock %}{{ item.quantity_remaining }} left
+            {% else %}{{ item.quantity_remaining }} avail{% endif %}
+          </div>
+          <div class="body">
+            <h4>{{ item.name }}</h4>
+            <div class="desc">{{ item.description|truncatechars:64 }}</div>
+            <div class="price-row">
+              <div>
+                <div class="price">S${{ item.staff_price }}</div>
+                <div class="public-price">S${{ item.public_price }}</div>
+              </div>
+              <button class="add-btn" data-id="{{ item.id }}" data-name="{{ item.name }}" data-price="{{ item.staff_price }}" data-stock="{{ item.quantity_remaining }}" {% if item.is_sold_out %}disabled{% endif %}>+</button>
+            </div>
+          </div>
+        </div>
+        {% empty %}
+        <div class="text-dim">No items available</div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="cart-pane">
+    <h3>🛒 Your Order</h3>
+    <div class="sub"><span id="cartTypeLabel">Kitchen Menu</span> · <span id="cartCount">0</span> items</div>
+    {% if menu_type == 'cafe_bar' %}
+    <div class="section-title">COLLECTION TIME</div>
+    <div class="time-chips">
+      <div class="time-chip active" data-time="0" onclick="setTime(0, this)">Now</div>
+      <div class="time-chip" data-time="10" onclick="setTime(10, this)">+10 min</div>
+      <div class="time-chip" data-time="20" onclick="setTime(20, this)">+20 min</div>
+    </div>
+    {% endif %}
+
+    <div class="cart-items" id="cartItems">
+      <div class="empty-cart">Your cart is empty</div>
+    </div>
+
+    <div class="cart-summary">
+      <div class="row"><span>Subtotal</span><span id="subtotal">S$0.00</span></div>
+      <div class="row"><span>Credits Applied</span><span class="credit-applied" id="creditsApplied">-S$0.00</span></div>
+      <div class="row total"><span>Balance Due</span><span id="balanceDue">S$0.00</span></div>
+      <button class="checkout-btn" id="checkoutBtn" disabled onclick="checkout()">Checkout &amp; Get QR →</button>
+      <div class="cart-hint">QR code to collect your meal<br>will be shown on screen to print</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CSRF = '{{ csrf_token }}';
+function getCSRF() {
+  const m = document.cookie.match(/csrftoken=([^;]+)/);
+  return m ? m[1] : CSRF;
+}
+
+const MENU_TYPE = '{{ menu_type }}';
+const CREDIT_BALANCE = parseFloat('{{ user.credit_balance|stringformat:".2f" }}');
+
+// Cart: map of id → {id, name, price, qty, menu_type}
+let cart = {};
+let collectionTime = 0;
+let currentTab = 'halal';
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.tab-pane').forEach(p => p.style.display = (p.dataset.pane === tab) ? '' : 'none');
+}
+
+function setTime(t, el) {
+  collectionTime = t;
+  document.querySelectorAll('.time-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function renderCart() {
+  const list = document.getElementById('cartItems');
+  const keys = Object.keys(cart);
+  if (!keys.length) {
+    list.innerHTML = '<div class="empty-cart">Your cart is empty</div>';
+  } else {
+    list.innerHTML = keys.map(k => {
+      const it = cart[k];
+      const line = (it.price * it.qty).toFixed(2);
+      return `<div class="cart-item">
+        <div class="ci-img">🍲</div>
+        <div class="ci-body">
+          <div class="ci-name">${it.name}</div>
+          <div class="ci-each">S$${it.price.toFixed(2)} each</div>
+        </div>
+        <div class="qty-ctrl">
+          <button onclick="changeQty(${k}, -1)">−</button>
+          <span style="min-width:22px;text-align:center">${it.qty}</span>
+          <button onclick="changeQty(${k}, 1)">+</button>
+        </div>
+        <div class="ci-line-total">S$${line}</div>
+      </div>`;
+    }).join('');
+  }
+
+  const subtotal = keys.reduce((s, k) => s + cart[k].price * cart[k].qty, 0);
+  const creditsApplied = Math.min(CREDIT_BALANCE, subtotal);
+  const balanceDue = subtotal - creditsApplied;
+
+  document.getElementById('subtotal').textContent = 'S$' + subtotal.toFixed(2);
+  document.getElementById('creditsApplied').textContent = '-S$' + creditsApplied.toFixed(2);
+  document.getElementById('balanceDue').textContent = 'S$' + balanceDue.toFixed(2);
+  document.getElementById('cartCount').textContent = keys.reduce((s, k) => s + cart[k].qty, 0);
+  document.getElementById('checkoutBtn').disabled = keys.length === 0;
+}
+
+function changeQty(id, delta) {
+  if (!cart[id]) return;
+  cart[id].qty += delta;
+  if (cart[id].qty <= 0) delete cart[id];
+  renderCart();
+}
+
+document.querySelectorAll('.add-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.disabled) return;
+    const id = btn.dataset.id;
+    const name = btn.dataset.name;
+    const price = parseFloat(btn.dataset.price);
+    const stock = parseInt(btn.dataset.stock);
+    if (cart[id]) {
+      if (cart[id].qty < stock) cart[id].qty += 1;
+    } else {
+      cart[id] = { id, name, price, qty: 1, stock };
+    }
+    renderCart();
+  });
+});
+
+async function checkout() {
+  const tabMenuType = MENU_TYPE === 'kitchen' ? currentTab : MENU_TYPE;
+  const items = Object.keys(cart).map(k => ({
+    id: parseInt(k), quantity: cart[k].qty, customizations: {},
+  }));
+  if (!items.length) return;
+
+  const btn = document.getElementById('checkoutBtn');
+  btn.disabled = true;
+  btn.textContent = 'Processing…';
+
+  try {
+    const resp = await fetch('/cafeteria/api/place-order/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+      body: JSON.stringify({
+        menu_type: tabMenuType,
+        items: items,
+        collection_time_minutes: collectionTime,
+      }),
+    });
+    const data = await resp.json();
+    if (data.success) {
+      window.location.replace(data.redirect);
+    } else {
+      alert(data.message);
+      btn.disabled = false;
+      btn.textContent = 'Checkout & Get QR →';
+    }
+  } catch (e) {
+    alert('Network error');
+    btn.disabled = false;
+    btn.textContent = 'Checkout & Get QR →';
+  }
+}
+
+function logout() {
+  const f = document.createElement('form');
+  f.method = 'POST'; f.action = '/logout/';
+  const t = document.createElement('input');
+  t.type = 'hidden'; t.name = 'csrfmiddlewaretoken'; t.value = getCSRF();
+  f.appendChild(t); document.body.appendChild(f); f.submit();
+}
+
+renderCart();
+</script>
+{% endblock %}

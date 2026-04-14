@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block title %}Daily Stock{% endblock %}
+{% block content %}
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="page-title">Daily Stock</div>
+      <div class="page-subtitle">Set today's available quantities for each item</div>
+    </div>
+    <a href="{% url 'cafeteria_admin_menu_list' %}" class="btn btn-secondary">← Menu</a>
+  </div>
+
+  <form method="post" class="card" style="padding:0">
+    {% csrf_token %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Item</th><th>Type</th><th>Daily Qty</th><th>Remaining</th><th>Sold</th><th>Status</th>
+        </tr></thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td class="td-main">{{ item.name }}</td>
+            <td>
+              {% if item.menu_type == 'halal' %}<span class="badge badge-green">Halal</span>
+              {% elif item.menu_type == 'non_halal' %}<span class="badge" style="background:#dbeafe;color:#1e40af">Non-Halal</span>
+              {% else %}<span class="badge" style="background:#fef3c7;color:#c2410c">Cafe</span>{% endif %}
+            </td>
+            <td>
+              <input type="number" name="qty_{{ item.id }}" value="{{ item.daily_quantity }}" min="0" style="width:90px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)">
+            </td>
+            <td class="mono">{{ item.quantity_remaining }}</td>
+            <td class="mono text-dim">{{ item.daily_quantity|add:0 }}</td>
+            <td>
+              {% if item.is_sold_out %}<span class="badge badge-red">Sold Out</span>
+              {% elif item.is_low_stock %}<span class="badge" style="background:#fef3c7;color:#c2410c">Low</span>
+              {% else %}<span class="badge badge-green">OK</span>{% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3)">No items. Add some from Menu Management.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if items %}
+    <div style="padding:16px;text-align:right;border-top:1px solid var(--border)">
+      <button type="submit" class="btn btn-primary">💾 Save All</button>
+    </div>
+    {% endif %}
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,125 @@
+{% extends 'cafeteria/_base_cafeteria.html' %}
+{% block title %}Select Menu — Cafeteria{% endblock %}
+{% block extra_head %}
+<style>
+  .wrap { max-width: 540px; margin: 0 auto; padding: 20px; }
+  .user-chip {
+    position: absolute; top: 24px; right: 24px;
+    background: #fff; border: 1px solid var(--border); border-radius: 100px;
+    padding: 8px 14px; display: flex; align-items: center; gap: 10px;
+    box-shadow: var(--shadow);
+  }
+  .user-chip .av {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--primary); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 13px;
+  }
+  .user-chip .info .name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .user-chip .info .meta { font-size: 11px; color: var(--text3); }
+  .user-chip .info .meta .bal { color: var(--accent); font-weight: 600; }
+
+  .header {
+    text-align: center; margin: 60px 0 30px;
+  }
+  .step-label {
+    font-size: 11px; letter-spacing: 3px; color: var(--text3);
+    font-weight: 600; text-transform: uppercase; margin-bottom: 10px;
+  }
+  .header h1 {
+    font-size: 36px; font-weight: 800; color: var(--text);
+    line-height: 1.15;
+  }
+  .header h1 .accent { color: var(--accent); }
+  .header p { color: var(--text2); margin-top: 8px; font-size: 15px; }
+
+  .menu-card {
+    display: flex; align-items: center; gap: 18px;
+    padding: 24px; border-radius: 20px; cursor: pointer;
+    margin-bottom: 16px; transition: transform 0.15s;
+    border: 1px solid var(--border);
+  }
+  .menu-card:active { transform: scale(0.98); }
+  .menu-card.kitchen { background: #fef6e7; }
+  .menu-card.cafe { background: #e6f3fb; }
+  .menu-card.disabled { opacity: 0.55; cursor: not-allowed; }
+  .menu-card .emoji { font-size: 56px; flex-shrink: 0; }
+  .menu-card .body { flex: 1; }
+  .menu-card h2 { font-size: 24px; font-weight: 800; color: var(--text); margin-bottom: 6px; }
+  .menu-card p { color: var(--text2); font-size: 13px; margin-bottom: 10px; }
+  .menu-card .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .menu-card .hours {
+    font-size: 12px; color: var(--success); font-weight: 600;
+  }
+  .menu-card .hours.closed { color: var(--danger); }
+  .menu-card .arrow { color: var(--text3); font-size: 20px; }
+
+  .back-btn {
+    background: #fff; border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 14px; font-size: 13px; color: var(--text2); cursor: pointer;
+    position: absolute; top: 24px; left: 24px;
+  }
+</style>
+{% endblock %}
+{% block content %}
+<button class="back-btn" onclick="logout()">← Back</button>
+<div class="user-chip">
+  <div class="av">{{ user.full_name|slice:":1"|upper }}{{ user.full_name|slice:"1:2"|upper }}</div>
+  <div class="info">
+    <div class="name">{{ user.display_name }}</div>
+    <div class="meta"><span class="bal">S${{ user.credit_balance|floatformat:2 }} credits</span> · {{ user.staff_id }}</div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="header">
+    <div class="step-label">STEP 2 OF 3</div>
+    <h1>What Would You<br>Like to <span class="accent">Order?</span></h1>
+    <p>Select a menu to browse</p>
+  </div>
+
+  <div class="menu-card kitchen {% if not kitchen_open %}disabled{% endif %}" onclick="{% if kitchen_open %}window.location='/cafeteria/kiosk/menu/kitchen/'{% endif %}">
+    <div class="emoji">🍚</div>
+    <div class="body">
+      <h2>Kitchen Menu</h2>
+      <p>Full meals, rice, noodles, proteins<br>and vegetarian options</p>
+      <div class="tags">
+        <span class="badge badge-halal">Halal</span>
+        <span class="badge badge-nonhalal">Non-Halal</span>
+      </div>
+      <div class="hours {% if not kitchen_open %}closed{% endif %}">
+        {% if kitchen_open %}● Open now{% if kitchen_hours %} · Closes {{ kitchen_hours.first.closes_at|time:"H:i" }}{% endif %}{% else %}● Closed{% endif %}
+      </div>
+    </div>
+    <div class="arrow">›</div>
+  </div>
+
+  <div class="menu-card cafe {% if not cafe_bar_open %}disabled{% endif %}" onclick="{% if cafe_bar_open %}window.location='/cafeteria/kiosk/menu/cafe_bar/'{% endif %}">
+    <div class="emoji">☕</div>
+    <div class="body">
+      <h2>Cafe Bar Menu</h2>
+      <p>Beverages, coffee, tea, light bites<br>and bakery items</p>
+      <div class="tags">
+        <span class="badge badge-cafe">Hot Drinks</span>
+        <span class="badge badge-cafe">Cold Drinks</span>
+      </div>
+      <div class="hours {% if not cafe_bar_open %}closed{% endif %}">
+        {% if cafe_bar_open %}● Open now{% if cafe_bar_hours %} · Closes {{ cafe_bar_hours.first.closes_at|time:"H:i" }}{% endif %}{% else %}● Closed{% endif %}
+      </div>
+    </div>
+    <div class="arrow">›</div>
+  </div>
+</div>
+
+<script>
+function logout() {
+  const f = document.createElement('form');
+  f.method = 'POST'; f.action = '/logout/';
+  const t = document.createElement('input');
+  t.type = 'hidden'; t.name = 'csrfmiddlewaretoken';
+  t.value = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+  f.appendChild(t);
+  document.body.appendChild(f); f.submit();
+}
+</script>
+{% endblock %}

@@ -2,6 +2,7 @@ from django.urls import path
 from django.contrib.auth import views as auth_views
 from . import views
 from . import queue_views
+from . import cafeteria_views
 
 urlpatterns = [
     # Auth
@@ -58,4 +59,32 @@ urlpatterns = [
     path('admin-panel/face-logs/', views.admin_face_logs_view, name='admin_face_logs'),
     path('admin-panel/action-logs/', views.admin_action_logs_view, name='admin_action_logs'),
     path('admin-panel/bulk-import/', views.admin_bulk_import_view, name='admin_bulk_import'),
+
+    # ═══ Cafeteria System ═══
+    # Kiosk
+    path('cafeteria/kiosk/', cafeteria_views.kiosk_idle_view, name='cafeteria_kiosk'),
+    path('cafeteria/kiosk/staff-login/', cafeteria_views.kiosk_staff_login_view, name='cafeteria_staff_login'),
+    path('cafeteria/kiosk/pin-login/', cafeteria_views.kiosk_pin_login_ajax, name='cafeteria_pin_login'),
+    path('cafeteria/kiosk/menu-select/', cafeteria_views.kiosk_menu_select_view, name='cafeteria_menu_select'),
+    path('cafeteria/kiosk/menu/<str:menu_type>/', cafeteria_views.kiosk_menu_view, name='cafeteria_menu'),
+    path('cafeteria/kiosk/ticket/<int:order_id>/', cafeteria_views.kiosk_ticket_view, name='cafeteria_ticket'),
+
+    # Ordering API
+    path('cafeteria/api/place-order/', cafeteria_views.kiosk_place_order_ajax, name='cafeteria_place_order'),
+    path('cafeteria/api/scan-qr/', cafeteria_views.kitchen_scan_qr_ajax, name='cafeteria_scan_qr'),
+
+    # Kitchen / Cafe Bar counter views
+    path('cafeteria/kitchen/<str:kitchen_type>/', cafeteria_views.kitchen_view, name='cafeteria_kitchen'),
+    path('cafeteria/api/kitchen/mark-ready/<int:order_id>/', cafeteria_views.kitchen_mark_ready_ajax, name='cafeteria_mark_ready'),
+    path('cafeteria/api/kitchen/mark-collected/<int:order_id>/', cafeteria_views.kitchen_mark_collected_ajax, name='cafeteria_mark_collected'),
+
+    # Admin
+    path('cafeteria/admin/menu/', cafeteria_views.admin_menu_list_view, name='cafeteria_admin_menu_list'),
+    path('cafeteria/admin/menu/add/', cafeteria_views.admin_menu_add_view, name='cafeteria_admin_menu_add'),
+    path('cafeteria/admin/menu/<int:item_id>/edit/', cafeteria_views.admin_menu_edit_view, name='cafeteria_admin_menu_edit'),
+    path('cafeteria/admin/menu/<int:item_id>/toggle/', cafeteria_views.admin_menu_toggle_ajax, name='cafeteria_admin_menu_toggle'),
+    path('cafeteria/admin/stock/', cafeteria_views.admin_stock_view, name='cafeteria_admin_stock'),
+    path('cafeteria/admin/orders/', cafeteria_views.admin_orders_view, name='cafeteria_admin_orders'),
+    path('cafeteria/admin/orders/<int:order_id>/cancel/', cafeteria_views.admin_cancel_order_ajax, name='cafeteria_admin_cancel_order'),
+    path('cafeteria/admin/qr-logs/', cafeteria_views.admin_qr_logs_view, name='cafeteria_admin_qr_logs'),
 ]

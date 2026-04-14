@@ -1,0 +1,131 @@
+{% extends 'cafeteria/_base_cafeteria.html' %}
+{% block title %}Collection QR — {{ order.order_number }}{% endblock %}
+{% block extra_head %}
+<style>
+  .wrap { max-width: 520px; margin: 40px auto; padding: 20px; text-align: center; }
+  .success-icon {
+    width: 72px; height: 72px; border-radius: 50%;
+    background: var(--success-soft); color: var(--success);
+    display: inline-flex; align-items: center; justify-content: center;
+    margin-bottom: 16px;
+  }
+  h1 { font-size: 28px; font-weight: 800; margin-bottom: 6px; }
+  h1 .accent { color: var(--success); }
+  .subtitle { color: var(--text2); margin-bottom: 24px; }
+
+  .order-card {
+    background: linear-gradient(135deg, var(--primary-light), #fff);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 32px 20px;
+    box-shadow: var(--shadow-lg);
+  }
+  .order-num {
+    font-size: 56px; font-weight: 800; color: var(--primary);
+    letter-spacing: 4px; margin: 8px 0 4px;
+  }
+  .menu-badge { margin-bottom: 20px; }
+  .qr-wrap {
+    background: #fff; border-radius: 16px; padding: 14px;
+    display: inline-block; margin: 12px 0;
+  }
+  .qr-wrap img { display: block; width: 220px; height: 220px; }
+
+  .items-list {
+    text-align: left;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin: 18px 0;
+  }
+  .items-list .row {
+    display: flex; justify-content: space-between;
+    padding: 4px 0; font-size: 14px;
+  }
+  .totals {
+    border-top: 1px dashed var(--border); margin-top: 8px; padding-top: 8px;
+  }
+
+  .btns { display: flex; gap: 10px; margin-top: 20px; }
+  .btns button {
+    flex: 1; padding: 14px; font-size: 15px; font-weight: 700;
+    border-radius: 10px; cursor: pointer;
+  }
+
+  .info-pill {
+    background: var(--warn-soft); color: #854d0e;
+    padding: 10px 14px; border-radius: 10px; font-size: 13px;
+    margin-top: 20px;
+  }
+
+  /* Print layout for thermal printer */
+  @media print {
+    body { background: #fff; }
+    body > *:not(#printArea) { display: none !important; }
+    #printArea { display: block !important; font-family: monospace; text-align: center; width: 48mm; margin: 0 auto; padding: 4mm 0; }
+  }
+  #printArea { display: none; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="wrap">
+  <div class="success-icon">
+    <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+      <polyline points="20 6 9 17 4 12"/>
+    </svg>
+  </div>
+  <h1>Order <span class="accent">Confirmed!</span></h1>
+  <div class="subtitle">Show this QR code at the counter to collect your meal</div>
+
+  <div class="order-card">
+    <div style="font-size:11px;letter-spacing:2px;color:var(--text3);font-weight:700">YOUR ORDER NUMBER</div>
+    <div class="order-num">{{ order.order_number }}</div>
+    <div class="menu-badge">
+      {% if order.menu_type == 'halal' %}<span class="badge badge-halal">HALAL KITCHEN</span>
+      {% elif order.menu_type == 'non_halal' %}<span class="badge badge-nonhalal">NON-HALAL KITCHEN</span>
+      {% elif order.menu_type == 'cafe_bar' %}<span class="badge badge-cafe">CAFE BAR</span>{% endif %}
+    </div>
+
+    <div class="qr-wrap">
+      <img src="{{ qr_image }}" alt="QR">
+    </div>
+
+    <div class="items-list">
+      {% for item in order.items.all %}
+      <div class="row">
+        <span>{{ item.quantity }}× {{ item.name_snapshot }}</span>
+        <span>S${{ item.subtotal|floatformat:2 }}</span>
+      </div>
+      {% endfor %}
+      <div class="totals">
+        <div class="row"><span>Subtotal</span><span>S${{ order.subtotal|floatformat:2 }}</span></div>
+        <div class="row" style="color:var(--success);font-weight:600"><span>Credits Applied</span><span>-S${{ order.credits_applied|floatformat:2 }}</span></div>
+      </div>
+    </div>
+
+    <div style="font-size:12px;color:var(--text3)">{{ order.customer.display_name }} · {{ order.created_at|date:"d M Y" }} · {{ order.created_at|time:"H:i" }}</div>
+  </div>
+
+  <div class="info-pill">
+    ⚠ This QR is <strong>one-time use only</strong>. Save a screenshot or check your Staff Portal.
+  </div>
+
+  <div class="btns">
+    <button class="btn btn-secondary" onclick="window.print()">🖨 Print</button>
+    <button class="btn btn-primary" onclick="window.location='/cafeteria/kiosk/'">Done</button>
+  </div>
+</div>
+
+<!-- Hidden print area -->
+<div id="printArea">
+  <div style="font-weight:bold">Cafeteria</div>
+  <div style="border-top:1px dashed #000;margin:3mm 0"></div>
+  <div>{{ order.customer.display_name }}</div>
+  <div style="font-size:30pt;font-weight:bold;letter-spacing:4px;margin:4mm 0">{{ order.order_number }}</div>
+  <img src="{{ qr_image }}" style="width:32mm;height:32mm;margin:3mm auto;display:block">
+  <div style="font-size:8pt">{{ order.created_at|date:"d M Y H:i" }}</div>
+  <div style="border-top:1px dashed #000;margin:3mm 0"></div>
+  <div style="font-size:8pt">Thank you</div>
+</div>
+{% endblock %}

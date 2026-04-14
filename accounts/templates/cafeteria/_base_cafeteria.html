@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>{% block title %}Cafeteria{% endblock %}</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f7fb;
+    --bg2: #eaf2fb;
+    --card: #ffffff;
+    --border: #d6e2f0;
+    --text: #0f2746;
+    --text2: #3b5a82;
+    --text3: #8aa5c4;
+    --primary: #1e56b8;
+    --primary2: #2a70e0;
+    --primary-light: #eaf2ff;
+    --accent: #00a3d9;
+    --accent-soft: #d5f0fc;
+    --success: #10b981;
+    --success-soft: #d5f5e8;
+    --warn: #f59e0b;
+    --warn-soft: #fdf0d8;
+    --danger: #ef4444;
+    --danger-soft: #fde1e1;
+    --halal: #10b981;
+    --non-halal: #2563eb;
+    --cafe: #c2410c;
+    --cafe-soft: #fef3c7;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --radius: 14px;
+    --shadow: 0 2px 8px rgba(15, 39, 70, 0.06);
+    --shadow-lg: 0 8px 24px rgba(15, 39, 70, 0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--primary); text-decoration: none; }
+
+  /* Top accent bar */
+  .top-bar {
+    height: 5px;
+    background: linear-gradient(90deg, var(--primary), var(--accent));
+  }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 24px; border-radius: 10px; font-size: 15px;
+    font-weight: 600; cursor: pointer; border: none;
+    transition: all 0.15s; font-family: var(--sans);
+  }
+  .btn-primary {
+    background: var(--primary); color: #fff;
+  }
+  .btn-primary:hover { background: var(--primary2); }
+  .btn-secondary {
+    background: #fff; color: var(--text2);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--primary); color: var(--primary); }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-success { background: var(--success); color: #fff; }
+  .btn-warn { background: var(--warn); color: #000; }
+
+  /* Cards */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    box-shadow: var(--shadow);
+  }
+
+  /* Forms */
+  .form-group { margin-bottom: 16px; }
+  .form-group label {
+    display: block; font-size: 13px; font-weight: 600;
+    color: var(--text2); margin-bottom: 6px;
+  }
+  .form-group input, .form-group select, .form-group textarea {
+    width: 100%; padding: 11px 14px;
+    background: #fff; border: 1.5px solid var(--border);
+    border-radius: 10px; color: var(--text); font-size: 15px;
+    font-family: var(--sans); outline: none;
+    transition: border-color 0.15s;
+  }
+  .form-group input:focus, .form-group select:focus {
+    border-color: var(--primary);
+  }
+
+  /* Badges */
+  .badge {
+    display: inline-flex; align-items: center;
+    padding: 4px 10px; border-radius: 100px; font-size: 11px;
+    font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .badge-halal { background: var(--success-soft); color: var(--halal); }
+  .badge-nonhalal { background: #dbeafe; color: var(--non-halal); }
+  .badge-cafe { background: var(--cafe-soft); color: var(--cafe); }
+  .badge-confirmed { background: var(--warn-soft); color: var(--warn); }
+  .badge-ready { background: var(--success-soft); color: var(--success); }
+  .badge-collected { background: #e5e7eb; color: #6b7280; }
+  .badge-cancelled { background: var(--danger-soft); color: var(--danger); }
+
+  /* Utility */
+  .text-sm { font-size: 13px; }
+  .text-xs { font-size: 11px; }
+  .text-muted { color: var(--text2); }
+  .text-dim { color: var(--text3); }
+  .center { text-align: center; }
+
+  @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+  .spinning { animation: spin 1s linear infinite; display: inline-block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .fade-in { animation: fadeIn 0.25s ease; }
+</style>
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+<div class="top-bar"></div>
+{% block content %}{% endblock %}
+{% block extra_js %}{% endblock %}
+</body>
+</html>

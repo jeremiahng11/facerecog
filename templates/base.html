@@ -358,6 +358,7 @@
     <a href="{% url 'queue_dashboard' %}" {% if 'queue' in request.resolver_match.url_name %}class="active"{% endif %}>Queue</a>
     {% if user.is_staff %}
     <a href="{% url 'queue_manage' %}" {% if request.resolver_match.url_name == 'queue_manage' %}class="active"{% endif %}>Queue Manager</a>
+    <a href="{% url 'cafeteria_admin_menu_list' %}" {% if 'cafeteria' in request.resolver_match.url_name %}class="active"{% endif %}>Cafeteria</a>
     <a href="{% url 'admin_users' %}" {% if 'admin' in request.resolver_match.url_name %}class="active"{% endif %}>Manage Users</a>
     {% endif %}
     <form method="post" action="{% url 'logout' %}" style="display:inline">

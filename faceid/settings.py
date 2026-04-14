@@ -198,4 +198,14 @@ KIOSK_IDLE_TIMEOUT = int(os.environ.get('KIOSK_IDLE_TIMEOUT', '15'))
 # After printing, auto-logout and reset after this many seconds.
 KIOSK_POST_PRINT_TIMEOUT = int(os.environ.get('KIOSK_POST_PRINT_TIMEOUT', '10'))
 
+# ─── Cafeteria ─────────────────────────────────────────────────────────────
+# HMAC key for signing QR collection tokens. Derived from SECRET_KEY if not set.
+QR_SECRET_KEY = os.environ.get('QR_SECRET_KEY', '')
+# Kiosk idle timeout (seconds) before returning to idle screen.
+STAFF_IDLE_TIMEOUT_SECONDS = int(os.environ.get('STAFF_IDLE_TIMEOUT_SECONDS', '60'))
+# Default monthly staff credit allowance (SGD).
+MONTHLY_STAFF_CREDIT = float(os.environ.get('MONTHLY_STAFF_CREDIT', '50.00'))
+# Day of month to reset credits (used by future Celery Beat task).
+CREDIT_RESET_DAY = int(os.environ.get('CREDIT_RESET_DAY', '1'))
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

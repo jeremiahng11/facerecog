@@ -1,0 +1,279 @@
+{% extends 'cafeteria/_base_cafeteria.html' %}
+{% block title %}{{ kitchen_type|title }} Kitchen{% endblock %}
+{% block extra_head %}
+<style>
+  .top {
+    padding: 16px 24px; background: #fff; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .top h1 { font-size: 22px; font-weight: 800; color: var(--text); }
+  .kitchen-badge { font-size: 11px; padding: 4px 12px; border-radius: 100px; font-weight: 700; }
+  .kitchen-badge.halal { background: var(--success-soft); color: var(--success); }
+  .kitchen-badge.non-halal { background: #dbeafe; color: var(--non-halal); }
+  .kitchen-badge.cafe { background: var(--cafe-soft); color: var(--cafe); }
+
+  .scan-hint {
+    background: var(--primary-light); color: var(--primary);
+    padding: 10px 16px; font-size: 13px; text-align: center; font-weight: 600;
+  }
+
+  .orders-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px; padding: 20px;
+  }
+  .order-card {
+    background: #fff; border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px; box-shadow: var(--shadow);
+    animation: fadeIn 0.3s ease;
+  }
+  .order-card.ready { border-color: var(--success); border-width: 2px; background: var(--success-soft); }
+  .order-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 10px;
+  }
+  .order-num {
+    font-size: 32px; font-weight: 800; color: var(--primary);
+    letter-spacing: 2px;
+  }
+  .order-meta { text-align: right; font-size: 11px; color: var(--text3); }
+  .order-card .items {
+    border-top: 1px dashed var(--border); padding-top: 10px;
+  }
+  .order-card .items li {
+    list-style: none; padding: 4px 0; font-size: 14px; color: var(--text);
+  }
+  .order-card .items .qty { font-weight: 700; color: var(--primary); margin-right: 6px; }
+  .order-card .customer { font-size: 12px; color: var(--text2); margin-bottom: 6px; }
+  .order-card .actions { margin-top: 12px; display: flex; gap: 8px; }
+  .order-card .actions button {
+    flex: 1; padding: 10px; border-radius: 8px; font-weight: 700; font-size: 13px;
+    cursor: pointer; border: none;
+  }
+
+  .empty {
+    grid-column: 1 / -1; text-align: center; padding: 60px 20px;
+    color: var(--text3); font-size: 14px;
+  }
+
+  /* Scan popup */
+  .scan-popup {
+    position: fixed; inset: 0; background: rgba(15,39,70,0.55);
+    display: none; align-items: center; justify-content: center; z-index: 100;
+  }
+  .scan-popup.active { display: flex; }
+  .scan-modal {
+    background: #fff; border-radius: 16px; padding: 32px 28px;
+    max-width: 440px; width: 90%; text-align: center;
+    animation: fadeIn 0.2s ease;
+  }
+  .scan-modal.valid { border-top: 8px solid var(--success); }
+  .scan-modal.wrong { border-top: 8px solid var(--warn); }
+  .scan-modal.duplicate { border-top: 8px solid var(--danger); }
+  .scan-modal.invalid { border-top: 8px solid var(--danger); }
+  .scan-modal.not_ready { border-top: 8px solid var(--primary); }
+  .scan-modal .emoji { font-size: 60px; margin-bottom: 12px; }
+  .scan-modal h2 { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+  .scan-modal p { color: var(--text2); margin-bottom: 16px; }
+  .scan-modal .order-preview {
+    background: var(--bg); padding: 14px; border-radius: 10px; text-align: left;
+    margin: 14px 0; font-size: 14px;
+  }
+  .scan-modal .order-preview .on { font-size: 30px; font-weight: 800; color: var(--primary); text-align: center; }
+  .scan-modal .order-preview ul { margin-top: 8px; }
+  .scan-modal .order-preview li { padding: 2px 0; }
+  .scan-modal .actions { display: flex; gap: 10px; margin-top: 16px; }
+  .scan-modal .actions button {
+    flex: 1; padding: 12px; font-weight: 700; border-radius: 8px; cursor: pointer; border: none;
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="top">
+  <div>
+    <h1>
+      {% if kitchen_type == 'halal' %}🟢 Halal Kitchen
+      {% elif kitchen_type == 'non_halal' %}🔵 Non-Halal Kitchen
+      {% elif kitchen_type == 'cafe_bar' %}☕ Cafe Bar{% endif %}
+    </h1>
+    <div class="text-sm text-muted">{{ orders|length }} active orders</div>
+  </div>
+  <span class="kitchen-badge {{ kitchen_type }}">
+    {% if kitchen_type == 'halal' %}HALAL CERTIFIED{% elif kitchen_type == 'non_halal' %}NON-HALAL{% else %}CAFE BAR{% endif %}
+  </span>
+</div>
+
+<div class="scan-hint">
+  📷 Scanner ready — scan a customer's QR code to validate
+  <input type="text" id="scanInput" style="position:absolute;left:-9999px" autofocus>
+</div>
+
+<div class="orders-grid">
+  {% for order in orders %}
+  <div class="order-card {% if order.status == 'ready' %}ready{% endif %}" id="order-{{ order.id }}">
+    <div class="order-header">
+      <div class="order-num">{{ order.order_number }}</div>
+      <div class="order-meta">
+        {% if order.is_public %}<div style="color:var(--cafe)">PUBLIC</div>{% else %}<div>STAFF</div>{% endif %}
+        <div>{{ order.created_at|time:"H:i" }}</div>
+        {% if order.status == 'ready' %}<span class="badge badge-ready">READY</span>
+        {% else %}<span class="badge badge-confirmed">{{ order.get_status_display }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="customer">{{ order.customer.display_name|default:order.public_name }}</div>
+    <ul class="items">
+      {% for item in order.items.all %}
+      <li><span class="qty">{{ item.quantity }}×</span>{{ item.name_snapshot }}</li>
+      {% endfor %}
+    </ul>
+    <div class="actions">
+      {% if order.status != 'ready' %}
+      <button class="btn-primary" style="background:var(--primary);color:#fff" onclick="markReady({{ order.id }})">Mark Ready →</button>
+      {% else %}
+      <div style="flex:1;padding:10px;text-align:center;color:var(--success);font-weight:700">✓ Waiting for collection</div>
+      {% endif %}
+    </div>
+  </div>
+  {% empty %}
+  <div class="empty">No active orders right now.</div>
+  {% endfor %}
+</div>
+
+<!-- Scan Popup -->
+<div class="scan-popup" id="scanPopup">
+  <div class="scan-modal" id="scanModal">
+    <div id="scanBody"></div>
+  </div>
+</div>
+
+<script>
+const CSRF = '{{ csrf_token }}';
+function getCSRF() {
+  const m = document.cookie.match(/csrftoken=([^;]+)/);
+  return m ? m[1] : CSRF;
+}
+
+const KITCHEN = '{{ kitchen_type }}';
+
+async function markReady(id) {
+  try {
+    const resp = await fetch(`/cafeteria/api/kitchen/mark-ready/${id}/`, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCSRF() },
+    });
+    const data = await resp.json();
+    if (data.success) setTimeout(() => location.reload(), 200);
+  } catch (e) { alert('Error'); }
+}
+
+// ── Keyboard-wedge QR scanner input ─────────────────
+const scanInput = document.getElementById('scanInput');
+let scanBuffer = '';
+let scanTimer = null;
+
+document.addEventListener('keydown', (e) => {
+  // Ignore if focused in a visible input (popup actions).
+  const active = document.activeElement;
+  if (active && active.tagName === 'INPUT' && active !== scanInput) return;
+
+  if (e.key === 'Enter') {
+    if (scanBuffer.length > 10) {
+      processScan(scanBuffer);
+    }
+    scanBuffer = '';
+    return;
+  }
+  if (e.key.length === 1) scanBuffer += e.key;
+  clearTimeout(scanTimer);
+  scanTimer = setTimeout(() => { scanBuffer = ''; }, 200);
+});
+
+async function processScan(token) {
+  try {
+    const resp = await fetch('/cafeteria/api/scan-qr/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+      body: JSON.stringify({ token, scanner_counter: KITCHEN }),
+    });
+    const data = await resp.json();
+    showPopup(data);
+  } catch (e) {
+    showPopup({ result: 'invalid', message: 'Network error' });
+  }
+}
+
+function showPopup(data) {
+  const modal = document.getElementById('scanModal');
+  const body = document.getElementById('scanBody');
+  modal.className = 'scan-modal ' + (data.result || 'invalid');
+
+  let html = '';
+  if (data.result === 'valid') {
+    html = `<div class="emoji">✅</div>
+      <h2 style="color:var(--success)">Valid QR — Confirm</h2>
+      <div class="order-preview">
+        <div class="on">${data.order_number}</div>
+        <div style="text-align:center;margin:6px 0 10px;color:var(--text2)">${data.customer_name || ''}</div>
+        <ul>${data.items.map(i => `<li>${i.quantity}× ${i.name}</li>`).join('')}</ul>
+      </div>
+      <div class="actions">
+        <button style="background:#fff;border:1px solid var(--border);color:var(--text2)" onclick="closePopup()">Cancel</button>
+        <button style="background:var(--success);color:#fff" onclick="markCollected(${data.order_id})">Mark as Collected</button>
+      </div>`;
+  } else if (data.result === 'wrong_counter') {
+    html = `<div class="emoji">⚠️</div>
+      <h2 style="color:var(--warn)">Wrong Counter</h2>
+      <p>Order <strong>${data.order_number}</strong> is for <strong>${data.correct_counter}</strong>.</p>
+      <div class="actions"><button style="background:var(--warn);color:#000" onclick="closePopup()">Got It</button></div>`;
+  } else if (data.result === 'duplicate') {
+    html = `<div class="emoji">🚫</div>
+      <h2 style="color:var(--danger)">Duplicate QR</h2>
+      <p>Order <strong>${data.order_number}</strong> was already collected at ${data.original_collected_at || 'an earlier time'}.</p>
+      <p style="font-size:13px">Customer: ${data.customer_name || 'Unknown'}</p>
+      <div class="actions"><button style="background:var(--danger);color:#fff" onclick="closePopup()">Close</button></div>`;
+  } else if (data.result === 'not_ready') {
+    html = `<div class="emoji">⏳</div>
+      <h2 style="color:var(--primary)">Not Ready Yet</h2>
+      <p>Order <strong>${data.order_number}</strong> status: ${data.current_status}</p>
+      <div class="actions"><button style="background:var(--primary);color:#fff" onclick="closePopup()">OK</button></div>`;
+  } else {
+    html = `<div class="emoji">❌</div>
+      <h2 style="color:var(--danger)">Invalid QR</h2>
+      <p>${data.message || 'QR code not recognised or tampered.'}</p>
+      <div class="actions"><button style="background:var(--danger);color:#fff" onclick="closePopup()">Close</button></div>`;
+  }
+  body.innerHTML = html;
+  document.getElementById('scanPopup').classList.add('active');
+}
+
+function closePopup() {
+  document.getElementById('scanPopup').classList.remove('active');
+  scanInput.focus();
+}
+
+async function markCollected(orderId) {
+  try {
+    const resp = await fetch(`/cafeteria/api/kitchen/mark-collected/${orderId}/`, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCSRF() },
+    });
+    const data = await resp.json();
+    if (data.success) {
+      closePopup();
+      setTimeout(() => location.reload(), 300);
+    } else {
+      alert(data.message || 'Error');
+    }
+  } catch (e) { alert('Error'); }
+}
+
+// Refocus scanner input every second.
+setInterval(() => {
+  if (!document.getElementById('scanPopup').classList.contains('active')) {
+    scanInput.focus();
+  }
+}, 1000);
+
+// Auto-refresh order list every 30 seconds.
+setInterval(() => location.reload(), 30000);
+</script>
+{% endblock %}

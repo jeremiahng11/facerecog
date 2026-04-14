@@ -1,0 +1,261 @@
+{% extends 'cafeteria/_base_cafeteria.html' %}
+{% block title %}Staff Login — Cafeteria{% endblock %}
+{% block extra_head %}
+<style>
+  .page-wrap { max-width: 540px; margin: 0 auto; padding: 20px; }
+  .back-btn {
+    background: #fff; border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 14px; font-size: 13px; color: var(--text2); cursor: pointer;
+  }
+  .header {
+    text-align: center; margin: 24px 0;
+  }
+  .header .icon {
+    width: 72px; height: 72px; border-radius: 50%;
+    background: var(--primary-light);
+    display: inline-flex; align-items: center; justify-content: center;
+    margin-bottom: 14px; color: var(--primary);
+  }
+  .header h1 { font-size: 32px; font-weight: 800; color: var(--text); }
+  .header p { color: var(--text2); margin-top: 6px; }
+
+  .method-card {
+    margin-top: 20px; padding: 20px;
+  }
+  .method-card h3 { font-size: 16px; font-weight: 700; text-align: center; margin-bottom: 4px; }
+  .method-card .sub { font-size: 13px; color: var(--text3); text-align: center; margin-bottom: 14px; }
+
+  .camera-frame {
+    width: 240px; height: 240px; margin: 0 auto;
+    border: 3px dashed var(--primary);
+    border-radius: 50%;
+    background: var(--primary-light);
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden; position: relative;
+  }
+  .camera-frame video {
+    width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1);
+  }
+  .camera-status {
+    text-align: center; margin-top: 12px;
+    color: var(--success); font-weight: 600; font-size: 14px;
+  }
+  .camera-hint { text-align: center; font-size: 12px; color: var(--text3); margin-top: 4px; }
+
+  .divider-text {
+    display: flex; align-items: center; gap: 14px;
+    color: var(--text3); font-size: 11px; font-weight: 600;
+    letter-spacing: 2px; margin: 20px 0;
+  }
+  .divider-text::before, .divider-text::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+
+  .pin-dots {
+    display: flex; justify-content: center; gap: 14px; margin: 12px 0 18px;
+  }
+  .pin-dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--border); background: #fff;
+  }
+  .pin-dot.filled { background: var(--primary); border-color: var(--primary); }
+
+  .numpad {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    margin-top: 10px;
+  }
+  .num-key {
+    padding: 20px 0; font-size: 22px; font-weight: 700;
+    background: #fff; border: 1px solid var(--border);
+    border-radius: 10px; color: var(--primary); cursor: pointer;
+    transition: background 0.1s;
+  }
+  .num-key:active { background: var(--primary-light); }
+  .num-key.backspace { color: var(--text2); font-size: 18px; }
+
+  .login-btn {
+    width: 100%; padding: 16px; font-size: 16px; font-weight: 700;
+    border-radius: 10px; background: var(--primary); color: #fff;
+    border: none; cursor: pointer; margin-top: 16px;
+    background: linear-gradient(90deg, #1e3a8a, var(--primary));
+  }
+
+  .error {
+    color: var(--danger); font-size: 13px; text-align: center;
+    margin-top: 10px; display: none;
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-wrap">
+  <button class="back-btn" onclick="window.location.href='/cafeteria/kiosk/'">← Back</button>
+
+  <div class="header">
+    <div class="icon">
+      <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <circle cx="12" cy="8" r="4"/>
+        <path d="M4 20c0-4 3.582-7 8-7s8 3 8 7"/>
+      </svg>
+    </div>
+    <h1>Staff Login</h1>
+    <p>Choose how you want to sign in</p>
+  </div>
+
+  <!-- Face Recognition -->
+  <div class="card method-card">
+    <h3>😊 Face Recognition</h3>
+    <div class="sub">Look at the camera — no PIN needed</div>
+    <div class="camera-frame">
+      <video id="videoEl" autoplay playsinline muted></video>
+    </div>
+    <div class="camera-status" id="camStatus">● Camera active — position your face</div>
+    <div class="camera-hint">Hold still for 1–2 seconds · Glasses are fine</div>
+  </div>
+
+  <div class="divider-text">OR SIGN IN WITH PIN</div>
+
+  <!-- PIN Login -->
+  <div class="card method-card">
+    <h3>🔑 Staff ID + 4-Digit PIN</h3>
+    <div class="sub">Enter your ID then tap your 4-digit PIN</div>
+    <div class="form-group">
+      <label>Staff ID</label>
+      <input type="text" id="staffId" placeholder="S-00000" autocomplete="off">
+    </div>
+    <label style="font-size:13px;font-weight:600;color:var(--text2)">PIN</label>
+    <div class="pin-dots" id="pinDots">
+      <div class="pin-dot" id="dot0"></div>
+      <div class="pin-dot" id="dot1"></div>
+      <div class="pin-dot" id="dot2"></div>
+      <div class="pin-dot" id="dot3"></div>
+    </div>
+    <div class="numpad">
+      <button class="num-key" onclick="pinPress('1')">1</button>
+      <button class="num-key" onclick="pinPress('2')">2</button>
+      <button class="num-key" onclick="pinPress('3')">3</button>
+      <button class="num-key" onclick="pinPress('4')">4</button>
+      <button class="num-key" onclick="pinPress('5')">5</button>
+      <button class="num-key" onclick="pinPress('6')">6</button>
+      <button class="num-key" onclick="pinPress('7')">7</button>
+      <button class="num-key" onclick="pinPress('8')">8</button>
+      <button class="num-key" onclick="pinPress('9')">9</button>
+      <button class="num-key"></button>
+      <button class="num-key" onclick="pinPress('0')">0</button>
+      <button class="num-key backspace" onclick="pinBackspace()">⌫</button>
+    </div>
+    <button class="login-btn" onclick="pinLogin()">Login →</button>
+    <div class="error" id="errorMsg"></div>
+  </div>
+</div>
+
+<script>
+const CSRF = '{{ csrf_token }}';
+function getCSRF() {
+  const m = document.cookie.match(/csrftoken=([^;]+)/);
+  return m ? m[1] : CSRF;
+}
+
+// Camera
+const video = document.getElementById('videoEl');
+const camStatus = document.getElementById('camStatus');
+let stream = null;
+let scanning = false;
+let matchUser = null, matchCount = 0, matchEncodings = [];
+const CAP_MAX_DIM = 480;
+
+function captureFrame() {
+  const vw = video.videoWidth || 480, vh = video.videoHeight || 480;
+  const s = Math.min(1, CAP_MAX_DIM / Math.max(vw, vh));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(vw * s));
+  c.height = Math.max(1, Math.round(vh * s));
+  c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.75);
+}
+
+async function scanLoop() {
+  while (scanning) {
+    try {
+      const resp = await fetch('{% url "face_verify_ajax" %}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+        body: JSON.stringify({
+          image: captureFrame(),
+          match_user: matchUser, match_count: matchCount, match_encodings: matchEncodings,
+        }),
+      });
+      const data = await resp.json();
+      matchUser = data.match_user || null;
+      matchCount = data.match_count || 0;
+      matchEncodings = data.match_encodings || [];
+      if (data.success) {
+        scanning = false;
+        camStatus.textContent = '✓ ' + data.message;
+        window.location.replace('/cafeteria/kiosk/menu-select/');
+        return;
+      } else if (data.verifying) {
+        camStatus.textContent = data.message;
+      } else if (data.face_detected === false) {
+        camStatus.textContent = 'Position your face in the circle';
+      } else {
+        matchUser = null; matchCount = 0; matchEncodings = [];
+      }
+    } catch (e) {}
+    if (!scanning) break;
+    await new Promise(r => setTimeout(r, 100));
+  }
+}
+
+(async function initCam() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 } } });
+    video.srcObject = stream;
+    await new Promise(r => { if (video.readyState >= 1) return r(); video.onloadedmetadata = r; });
+    scanning = true;
+    scanLoop();
+  } catch (e) {
+    camStatus.textContent = '⚠ Camera unavailable — use PIN';
+    camStatus.style.color = 'var(--warn)';
+  }
+})();
+
+// PIN
+let pin = '';
+function updateDots() {
+  for (let i = 0; i < 4; i++) {
+    document.getElementById('dot' + i).classList.toggle('filled', i < pin.length);
+  }
+}
+function pinPress(d) { if (pin.length < 4) { pin += d; updateDots(); } }
+function pinBackspace() { pin = pin.slice(0, -1); updateDots(); }
+
+async function pinLogin() {
+  const sid = document.getElementById('staffId').value.trim();
+  const err = document.getElementById('errorMsg');
+  err.style.display = 'none';
+  if (!sid || pin.length < 4) {
+    err.textContent = 'Enter Staff ID and 4-digit PIN';
+    err.style.display = 'block';
+    return;
+  }
+  try {
+    const resp = await fetch('/cafeteria/kiosk/pin-login/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+      body: JSON.stringify({ staff_id: sid, pin: pin }),
+    });
+    const data = await resp.json();
+    if (data.success) {
+      window.location.replace(data.redirect);
+    } else {
+      err.textContent = data.message;
+      err.style.display = 'block';
+      pin = ''; updateDots();
+    }
+  } catch (e) {
+    err.textContent = 'Network error';
+    err.style.display = 'block';
+  }
+}
+</script>
+{% endblock %}

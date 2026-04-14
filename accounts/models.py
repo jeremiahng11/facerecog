@@ -55,6 +55,15 @@ class StaffUser(AbstractBaseUser, PermissionsMixin):
         max_length=6, blank=True,
         help_text='4-6 digit PIN for kiosk queue login (set in Profile)'
     )
+    # Cafeteria credit system
+    monthly_credit = models.DecimalField(
+        max_digits=8, decimal_places=2, default=50.00,
+        help_text='Monthly cafeteria credit allowance in SGD'
+    )
+    credit_balance = models.DecimalField(
+        max_digits=8, decimal_places=2, default=0.00,
+        help_text='Current cafeteria credit balance in SGD'
+    )
 
     objects = StaffUserManager()
 
@@ -165,3 +174,222 @@ class QueueTicket(models.Model):
             date = timezone.localdate()
         last = cls.objects.filter(date=date).order_by('-number').first()
         return (last.number + 1) if last else 1
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  CAFETERIA MEAL ORDERING SYSTEM
+# ════════════════════════════════════════════════════════════════════════════
+
+class MenuItem(models.Model):
+    """Menu item for Kitchen (Halal/Non-Halal) or Cafe Bar."""
+    MENU_CHOICES = [
+        ('halal', 'Halal Kitchen'),
+        ('non_halal', 'Non-Halal Kitchen'),
+        ('cafe_bar', 'Cafe Bar'),
+    ]
+    menu_type = models.CharField(max_length=16, choices=MENU_CHOICES)
+    category = models.CharField(max_length=50, blank=True, help_text='e.g. Rice Meals, Noodles, Hot Drinks')
+    name = models.CharField(max_length=120)
+    description = models.CharField(max_length=240, blank=True)
+    staff_price = models.DecimalField(max_digits=6, decimal_places=2)
+    public_price = models.DecimalField(max_digits=6, decimal_places=2)
+    daily_quantity = models.PositiveIntegerField(default=0, help_text='Total daily stock (set at start of day)')
+    quantity_remaining = models.PositiveIntegerField(default=0)
+    low_stock_threshold = models.PositiveIntegerField(default=3)
+    is_available = models.BooleanField(default=True, help_text='Admin on/off toggle — overrides stock')
+    photo = models.ImageField(upload_to='menu/', blank=True, null=True)
+    display_order = models.PositiveIntegerField(default=0)
+    # Cafe Bar customizations: JSON list of {name, choices: [...]}
+    customizations = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['menu_type', 'display_order', 'name']
+
+    def __str__(self):
+        return f'{self.name} ({self.get_menu_type_display()})'
+
+    @property
+    def is_sold_out(self):
+        return self.quantity_remaining <= 0
+
+    @property
+    def is_low_stock(self):
+        return 0 < self.quantity_remaining <= self.low_stock_threshold
+
+
+class OrderingHours(models.Model):
+    """Service windows for each menu type. Multiple windows per menu_type allowed."""
+    MENU_CHOICES = [
+        ('kitchen', 'Kitchen (Halal + Non-Halal)'),
+        ('cafe_bar', 'Cafe Bar'),
+    ]
+    menu_type = models.CharField(max_length=16, choices=MENU_CHOICES)
+    label = models.CharField(max_length=40, blank=True, help_text='e.g. Lunch, Dinner, Morning')
+    opens_at = models.TimeField()
+    closes_at = models.TimeField()
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['menu_type', 'opens_at']
+
+    def __str__(self):
+        return f'{self.get_menu_type_display()} {self.label}: {self.opens_at}-{self.closes_at}'
+
+
+class Order(models.Model):
+    """A customer order (staff or public walk-in)."""
+    STATUS_CHOICES = [
+        ('pending', 'Pending Payment'),
+        ('confirmed', 'Confirmed'),
+        ('preparing', 'Preparing'),
+        ('ready', 'Ready for Collection'),
+        ('collected', 'Collected'),
+        ('cancelled', 'Cancelled'),
+        ('refunded', 'Refunded'),
+    ]
+    MENU_CHOICES = [
+        ('halal', 'Halal Kitchen'),
+        ('non_halal', 'Non-Halal Kitchen'),
+        ('cafe_bar', 'Cafe Bar'),
+    ]
+    PAYMENT_CHOICES = [
+        ('credits', 'Staff Credits'),
+        ('stripe', 'Stripe Card'),
+        ('paynow', 'PayNow QR'),
+        ('cash', 'Cash'),
+        ('mixed', 'Credits + Card/PayNow'),
+    ]
+
+    order_number = models.CharField(max_length=10, unique=True, help_text='e.g. H031, C019, N028, P042')
+    customer = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='orders', help_text='Null for public walk-in'
+    )
+    is_public = models.BooleanField(default=False)
+    public_name = models.CharField(max_length=60, blank=True, help_text='For walk-in customers')
+
+    menu_type = models.CharField(max_length=16, choices=MENU_CHOICES)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default='pending')
+
+    subtotal = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    credits_applied = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    balance_due = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    payment_method = models.CharField(max_length=12, choices=PAYMENT_CHOICES, blank=True)
+
+    # HMAC-signed QR token
+    qr_token = models.CharField(max_length=200, unique=True, blank=True)
+    qr_used = models.BooleanField(default=False)
+    qr_used_at = models.DateTimeField(null=True, blank=True)
+
+    # Collection time for Cafe Bar scheduling (Now / +10 / +20 minutes)
+    collection_time_minutes = models.PositiveIntegerField(default=0)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    ready_at = models.DateTimeField(null=True, blank=True)
+    collected_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancel_reason = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        name = self.customer.display_name if self.customer else (self.public_name or 'Public')
+        return f'{self.order_number} — {name}'
+
+    @classmethod
+    def next_number(cls, menu_type: str, is_public: bool = False) -> str:
+        """Generate next order number for today with correct prefix."""
+        from django.utils import timezone as tz
+        if is_public:
+            prefix = 'P'
+        elif menu_type == 'halal':
+            prefix = 'H'
+        elif menu_type == 'non_halal':
+            prefix = 'N'
+        elif menu_type == 'cafe_bar':
+            prefix = 'C'
+        else:
+            prefix = 'O'
+
+        today_start = tz.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+        last = cls.objects.filter(
+            order_number__startswith=prefix,
+            created_at__gte=today_start,
+        ).order_by('-created_at').first()
+
+        if last:
+            try:
+                last_num = int(last.order_number[1:])
+            except ValueError:
+                last_num = 0
+        else:
+            last_num = 0
+        return f'{prefix}{last_num + 1:03d}'
+
+
+class OrderItem(models.Model):
+    """Line item in an order."""
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
+    menu_item = models.ForeignKey(MenuItem, on_delete=models.SET_NULL, null=True)
+    name_snapshot = models.CharField(max_length=120, help_text='Name at time of order')
+    price_snapshot = models.DecimalField(max_digits=6, decimal_places=2)
+    quantity = models.PositiveIntegerField(default=1)
+    customizations = models.JSONField(default=dict, blank=True)
+    subtotal = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+
+    def __str__(self):
+        return f'{self.quantity}× {self.name_snapshot}'
+
+
+class CreditTransaction(models.Model):
+    """Ledger entry for every credit balance change."""
+    TYPE_CHOICES = [
+        ('allowance', 'Monthly Allowance'),
+        ('order', 'Order Debit'),
+        ('refund', 'Refund Credit'),
+        ('admin_adjust', 'Admin Adjustment'),
+    ]
+    user = models.ForeignKey(StaffUser, on_delete=models.CASCADE, related_name='credit_transactions')
+    type = models.CharField(max_length=16, choices=TYPE_CHOICES)
+    amount = models.DecimalField(max_digits=8, decimal_places=2, help_text='Positive=credit, negative=debit')
+    balance_after = models.DecimalField(max_digits=8, decimal_places=2)
+    related_order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True)
+    notes = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.user.staff_id} {self.type} {self.amount}'
+
+
+class QRScanLog(models.Model):
+    """Audit log for every QR code scan at kitchen/cafe bar counters."""
+    RESULT_CHOICES = [
+        ('valid', 'Valid'),
+        ('wrong_counter', 'Wrong Counter'),
+        ('duplicate', 'Duplicate (already used)'),
+        ('invalid', 'Invalid (tampered or unknown)'),
+        ('not_ready', 'Not Ready'),
+    ]
+    order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True)
+    scanner_device = models.CharField(max_length=50, blank=True, help_text='e.g. halal_kitchen, cafe_bar')
+    scanned_by = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='qr_scans'
+    )
+    result = models.CharField(max_length=16, choices=RESULT_CHOICES)
+    token_preview = models.CharField(max_length=40, blank=True, help_text='First 40 chars of scanned token')
+    scanned_at = models.DateTimeField(auto_now_add=True)
+    notes = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ['-scanned_at']
+
+    def __str__(self):
+        return f'{self.get_result_display()} — {self.order_id} @ {self.scanned_at}'

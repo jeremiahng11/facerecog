@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block title %}QR Scan Logs{% endblock %}
+{% block content %}
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="page-title">QR Scan Audit Log</div>
+      <div class="page-subtitle">All QR code scans at kitchen and cafe bar counters</div>
+    </div>
+    <a href="{% url 'cafeteria_admin_menu_list' %}" class="btn btn-secondary">← Menu</a>
+  </div>
+
+  <div class="card" style="padding:0">
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Result</th><th>Order</th><th>Counter</th><th>Scanned By</th><th>Notes</th><th>Time</th>
+        </tr></thead>
+        <tbody>
+          {% for log in logs %}
+          <tr>
+            <td>
+              {% if log.result == 'valid' %}<span class="badge badge-green">✓ Valid</span>
+              {% elif log.result == 'wrong_counter' %}<span class="badge" style="background:#fef3c7;color:#c2410c">⚠ Wrong</span>
+              {% elif log.result == 'duplicate' %}<span class="badge badge-red">🚫 Duplicate</span>
+              {% elif log.result == 'not_ready' %}<span class="badge" style="background:#dbeafe;color:#1e40af">⏳ Not Ready</span>
+              {% else %}<span class="badge badge-red">✗ Invalid</span>{% endif %}
+            </td>
+            <td class="mono">{{ log.order.order_number|default:"—" }}</td>
+            <td class="text-sm">{{ log.scanner_device|default:"—" }}</td>
+            <td class="text-sm">{{ log.scanned_by.display_name|default:"—" }}</td>
+            <td class="text-sm text-dim">{{ log.notes|default:"—" }}</td>
+            <td class="text-sm text-dim">{{ log.scanned_at|date:"d M H:i:s" }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3)">No scans logged yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

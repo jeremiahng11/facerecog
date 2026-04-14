@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% block title %}Cafeteria Orders{% endblock %}
+{% block content %}
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="page-title">Cafeteria Orders</div>
+      <div class="page-subtitle">Recent orders, cancel, and track status</div>
+    </div>
+    <a href="{% url 'cafeteria_admin_menu_list' %}" class="btn btn-secondary">← Menu</a>
+  </div>
+
+  <div class="card" style="padding:0">
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Order #</th><th>Customer</th><th>Type</th><th>Items</th>
+          <th>Credits</th><th>Total</th><th>Status</th><th>Time</th><th></th>
+        </tr></thead>
+        <tbody>
+          {% for order in orders %}
+          <tr>
+            <td class="mono text-accent"><strong>{{ order.order_number }}</strong></td>
+            <td>{{ order.customer.display_name|default:order.public_name|default:"Public" }}</td>
+            <td>
+              {% if order.menu_type == 'halal' %}<span class="badge badge-green">Halal</span>
+              {% elif order.menu_type == 'non_halal' %}<span class="badge" style="background:#dbeafe;color:#1e40af">Non-Halal</span>
+              {% else %}<span class="badge" style="background:#fef3c7;color:#c2410c">Cafe</span>{% endif %}
+            </td>
+            <td class="text-sm">
+              {% for item in order.items.all %}{{ item.quantity }}× {{ item.name_snapshot }}{% if not forloop.last %}, {% endif %}{% endfor %}
+            </td>
+            <td class="mono">S${{ order.credits_applied|floatformat:2 }}</td>
+            <td class="mono"><strong>S${{ order.subtotal|floatformat:2 }}</strong></td>
+            <td>
+              {% if order.status == 'confirmed' or order.status == 'preparing' %}<span class="badge badge-confirmed">{{ order.get_status_display }}</span>
+              {% elif order.status == 'ready' %}<span class="badge badge-ready">{{ order.get_status_display }}</span>
+              {% elif order.status == 'collected' %}<span class="badge badge-collected">{{ order.get_status_display }}</span>
+              {% elif order.status == 'cancelled' %}<span class="badge badge-cancelled">{{ order.get_status_display }}</span>
+              {% else %}<span class="badge">{{ order.get_status_display }}</span>{% endif %}
+            </td>
+            <td class="text-sm text-dim">{{ order.created_at|date:"d M H:i" }}</td>
+            <td>
+              {% if order.status == 'confirmed' or order.status == 'preparing' or order.status == 'ready' %}
+              <button class="btn btn-sm btn-secondary" style="color:var(--danger)" onclick="cancelOrder({{ order.id }}, '{{ order.order_number }}')">Cancel</button>
+              {% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text3)">No orders yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+const CSRF = '{{ csrf_token }}';
+async function cancelOrder(id, num) {
+  const reason = prompt(`Cancel order ${num}? Reason:`);
+  if (!reason) return;
+  const f = new FormData();
+  f.append('reason', reason);
+  const resp = await fetch(`/cafeteria/admin/orders/${id}/cancel/`, {
+    method: 'POST', headers: { 'X-CSRFToken': CSRF }, body: f,
+  });
+  const data = await resp.json();
+  if (data.success) { alert(data.message); location.reload(); } else { alert(data.message); }
+}
+</script>
+{% endblock %}

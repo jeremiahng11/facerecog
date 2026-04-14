@@ -1,0 +1,74 @@
+{% extends 'cafeteria/_base_cafeteria.html' %}
+{% block title %}Closed — Cafeteria{% endblock %}
+{% block extra_head %}
+<style>
+  .wrap { max-width: 520px; margin: 60px auto; padding: 20px; text-align: center; }
+  .lock { font-size: 60px; margin-bottom: 14px; }
+  .pill {
+    display: inline-block;
+    background: var(--danger-soft); color: var(--danger);
+    padding: 6px 16px; border-radius: 100px; font-size: 12px;
+    font-weight: 700; letter-spacing: 2px; margin-bottom: 16px;
+  }
+  h1 { font-size: 32px; font-weight: 800; color: var(--text); line-height: 1.15; }
+  p { color: var(--text2); margin: 12px 0 24px; }
+
+  .schedule-card {
+    background: #fff; border: 1px solid var(--border);
+    border-radius: 14px; padding: 18px 20px; text-align: left;
+    margin-bottom: 20px;
+  }
+  .sched-title {
+    font-size: 11px; letter-spacing: 2px; color: var(--text3);
+    font-weight: 700; text-transform: uppercase; text-align: center; margin-bottom: 14px;
+  }
+  .sched-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .sched-row:last-child { border-bottom: none; }
+  .sched-row .icon { font-size: 28px; }
+  .sched-row .info { flex: 1; }
+  .sched-row .info .name { font-weight: 700; color: var(--primary); }
+  .sched-row .info .sub { font-size: 11px; color: var(--text3); }
+  .sched-row .hours { text-align: right; font-size: 13px; color: var(--text); font-weight: 600; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="wrap">
+  <div class="lock">🔒</div>
+  <div class="pill">CURRENTLY CLOSED</div>
+  <h1>Cafeteria Menu<br>Is Not Available</h1>
+  <p>Ordering is outside service hours.<br>Please check the schedule below.</p>
+
+  <div class="schedule-card">
+    <div class="sched-title">DAILY ORDERING SCHEDULE</div>
+    <div class="sched-row">
+      <div class="icon">🍚</div>
+      <div class="info">
+        <div class="name">Kitchen Menu</div>
+        <div class="sub">Halal &amp; Non-Halal options</div>
+      </div>
+      <div class="hours">
+        {% for h in hours.kitchen %}
+          {{ h.label|default:"Service" }}: {{ h.opens_at|time:"H:i" }} – {{ h.closes_at|time:"H:i" }}<br>
+        {% empty %}Not scheduled{% endfor %}
+      </div>
+    </div>
+    <div class="sched-row">
+      <div class="icon">☕</div>
+      <div class="info">
+        <div class="name">Cafe Bar</div>
+        <div class="sub">Beverages &amp; light bites</div>
+      </div>
+      <div class="hours">
+        {% for h in hours.cafe_bar %}
+          {{ h.label|default:"Service" }}: {{ h.opens_at|time:"H:i" }} – {{ h.closes_at|time:"H:i" }}<br>
+        {% empty %}Not scheduled{% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" onclick="window.location='/cafeteria/kiosk/'">Back to Home</button>
+</div>
+{% endblock %}

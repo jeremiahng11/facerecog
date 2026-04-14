@@ -1,6 +1,9 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import StaffUser, FaceLoginLog, AdminActionLog, QueueTicket
+from .models import (
+    StaffUser, FaceLoginLog, AdminActionLog, QueueTicket,
+    MenuItem, Order, OrderItem, CreditTransaction, QRScanLog, OrderingHours,
+)
 
 
 @admin.register(StaffUser)
@@ -46,3 +49,45 @@ class QueueTicketAdmin(admin.ModelAdmin):
     list_display = ['number', 'user', 'status', 'date', 'created_at', 'served_at']
     list_filter = ['status', 'date']
     search_fields = ['user__staff_id', 'user__full_name']
+
+
+@admin.register(MenuItem)
+class MenuItemAdmin(admin.ModelAdmin):
+    list_display = ['name', 'menu_type', 'category', 'staff_price', 'public_price', 'quantity_remaining', 'is_available']
+    list_filter = ['menu_type', 'is_available']
+    search_fields = ['name', 'category']
+
+
+class OrderItemInline(admin.TabularInline):
+    model = OrderItem
+    readonly_fields = ['name_snapshot', 'price_snapshot', 'quantity', 'subtotal']
+    extra = 0
+
+
+@admin.register(Order)
+class OrderAdmin(admin.ModelAdmin):
+    list_display = ['order_number', 'customer', 'menu_type', 'status', 'subtotal', 'created_at']
+    list_filter = ['status', 'menu_type']
+    search_fields = ['order_number', 'customer__staff_id']
+    readonly_fields = ['qr_token', 'qr_used', 'qr_used_at', 'created_at']
+    inlines = [OrderItemInline]
+
+
+@admin.register(CreditTransaction)
+class CreditTransactionAdmin(admin.ModelAdmin):
+    list_display = ['user', 'type', 'amount', 'balance_after', 'created_at']
+    list_filter = ['type']
+    search_fields = ['user__staff_id']
+    readonly_fields = ['user', 'type', 'amount', 'balance_after', 'related_order', 'notes', 'created_at']
+
+
+@admin.register(QRScanLog)
+class QRScanLogAdmin(admin.ModelAdmin):
+    list_display = ['order', 'scanner_device', 'scanned_by', 'result', 'scanned_at']
+    list_filter = ['result', 'scanner_device']
+
+
+@admin.register(OrderingHours)
+class OrderingHoursAdmin(admin.ModelAdmin):
+    list_display = ['menu_type', 'label', 'opens_at', 'closes_at', 'is_active']
+    list_filter = ['menu_type', 'is_active']

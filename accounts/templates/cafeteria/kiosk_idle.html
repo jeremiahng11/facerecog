@@ -1,0 +1,169 @@
+{% extends 'cafeteria/_base_cafeteria.html' %}
+{% block title %}Cafeteria — Order{% endblock %}
+{% block extra_head %}
+<style>
+  body { display: flex; flex-direction: column; min-height: 100vh; }
+  .idle-wrap {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 60px 24px 40px;
+    max-width: 700px; margin: 0 auto; width: 100%;
+  }
+  .logo-ring {
+    width: 80px; height: 80px; border-radius: 50%;
+    background: var(--primary-light);
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 14px;
+  }
+  .logo-ring svg { color: var(--primary); }
+  .brand-label {
+    font-size: 11px; letter-spacing: 4px; color: var(--accent);
+    font-weight: 700; text-transform: uppercase; margin: 4px 0 20px;
+  }
+  h1 {
+    font-size: 44px; font-weight: 800; line-height: 1.1;
+    color: var(--text); text-align: center;
+  }
+  h1 .accent { color: var(--accent); display: block; }
+  .subtitle { color: var(--text2); margin-top: 14px; font-size: 17px; }
+
+  .who-label {
+    margin-top: 64px; margin-bottom: 16px;
+    font-size: 12px; letter-spacing: 3px; color: var(--text3);
+    font-weight: 600; text-transform: uppercase;
+  }
+  .options-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 18px; width: 100%;
+  }
+  .option-card {
+    background: var(--primary-light);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 32px 20px; text-align: center;
+    cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .option-card:active { transform: scale(0.98); }
+  .option-card.public { background: #fef3c7; }
+  .option-card .icon {
+    font-size: 56px; margin-bottom: 16px;
+  }
+  .option-card h3 {
+    font-size: 28px; font-weight: 700; color: var(--text);
+    margin-bottom: 8px;
+  }
+  .option-card p {
+    font-size: 13px; color: var(--text2); margin-bottom: 18px;
+  }
+  .option-card .go-btn {
+    display: inline-flex; padding: 12px 28px;
+    border-radius: 10px; background: var(--primary); color: #fff;
+    font-weight: 600; font-size: 14px;
+  }
+  .option-card.public .go-btn { background: var(--cafe); }
+
+  /* Footer */
+  .progress-row {
+    width: 100%; padding: 20px 40px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .progress-label {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: var(--text3);
+  }
+  .progress-bar {
+    height: 4px; background: #e5edf8; border-radius: 2px; overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), var(--accent));
+    width: 100%;
+    transition: width 1s linear;
+  }
+  .footer {
+    padding: 14px 40px; border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 12px; color: var(--text3);
+  }
+  .footer .time { color: var(--primary); font-weight: 700; font-size: 14px; }
+  .dot-online {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--success); margin-right: 6px;
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="idle-wrap">
+  <div class="logo-ring">
+    <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path d="M18 8h1a4 4 0 0 1 0 8h-1"/>
+      <path d="M6 8h12v9a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4z"/>
+      <line x1="6" y1="1" x2="6" y2="4"/>
+      <line x1="10" y1="1" x2="10" y2="4"/>
+      <line x1="14" y1="1" x2="14" y2="4"/>
+    </svg>
+  </div>
+  <div class="brand-label">CAFETERIA</div>
+  <h1>
+    Order Your
+    <span class="accent">Meal Here</span>
+  </h1>
+  <div class="subtitle">Touch to get started</div>
+
+  <div class="who-label">WHO ARE YOU?</div>
+  <div class="options-grid">
+    <div class="option-card" onclick="goStaff()">
+      <div class="icon">👤</div>
+      <h3>Staff</h3>
+      <p>Staff pricing &amp; monthly credits<br>Face ID or Staff PIN</p>
+      <span class="go-btn">Staff Login →</span>
+    </div>
+    <div class="option-card public" onclick="goPublic()">
+      <div class="icon">🛒</div>
+      <h3>Public</h3>
+      <p>Walk-in customers<br>Card or PayNow payment</p>
+      <span class="go-btn">Walk In →</span>
+    </div>
+  </div>
+</div>
+
+<div class="progress-row">
+  <div class="progress-label">
+    <span>Auto-return after inactivity</span>
+    <span>Configurable: 30s or 60s</span>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+</div>
+
+<div class="footer">
+  <span><span class="dot-online"></span>System Online</span>
+  <span class="time" id="timeNow"></span>
+  <span>Kiosk 01 · Level 2</span>
+</div>
+
+<script>
+const IDLE_TIMEOUT = {{ idle_timeout }};
+const fill = document.getElementById('progressFill');
+let remaining = IDLE_TIMEOUT;
+
+function tickClock() {
+  const d = new Date();
+  document.getElementById('timeNow').textContent = d.toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit' });
+}
+tickClock(); setInterval(tickClock, 1000);
+
+function tickProgress() {
+  remaining -= 1;
+  if (remaining < 0) remaining = IDLE_TIMEOUT;
+  fill.style.width = (remaining / IDLE_TIMEOUT * 100) + '%';
+}
+setInterval(tickProgress, 1000);
+
+function goStaff() {
+  window.location.href = '/cafeteria/kiosk/staff-login/';
+}
+function goPublic() {
+  alert('Public walk-in ordering coming soon (Stripe / PayNow integration pending).');
+}
+</script>
+{% endblock %}

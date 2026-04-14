@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+{% block title %}Menu Management{% endblock %}
+{% block content %}
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="page-title">Cafeteria Menu</div>
+      <div class="page-subtitle">Manage kitchen and cafe bar items</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <a href="{% url 'cafeteria_admin_stock' %}" class="btn btn-secondary">Daily Stock</a>
+      <a href="{% url 'cafeteria_admin_orders' %}" class="btn btn-secondary">Orders</a>
+      <a href="{% url 'cafeteria_admin_menu_add' %}" class="btn btn-primary">+ Add Item</a>
+    </div>
+  </div>
+
+  <div class="card" style="padding:0">
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Photo</th><th>Name</th><th>Type</th><th>Category</th>
+          <th>Staff</th><th>Public</th><th>Stock</th><th>Status</th><th></th>
+        </tr></thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td>
+              {% if item.photo %}
+                <img src="{{ item.photo.url }}" style="width:40px;height:40px;border-radius:6px;object-fit:cover">
+              {% else %}🍽{% endif %}
+            </td>
+            <td class="td-main">{{ item.name }}<br><small class="text-dim">{{ item.description|truncatechars:50 }}</small></td>
+            <td>
+              {% if item.menu_type == 'halal' %}<span class="badge badge-green">Halal</span>
+              {% elif item.menu_type == 'non_halal' %}<span class="badge" style="background:#dbeafe;color:#1e40af">Non-Halal</span>
+              {% else %}<span class="badge" style="background:#fef3c7;color:#c2410c">Cafe Bar</span>{% endif %}
+            </td>
+            <td class="text-sm">{{ item.category|default:"—" }}</td>
+            <td class="mono">S${{ item.staff_price }}</td>
+            <td class="mono">S${{ item.public_price }}</td>
+            <td>
+              <span class="mono {% if item.is_sold_out %}text-red{% elif item.is_low_stock %}text-warn{% endif %}">
+                {{ item.quantity_remaining }} / {{ item.daily_quantity }}
+              </span>
+            </td>
+            <td>
+              <button onclick="toggleItem({{ item.id }}, this)" class="badge {% if item.is_available %}badge-green{% else %}badge-red{% endif %}" style="cursor:pointer;border:none">
+                {% if item.is_available %}ON{% else %}OFF{% endif %}
+              </button>
+            </td>
+            <td>
+              <a href="{% url 'cafeteria_admin_menu_edit' item.id %}" class="btn btn-secondary btn-sm">Edit</a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text3)">No menu items yet. Click "+ Add Item" to start.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+const CSRF = '{{ csrf_token }}';
+async function toggleItem(id, btn) {
+  const resp = await fetch(`/cafeteria/admin/menu/${id}/toggle/`, {
+    method: 'POST', headers: { 'X-CSRFToken': CSRF },
+  });
+  const data = await resp.json();
+  btn.className = 'badge ' + (data.is_available ? 'badge-green' : 'badge-red');
+  btn.style.cursor = 'pointer'; btn.style.border = 'none';
+  btn.textContent = data.is_available ? 'ON' : 'OFF';
+}
+</script>
+{% endblock %}
