@@ -3,12 +3,20 @@
 {% block extra_head %}
 <style>
   @media print {
-    body > *:not(#ticketRoot) { display: none !important; }
-    #ticketRoot { width: 48mm; margin: 0 auto; padding: 3mm 2mm; font-family: 'Courier New', monospace; color: #000; }
-    #ticketRoot .btns, #ticketRoot .hint-banner { display: none; }
+    @page { size: 58mm auto; margin: 0; }
+    html, body { background: #fff !important; width: 48mm; margin: 0; padding: 0; }
+    /* Hide everything; re-show only #ticketRoot and its descendants. */
+    body * { visibility: hidden !important; }
+    #ticketRoot, #ticketRoot * { visibility: visible !important; }
+    #ticketRoot {
+      position: absolute; left: 0; top: 0;
+      width: 48mm; margin: 0; padding: 3mm 2mm;
+      font-family: 'Courier New', monospace; color: #000;
+    }
+    #ticketRoot .btns, #ticketRoot .hint-banner { display: none !important; visibility: hidden !important; }
     #ticketRoot h1 { font-size: 10pt; }
     #ticketRoot .num { font-size: 22pt; letter-spacing: 3pt; }
-    #ticketRoot img { width: 32mm !important; height: 32mm !important; }
+    #ticketRoot img { width: 32mm !important; height: 32mm !important; display: block; margin: 2mm auto; }
   }
 </style>
 {% endblock %}

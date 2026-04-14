@@ -59,13 +59,25 @@
     margin-top: 20px;
   }
 
-  /* Print layout for thermal printer */
-  @media print {
-    body { background: #fff; }
-    body > *:not(#printArea) { display: none !important; }
-    #printArea { display: block !important; font-family: monospace; text-align: center; width: 48mm; margin: 0 auto; padding: 4mm 0; }
-  }
+  /* Print layout for 58mm thermal printer (48mm printable). */
   #printArea { display: none; }
+  @media print {
+    @page { size: 58mm auto; margin: 0; }
+    html, body { background: #fff !important; width: 48mm; margin: 0; padding: 0; }
+    /* Hide everything on the page, then re-show only #printArea and
+       its descendants. Using visibility (not display) keeps ancestor
+       containers laid out so the print area stays positioned. */
+    body * { visibility: hidden !important; }
+    #printArea, #printArea * { visibility: visible !important; }
+    #printArea {
+      display: block !important;
+      position: absolute; left: 0; top: 0;
+      width: 48mm; padding: 3mm 2mm;
+      font-family: 'Courier New', monospace;
+      color: #000; text-align: center;
+    }
+    #printArea img { display: block; margin: 2mm auto; }
+  }
 </style>
 {% endblock %}
 {% block content %}
