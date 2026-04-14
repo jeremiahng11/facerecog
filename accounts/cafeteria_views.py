@@ -209,9 +209,10 @@ def _escpos_receipt_b64(order) -> str:
     buf += b'\n\n\n\n'
     buf += CUT
 
-    # URL-safe base64 so + / in the payload don't get mangled by the URL
-    # handler. Strip any trailing '=' padding — RawBT handles it fine.
-    return base64.urlsafe_b64encode(bytes(buf)).decode('ascii').rstrip('=')
+    # Standard base64 (not URL-safe) — goes inside a data: URL, where + and /
+    # are not URL-reserved; the browser URL-encodes them on the way out to
+    # RawBT which decodes them correctly.
+    return base64.b64encode(bytes(buf)).decode('ascii')
 
 
 # ─── Ordering Hours ──────────────────────────────────────────────────────────
