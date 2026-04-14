@@ -520,7 +520,7 @@ def _escpos_receipt_b64(order) -> str:
     buf += CENTER
     buf += line(order.created_at.strftime('%d %b %Y  %H:%M'))
     buf += line('Thank you!')
-    buf += b'\n\n\n\n\n'
+    buf += b'\n'  # just enough feed to clear the tear bar
 
     return base64.b64encode(bytes(buf)).decode('ascii')
 
