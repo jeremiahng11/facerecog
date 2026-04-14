@@ -89,8 +89,10 @@
   const ESCPOS_B64 = "{{ escpos_b64|default:'' }}";
   function printReceipt() {
     if (ESCPOS_B64) {
+      // rawbt:base64,<b64> — the 'base64,' prefix tells RawBT to decode
+      // the payload as binary ESC/POS (otherwise it prints it as text).
       const a = document.createElement('a');
-      a.href = 'rawbt:' + ESCPOS_B64;
+      a.href = 'rawbt:base64,' + ESCPOS_B64;
       a.style.display = 'none';
       document.body.appendChild(a);
       a.click();

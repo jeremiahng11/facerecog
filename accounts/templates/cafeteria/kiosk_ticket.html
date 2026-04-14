@@ -146,10 +146,13 @@
 
   function printReceipt() {
     if (ESCPOS_B64) {
-      // RawBT silent print. The anchor-click pattern is more reliable
-      // than setting window.location for custom URL schemes.
+      // RawBT URL scheme: rawbt:base64,<base64-of-ESC/POS-bytes>
+      // The 'base64,' prefix tells RawBT to base64-decode the payload
+      // into raw binary and hand it to the printer. Without that prefix
+      // RawBT treats the URL payload as plain text and prints the
+      // base64 string character by character.
       const a = document.createElement('a');
-      a.href = 'rawbt:' + ESCPOS_B64;
+      a.href = 'rawbt:base64,' + ESCPOS_B64;
       a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
