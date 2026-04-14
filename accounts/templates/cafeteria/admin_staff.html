@@ -2,60 +2,91 @@
 {% block title %}Staff Credits{% endblock %}
 {% block extra_head %}
 <style>
-  .staff-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  .staff-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
   .staff-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
   .staff-card .top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
   .staff-card .name { font-weight: 700; font-size: 16px; }
   .staff-card .sid { font-size: 11px; color: var(--text3); }
+  .role-badge { font-size: 10px; padding: 3px 8px; border-radius: 100px; font-weight: 700; letter-spacing: 0.5px; }
+  .role-admin { background: #fef3c7; color: #c2410c; }
+  .role-kitchen { background: rgba(16,185,129,0.15); color: var(--accent3); }
+  .role-cafe_bar { background: #ddd6fe; color: #6b21a8; }
+  .role-none { background: rgba(74,96,128,0.15); color: var(--text3); }
   .progress { height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; margin-top: 8px; }
   .progress .fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 4px; transition: width 0.3s; }
-  .adjust-btn { padding: 4px 10px; font-size: 11px; }
-  .adjust-form { display: none; margin-top: 10px; gap: 6px; }
+  .adjust-form { display: none; margin-top: 10px; gap: 6px; flex-wrap: wrap; }
   .adjust-form.active { display: flex; }
+  .row-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .role-select {
+    padding: 4px 8px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text); font-size: 11px; font-family: var(--sans);
+    cursor: pointer;
+  }
 </style>
 {% endblock %}
 {% block content %}
 <div class="page">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
     <div>
-      <div class="page-title">Staff Credits</div>
-      <div class="page-subtitle">View balances and adjust credits</div>
+      <div class="page-title">Staff Credits &amp; Roles</div>
+      <div class="page-subtitle">Balances, roles, and credit adjustments</div>
     </div>
-    <a href="{% url 'cafeteria_dashboard' %}" class="btn btn-secondary">← Dashboard</a>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <a href="{% url 'cafeteria_credits_bulk' %}" class="btn btn-primary">💰 Monthly Settings</a>
+      <a href="{% url 'cafeteria_credit_history' %}" class="btn btn-secondary">Full History</a>
+      <a href="{% url 'cafeteria_dashboard' %}" class="btn btn-secondary">← Dashboard</a>
+    </div>
   </div>
 
   <div class="staff-grid">
     {% for s in staff %}
-    <div class="staff-card">
+    <div class="staff-card" id="staff-{{ s.id }}">
       <div class="top">
         <div>
           <div class="name">{{ s.display_name }}</div>
           <div class="sid">{{ s.staff_id }} · {{ s.department|default:"—" }}</div>
         </div>
-        {% if s.face_registered %}<span class="badge badge-green">Face ✓</span>{% endif %}
+        <span class="role-badge role-{{ s.role|default:'none' }}" id="role-badge-{{ s.id }}">
+          {% if s.role == 'admin' %}Admin
+          {% elif s.role == 'kitchen' %}Kitchen
+          {% elif s.role == 'cafe_bar' %}Cafe Bar
+          {% else %}Staff{% endif %}
+        </span>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:baseline">
         <div>
           <div class="mono" style="font-size:22px;color:var(--accent);font-weight:700">S${{ s.credit_balance|floatformat:2 }}</div>
           <div style="font-size:11px;color:var(--text3)">of S${{ s.monthly_credit|floatformat:2 }} monthly</div>
         </div>
-        <button class="btn btn-secondary adjust-btn" onclick="toggleAdjust({{ s.id }})">Adjust</button>
       </div>
       <div class="progress">
         {% if s.monthly_credit %}<div class="fill" style="width:{% widthratio s.credit_balance s.monthly_credit 100 %}%"></div>{% endif %}
       </div>
+
+      <div class="row-actions">
+        <select class="role-select" id="role-{{ s.id }}" onchange="changeRole({{ s.id }}, this.value)">
+          <option value="" {% if not s.role %}selected{% endif %}>Staff (ordering only)</option>
+          <option value="kitchen" {% if s.role == 'kitchen' %}selected{% endif %}>Kitchen Counter</option>
+          <option value="cafe_bar" {% if s.role == 'cafe_bar' %}selected{% endif %}>Cafe Bar Counter</option>
+          <option value="admin" {% if s.role == 'admin' %}selected{% endif %}>Administrator</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" onclick="toggleAdjust({{ s.id }})">± Credit</button>
+        <a href="{% url 'cafeteria_credit_history_user' s.id %}" class="btn btn-secondary btn-sm">History</a>
+      </div>
+
       <form class="adjust-form" id="adjust-{{ s.id }}" onsubmit="return adjust(event, {{ s.id }})">
-        <input type="number" step="0.01" placeholder="±Amount" name="amount" required style="flex:1;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)">
-        <input type="text" placeholder="Note" name="notes" style="flex:1;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)">
+        <input type="number" step="0.01" placeholder="±Amount SGD" name="amount" required style="flex:1;min-width:100px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)">
+        <input type="text" placeholder="Reason / note" name="notes" style="flex:2;min-width:150px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)">
         <button type="submit" class="btn btn-primary btn-sm">Save</button>
       </form>
     </div>
-    {% empty %}<div class="text-dim">No staff</div>{% endfor %}
+    {% empty %}<div class="text-dim">No active staff</div>{% endfor %}
   </div>
 </div>
 <script>
 const CSRF = '{{ csrf_token }}';
 function toggleAdjust(id) { document.getElementById('adjust-' + id).classList.toggle('active'); }
+
 async function adjust(e, id) {
   e.preventDefault();
   const f = new FormData(e.target);
@@ -64,6 +95,21 @@ async function adjust(e, id) {
   if (d.success) location.reload();
   else alert(d.message);
   return false;
+}
+
+async function changeRole(id, role) {
+  const f = new FormData();
+  f.append('role', role);
+  const r = await fetch(`/cafeteria/admin/staff/${id}/role/`, { method: 'POST', headers: { 'X-CSRFToken': CSRF }, body: f });
+  const d = await r.json();
+  if (d.success) {
+    // Update the badge inline.
+    const badge = document.getElementById('role-badge-' + id);
+    badge.className = 'role-badge role-' + (d.role === 'staff' ? 'none' : d.role);
+    badge.textContent = { admin: 'Admin', kitchen: 'Kitchen', cafe_bar: 'Cafe Bar', staff: 'Staff' }[d.role];
+  } else {
+    alert(d.message);
+  }
 }
 </script>
 {% endblock %}

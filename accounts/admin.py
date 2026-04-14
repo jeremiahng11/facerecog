@@ -17,6 +17,7 @@ class StaffUserAdmin(UserAdmin):
     fieldsets = (
         (None, {'fields': ('staff_id', 'password')}),
         ('Personal', {'fields': ('full_name', 'email', 'department', 'profile_picture')}),
+        ('Role & Credits', {'fields': ('role', 'monthly_credit', 'credit_balance', 'kiosk_pin')}),
         ('Face Recognition', {'fields': ('face_photo', 'face_encoding', 'face_registered', 'face_enabled', 'last_face_login')}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Dates', {'fields': ('date_joined', 'last_login')}),

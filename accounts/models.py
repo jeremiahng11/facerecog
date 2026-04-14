@@ -55,6 +55,17 @@ class StaffUser(AbstractBaseUser, PermissionsMixin):
         max_length=6, blank=True,
         help_text='4-6 digit PIN for kiosk queue login (set in Profile)'
     )
+    # Role-based access for the Displays Hub and counter views.
+    ROLE_CHOICES = [
+        ('', 'Staff (ordering only)'),
+        ('kitchen', 'Kitchen Counter'),
+        ('cafe_bar', 'Cafe Bar Counter'),
+        ('admin', 'Administrator'),
+    ]
+    role = models.CharField(
+        max_length=16, choices=ROLE_CHOICES, blank=True,
+        help_text='Workstation role — controls access to counter views'
+    )
     # Cafeteria credit system
     monthly_credit = models.DecimalField(
         max_digits=8, decimal_places=2, default=50.00,
@@ -90,6 +101,21 @@ class StaffUser(AbstractBaseUser, PermissionsMixin):
     @property
     def display_name(self):
         return self.full_name or self.staff_id
+
+    @property
+    def is_admin_role(self):
+        """True if user has admin privileges (is_staff, is_superuser, or role=admin)."""
+        return self.is_staff or self.is_superuser or self.role == 'admin'
+
+    @property
+    def is_kitchen_user(self):
+        """True if user can access kitchen counter views."""
+        return self.is_admin_role or self.role == 'kitchen'
+
+    @property
+    def is_cafe_bar_user(self):
+        """True if user can access cafe bar counter."""
+        return self.is_admin_role or self.role == 'cafe_bar'
 
 
 class FaceLoginLog(models.Model):

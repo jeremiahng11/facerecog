@@ -116,7 +116,12 @@ urlpatterns = [
     path('cafeteria/admin/refunds/', cafeteria_views.cafeteria_refunds_view, name='cafeteria_admin_refunds'),
     path('cafeteria/admin/staff/', cafeteria_views.cafeteria_staff_view, name='cafeteria_admin_staff'),
     path('cafeteria/admin/staff/<int:user_id>/adjust/', cafeteria_views.cafeteria_staff_adjust_credit_ajax, name='cafeteria_staff_adjust'),
-    path('cafeteria/admin/displays/', cafeteria_views.cafeteria_displays_hub_view, name='cafeteria_displays_hub'),
+    path('cafeteria/admin/staff/<int:user_id>/role/', cafeteria_views.cafeteria_staff_role_ajax, name='cafeteria_staff_role'),
+    path('cafeteria/admin/credits/', cafeteria_views.cafeteria_credits_bulk_view, name='cafeteria_credits_bulk'),
+    path('cafeteria/admin/credit-history/', cafeteria_views.cafeteria_credit_history_view, name='cafeteria_credit_history'),
+    path('cafeteria/admin/credit-history/<int:user_id>/', cafeteria_views.cafeteria_credit_history_view, name='cafeteria_credit_history_user'),
+    path('cafeteria/displays/', cafeteria_views.cafeteria_displays_hub_view, name='cafeteria_displays_hub'),
+    path('cafeteria/admin/displays/', cafeteria_views.cafeteria_displays_hub_view, name='cafeteria_displays_hub_admin'),
 
     # Stripe
     path('cafeteria/stripe/success/', cafeteria_views.stripe_success_view, name='cafeteria_stripe_success'),

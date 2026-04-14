@@ -62,7 +62,34 @@ def _broadcast_order(order, event_type):
 
 
 def is_admin(user):
-    return user.is_staff or user.is_superuser
+    """Admin privilege check — is_staff, is_superuser, or role='admin'."""
+    return user.is_authenticated and (user.is_staff or user.is_superuser or getattr(user, 'role', '') == 'admin')
+
+
+def is_kitchen_user(user):
+    """Can access kitchen counter views (halal, non_halal)."""
+    return user.is_authenticated and (is_admin(user) or getattr(user, 'role', '') == 'kitchen')
+
+
+def is_cafe_bar_user(user):
+    """Can access cafe bar counter."""
+    return user.is_authenticated and (is_admin(user) or getattr(user, 'role', '') == 'cafe_bar')
+
+
+def is_kitchen_or_cafe_bar_user(user):
+    """Can access any counter (kitchen, cafe_bar, or admin)."""
+    return user.is_authenticated and (is_admin(user) or getattr(user, 'role', '') in ('kitchen', 'cafe_bar'))
+
+
+def _user_can_scan_counter(user, counter: str) -> bool:
+    """Is this user allowed to scan at this counter?"""
+    if is_admin(user):
+        return True
+    if counter in ('halal', 'non_halal') and is_kitchen_user(user):
+        return True
+    if counter == 'cafe_bar' and is_cafe_bar_user(user):
+        return True
+    return False
 
 
 # ─── HMAC QR Signing ─────────────────────────────────────────────────────────
@@ -396,14 +423,18 @@ def kiosk_ticket_view(request, order_id):
 # ─── Kitchen View ────────────────────────────────────────────────────────────
 
 @login_required
-@user_passes_test(is_admin)
 def kitchen_view(request, kitchen_type):
     """
     Kitchen/Cafe Bar order display. Shows only items belonging to this
     counter (for mixed orders, filters the item list per counter).
+    Access: admin + kitchen users for halal/non_halal, admin + cafe_bar users for cafe_bar.
     """
     if kitchen_type not in ('halal', 'non_halal', 'cafe_bar'):
         raise Http404()
+    if not _user_can_scan_counter(request.user, kitchen_type):
+        return render(request, 'cafeteria/access_denied.html', {
+            'required_role': 'Kitchen Counter' if kitchen_type in ('halal', 'non_halal') else 'Cafe Bar Counter',
+        }, status=403)
 
     today_start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
     # Include mixed orders that contain items for this counter.
@@ -428,7 +459,7 @@ def kitchen_view(request, kitchen_type):
 
 
 @login_required
-@user_passes_test(is_admin)
+@user_passes_test(is_kitchen_or_cafe_bar_user)
 @require_POST
 def kitchen_mark_ready_ajax(request, order_id):
     """Mark an order as ready for collection."""
@@ -441,7 +472,7 @@ def kitchen_mark_ready_ajax(request, order_id):
 
 
 @login_required
-@user_passes_test(is_admin)
+@user_passes_test(is_kitchen_or_cafe_bar_user)
 @require_POST
 def kitchen_scan_qr_ajax(request):
     """
@@ -601,7 +632,7 @@ def kitchen_scan_qr_ajax(request):
 
 
 @login_required
-@user_passes_test(is_admin)
+@user_passes_test(is_kitchen_or_cafe_bar_user)
 @require_POST
 def kitchen_mark_collected_ajax(request, order_id):
     """
@@ -653,7 +684,7 @@ def kitchen_mark_collected_ajax(request, order_id):
 # ─── Public terminal payment completion (cafe bar) ──────────────────────────
 
 @login_required
-@user_passes_test(is_admin)
+@user_passes_test(is_cafe_bar_user)
 @require_POST
 def cafe_bar_complete_payment_ajax(request, order_id):
     """
@@ -897,13 +928,17 @@ def tv_queue_data_ajax(request):
 # ─── Cafe Bar Counter View ───────────────────────────────────────────────────
 
 @login_required
-@user_passes_test(is_admin)
 def cafe_bar_counter_view(request):
     """
     Split-layout Cafe Bar counter: incoming | ready.
     Also shows pending-payment orders (public terminal payment flow).
     Includes mixed orders with cafe_bar items.
+    Access: admin + cafe_bar users.
     """
+    if not _user_can_scan_counter(request.user, 'cafe_bar'):
+        return render(request, 'cafeteria/access_denied.html', {
+            'required_role': 'Cafe Bar Counter',
+        }, status=403)
     today_start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
 
     # Orders pending payment (public terminal flow) — cafe bar processes these.
@@ -1442,7 +1477,121 @@ def cron_reset_credits_view(request):
 
 
 @login_required
-@user_passes_test(is_admin)
 def cafeteria_displays_hub_view(request):
-    """Central landing page listing all display views and their devices."""
-    return render(request, 'cafeteria/admin_displays.html')
+    """
+    Central landing page listing display views the user can access.
+    Filtered by role: kitchen users see kitchen views, cafe bar users
+    see cafe bar views, admins see everything.
+    """
+    user = request.user
+    can_admin = is_admin(user)
+    can_kitchen = is_kitchen_user(user)
+    can_cafe_bar = is_cafe_bar_user(user)
+    if not (can_admin or can_kitchen or can_cafe_bar):
+        return render(request, 'cafeteria/access_denied.html', {
+            'required_role': 'Kitchen, Cafe Bar, or Administrator',
+        }, status=403)
+    return render(request, 'cafeteria/admin_displays.html', {
+        'can_admin': can_admin,
+        'can_kitchen': can_kitchen,
+        'can_cafe_bar': can_cafe_bar,
+    })
+
+
+@login_required
+@user_passes_test(is_admin)
+def cafeteria_credits_bulk_view(request):
+    """
+    Bulk update monthly credit allowance for all active staff users.
+    Optionally trigger an immediate reset applying the new allowance.
+    """
+    if request.method == 'POST':
+        try:
+            new_allowance = Decimal(request.POST.get('monthly_credit') or '0')
+            if new_allowance < 0:
+                raise ValueError('Amount cannot be negative')
+            apply_now = request.POST.get('apply_now') == 'on'
+
+            with transaction.atomic():
+                users = StaffUser.objects.filter(is_active=True)
+                updated = 0
+                for u in users:
+                    old_allowance = u.monthly_credit
+                    u.monthly_credit = new_allowance
+                    if apply_now:
+                        old_balance = u.credit_balance
+                        u.credit_balance = new_allowance
+                        u.save(update_fields=['monthly_credit', 'credit_balance'])
+                        delta = Decimal(new_allowance) - Decimal(old_balance)
+                        CreditTransaction.objects.create(
+                            user=u, type='allowance', amount=delta,
+                            balance_after=u.credit_balance,
+                            notes=f'Bulk reset: monthly S${old_allowance} → S${new_allowance}',
+                        )
+                    else:
+                        u.save(update_fields=['monthly_credit'])
+                        CreditTransaction.objects.create(
+                            user=u, type='admin_adjust', amount=Decimal('0'),
+                            balance_after=u.credit_balance,
+                            notes=f'Monthly allowance changed: S${old_allowance} → S${new_allowance} (no balance change)',
+                        )
+                    updated += 1
+
+            messages.success(
+                request,
+                f'Updated monthly allowance for {updated} staff to S${new_allowance}.'
+                + (' Balances reset immediately.' if apply_now else ' Will apply on next monthly reset.')
+            )
+            return redirect('cafeteria_credits_bulk')
+        except Exception as e:
+            messages.error(request, f'Error: {e}')
+
+    # Show current state.
+    staff = StaffUser.objects.filter(is_active=True).order_by('staff_id')
+    distinct_allowances = staff.values_list('monthly_credit', flat=True).distinct()
+    return render(request, 'cafeteria/admin_credits_bulk.html', {
+        'staff': staff,
+        'distinct_allowances': distinct_allowances,
+        'total_staff': staff.count(),
+        'credit_reset_day': getattr(settings, 'CREDIT_RESET_DAY', 1),
+    })
+
+
+@login_required
+@user_passes_test(is_admin)
+def cafeteria_credit_history_view(request, user_id=None):
+    """
+    Credit transaction history. If user_id is given, shows that user's
+    transactions. Otherwise shows the full system-wide ledger.
+    """
+    qs = CreditTransaction.objects.select_related('user', 'related_order').order_by('-created_at')
+    target_user = None
+    if user_id:
+        target_user = get_object_or_404(StaffUser, pk=user_id)
+        qs = qs.filter(user=target_user)
+    from django.core.paginator import Paginator
+    paginator = Paginator(qs, 100)
+    page = paginator.get_page(request.GET.get('page', 1))
+    return render(request, 'cafeteria/admin_credit_history.html', {
+        'transactions': page,
+        'target_user': target_user,
+    })
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def cafeteria_staff_role_ajax(request, user_id):
+    """Admin: set a staff member's workstation role."""
+    user = get_object_or_404(StaffUser, pk=user_id)
+    new_role = request.POST.get('role', '')
+    if new_role not in ('', 'kitchen', 'cafe_bar', 'admin'):
+        return JsonResponse({'success': False, 'message': 'Invalid role'})
+    user.role = new_role
+    # If role is 'admin', also set is_staff so they can access Django admin.
+    if new_role == 'admin':
+        user.is_staff = True
+        user.save(update_fields=['role', 'is_staff'])
+    else:
+        user.save(update_fields=['role'])
+    return JsonResponse({'success': True, 'role': new_role or 'staff'})

@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+{% block title %}Monthly Credits{% endblock %}
+{% block content %}
+<div class="page" style="max-width:800px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <div>
+      <div class="page-title">Monthly Credit Allowance</div>
+      <div class="page-subtitle">Set the credit allowance applied to every staff on the 1st of each month</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <a href="{% url 'cafeteria_admin_staff' %}" class="btn btn-secondary">← Staff Management</a>
+      <a href="{% url 'cafeteria_credit_history' %}" class="btn btn-secondary">View Credit History</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <form method="post">
+      {% csrf_token %}
+
+      <div style="background:rgba(0,212,255,0.06);border:1px solid rgba(0,212,255,0.3);border-radius:10px;padding:14px;margin-bottom:20px;font-size:13px;color:var(--text2)">
+        <strong style="color:var(--accent)">📅 Automatic monthly reset</strong><br>
+        Credits reset to the monthly allowance on day {{ credit_reset_day }} of each month at 00:01 Singapore time.
+        <strong>No carry-forward</strong> — any unused balance is replaced, not added.
+      </div>
+
+      <div class="form-group">
+        <label>Monthly allowance (SGD) for all {{ total_staff }} active staff</label>
+        <input type="number" step="0.01" min="0" name="monthly_credit" placeholder="e.g. 50.00" required autofocus>
+        <div class="hint">This amount will be applied when the monthly reset runs. Admins can still give individual staff extra credits or adjust balances at any time.</div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-check">
+          <input type="checkbox" name="apply_now" id="apply_now">
+          <label for="apply_now">Apply immediately — reset all staff balances to this amount right now</label>
+        </div>
+        <div class="hint" style="margin-top:6px;color:var(--warn)">⚠ If enabled, any existing balance will be OVERWRITTEN, not added.</div>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-full">💾 Save Monthly Allowance</button>
+    </form>
+  </div>
+
+  <div class="card" style="margin-top:20px;padding:0">
+    <div style="padding:16px">
+      <h2 class="mono" style="font-size:14px;color:var(--accent)">CURRENT SETTINGS BY STAFF</h2>
+      <div class="text-sm text-muted">
+        {% for allowance in distinct_allowances %}
+          <span class="badge" style="margin-right:6px">S${{ allowance|floatformat:2 }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Staff</th><th>Role</th><th>Monthly Allowance</th><th>Current Balance</th><th></th>
+        </tr></thead>
+        <tbody>
+          {% for s in staff %}
+          <tr>
+            <td class="td-main">{{ s.display_name }}<br><small class="text-dim">{{ s.staff_id }}</small></td>
+            <td>
+              {% if s.role == 'admin' %}<span class="badge" style="background:#fef3c7;color:#c2410c">Admin</span>
+              {% elif s.role == 'kitchen' %}<span class="badge badge-green">Kitchen</span>
+              {% elif s.role == 'cafe_bar' %}<span class="badge" style="background:#ddd6fe;color:#6b21a8">Cafe Bar</span>
+              {% else %}<span class="text-dim">Staff</span>{% endif %}
+            </td>
+            <td class="mono">S${{ s.monthly_credit|floatformat:2 }}</td>
+            <td class="mono">S${{ s.credit_balance|floatformat:2 }}</td>
+            <td>
+              <a href="{% url 'cafeteria_credit_history_user' s.id %}" class="btn btn-secondary btn-sm">History</a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text3)">No active staff</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

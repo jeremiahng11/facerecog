@@ -54,9 +54,11 @@
   </div>
 
   <!-- Kitchen counter views -->
-  <div class="section-label">👨‍🍳 KITCHEN COUNTER (10" TABLETS)</div>
+  {% if can_kitchen or can_cafe_bar %}
+  <div class="section-label">👨‍🍳 COUNTER TABLETS (10")</div>
   <div class="display-grid">
 
+    {% if can_kitchen %}
     <div class="display-card" style="border-color:rgba(16,185,129,0.3)">
       <div class="icon">🟢</div>
       <h3>Halal Kitchen</h3>
@@ -76,19 +78,24 @@
       <a href="{% url 'cafeteria_kitchen' 'non_halal' %}" target="_blank" class="open-btn">Open in new tab →</a>
       <button class="copy-btn" onclick="copy('url-nonhalal', this)">📋 Copy URL</button>
     </div>
+    {% endif %}
 
+    {% if can_cafe_bar %}
     <div class="display-card" style="border-color:rgba(194,65,12,0.3)">
       <div class="icon">☕</div>
       <h3>Cafe Bar Counter</h3>
       <div class="device">10" TABLET · CAFE</div>
-      <p>Split-layout — incoming orders on left, ready for collection on right, QR scanner active.</p>
+      <p>Split-layout — incoming orders on left, ready for collection on right, QR scanner active, processes pay-at-counter payments.</p>
       <div class="url" id="url-cafe-counter">{{ request.scheme }}://{{ request.get_host }}/cafeteria/cafe-bar/counter/</div>
       <a href="{% url 'cafeteria_cafe_bar_counter' %}" target="_blank" class="open-btn">Open in new tab →</a>
       <button class="copy-btn" onclick="copy('url-cafe-counter', this)">📋 Copy URL</button>
     </div>
+    {% endif %}
   </div>
+  {% endif %}
 
   <!-- TV displays -->
+  {% if can_admin or can_cafe_bar %}
   <div class="section-label">📺 CUSTOMER TV DISPLAYS (43" SAMSUNG)</div>
   <div class="display-grid">
 
@@ -96,12 +103,13 @@
       <div class="icon">📺</div>
       <h3>Cafe Bar TV</h3>
       <div class="device">43" TV · CUSTOMER</div>
-      <p>Full-screen display — Preparing | Ready columns for C-prefix orders with scheduled times.</p>
+      <p>Full-screen display — Preparing | Ready columns for all cafe bar orders (including mixed M-prefix orders). No login required.</p>
       <div class="url" id="url-tv-cafe">{{ request.scheme }}://{{ request.get_host }}/cafeteria/tv/cafe-bar/</div>
       <a href="{% url 'cafeteria_tv_cafe_bar' %}" target="_blank" class="open-btn">Open in new tab →</a>
       <button class="copy-btn" onclick="copy('url-tv-cafe', this)">📋 Copy URL</button>
     </div>
   </div>
+  {% endif %}
 
   <!-- Kiosk + Staff Portal -->
   <div class="section-label">🖥 SELF-SERVICE</div>
@@ -128,7 +136,8 @@
     </div>
   </div>
 
-  <!-- Admin / Operations -->
+  <!-- Admin / Operations — only for admins -->
+  {% if can_admin %}
   <div class="section-label">⚙ ADMIN &amp; OPERATIONS</div>
   <div class="display-grid">
 
@@ -162,9 +171,23 @@
 
     <div class="display-card">
       <div class="icon">👥</div>
-      <h3>Staff Credits</h3>
-      <p>View and adjust monthly credit balances.</p>
+      <h3>Staff Credits &amp; Roles</h3>
+      <p>View, adjust credits and assign roles (admin/kitchen/cafe bar).</p>
       <a href="{% url 'cafeteria_admin_staff' %}" class="open-btn">Open →</a>
+    </div>
+
+    <div class="display-card">
+      <div class="icon">💰</div>
+      <h3>Monthly Credits</h3>
+      <p>Set the monthly allowance applied to all staff on the 1st.</p>
+      <a href="{% url 'cafeteria_credits_bulk' %}" class="open-btn">Open →</a>
+    </div>
+
+    <div class="display-card">
+      <div class="icon">📜</div>
+      <h3>Credit History</h3>
+      <p>System-wide credit transaction ledger.</p>
+      <a href="{% url 'cafeteria_credit_history' %}" class="open-btn">Open →</a>
     </div>
 
     <div class="display-card">
@@ -174,6 +197,7 @@
       <a href="{% url 'cafeteria_admin_qr_logs' %}" class="open-btn">Open →</a>
     </div>
   </div>
+  {% endif %}
 </div>
 
 <script>
