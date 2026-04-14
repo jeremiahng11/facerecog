@@ -55,6 +55,7 @@ urlpatterns = [
     path('cafeteria/kiosk/menu-select/', cafeteria_views.kiosk_menu_select_view, name='cafeteria_menu_select'),
     path('cafeteria/kiosk/menu/<str:menu_type>/', cafeteria_views.kiosk_menu_view, name='cafeteria_menu'),
     path('cafeteria/kiosk/ticket/<int:order_id>/', cafeteria_views.kiosk_ticket_view, name='cafeteria_ticket'),
+    path('cafeteria/kiosk/ticket/<int:order_id>/print/', cafeteria_views.kiosk_ticket_print_view, name='cafeteria_ticket_print'),
 
     # Ordering API
     path('cafeteria/api/place-order/', cafeteria_views.kiosk_place_order_ajax, name='cafeteria_place_order'),
@@ -88,6 +89,7 @@ urlpatterns = [
     # Public walk-in
     path('cafeteria/public/<str:menu_type>/', cafeteria_views.public_order_view, name='cafeteria_public'),
     path('cafeteria/public/ticket/<int:order_id>/', cafeteria_views.public_ticket_view, name='cafeteria_public_ticket'),
+    path('cafeteria/public/ticket/<int:order_id>/print/', cafeteria_views.public_ticket_print_view, name='cafeteria_public_ticket_print'),
     path('cafeteria/api/public-place-order/', cafeteria_views.public_place_order_ajax, name='cafeteria_public_place_order'),
 
     # Staff Portal (mobile PWA)

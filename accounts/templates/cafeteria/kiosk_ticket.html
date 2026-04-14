@@ -124,45 +124,18 @@
   </div>
 
   <div class="btns">
-    <button class="btn btn-secondary" onclick="printReceipt()">🖨 Print</button>
+    <a class="btn btn-secondary" href="{% url 'cafeteria_ticket_print' order.id %}" target="_blank" rel="noopener">🖨 Print</a>
     <button class="btn btn-primary" onclick="window.location='{{ done_url|default:"/cafeteria/kiosk/" }}'">{{ done_label|default:"Done" }}</button>
   </div>
 
 <script>
-  // Print strategy:
-  //   window.print() is called directly from the button click so the call
-  //   carries a user gesture (required by Chromium / Fully Kiosk — without
-  //   a gesture the call is silently ignored). If Fully Kiosk's
-  //   "Kiosk Printing / Suppress Print Dialog" option is enabled, the
-  //   call prints silently to the default printer; otherwise the browser
-  //   shows its print dialog.
+  // Print is handled by a dedicated /print/ page (matches queue_print).
+  // Clicking Print opens that 58mm-wide print-only page in a new tab;
+  // the user taps 'Print Ticket' on that page, window.print() fires with
+  // the gesture intact, and Fully Kiosk silent-prints it. The main
+  // ticket page stays on screen (idle watchdog takes over).
   const IS_KIOSK_SOURCE = {% if request.GET.source == 'kiosk' or not request.GET.source %}true{% else %}false{% endif %};
-  const KIOSK_POST_PRINT_MS = {{ post_print_timeout|default:5 }} * 1000;
   const KIOSK_TICKET_IDLE_MS = {{ idle_timeout|default:30 }} * 1000;
-
-  function printReceipt() {
-    // Kiosk-origin: only schedule the auto-logout AFTER the print job
-    // actually completes. Fully Kiosk's silent print is async — if we
-    // schedule the logout immediately, the kiosk navigates to the idle
-    // screen before the print job renders, and the printer ends up
-    // rasterising the wrong page (the 'Order Your Meal' landing).
-    if (IS_KIOSK_SOURCE) {
-      try { sessionStorage.removeItem('kiosk_cart'); } catch (e) {}
-      let scheduled = false;
-      const onAfter = () => {
-        if (scheduled) return;
-        scheduled = true;
-        window.removeEventListener('afterprint', onAfter);
-        setTimeout(kioskLogoutAndReturn, KIOSK_POST_PRINT_MS);
-      };
-      window.addEventListener('afterprint', onAfter);
-      // Safety net: if afterprint never fires (some Fully Kiosk versions
-      // skip it for silent prints), still return to idle after a generous
-      // timeout so the kiosk doesn't get stuck on the ticket.
-      setTimeout(onAfter, 20000);
-    }
-    window.print();
-  }
 
   // POST logout with next=/cafeteria/kiosk/ so the kiosk lands on the idle
   // screen, not the regular login page.

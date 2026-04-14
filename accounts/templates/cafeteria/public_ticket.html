@@ -78,19 +78,21 @@
   </div>
 
   <div class="btns" style="display:flex;gap:10px;margin-top:20px">
-    <button class="btn btn-secondary" onclick="printReceipt()">🖨 Print</button>
+    <a class="btn btn-secondary" href="{% url 'cafeteria_public_ticket_print' order.id %}" target="_blank" rel="noopener">🖨 Print</a>
     <button class="btn btn-primary" onclick="window.location='/cafeteria/kiosk/'">Done</button>
   </div>
 </div>
 
 <script>
-  // Direct print — carries a user gesture, which Chromium/Fully Kiosk
-  // require for window.print(). With Fully Kiosk's "Kiosk Printing"
-  // option enabled, this prints silently; otherwise it shows the
-  // browser dialog.
-  function printReceipt() { window.print(); }
+  // Print is handled by the dedicated /print/ 58mm-wide page (opened in
+  // a new tab via the Print link above) — matches the queue_print flow.
   {% if autoprint %}
-  window.addEventListener('load', () => setTimeout(() => window.print(), 400));
+  // Cafe-bar counter opens this page with ?autoprint=1 after a payment
+  // is confirmed; automatically redirect into the print page so the
+  // silent print pipeline kicks in immediately.
+  window.addEventListener('load', () => {
+    window.location.replace('{% url "cafeteria_public_ticket_print" order.id %}');
+  });
   {% endif %}
 </script>
 {% endblock %}

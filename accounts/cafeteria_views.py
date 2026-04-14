@@ -426,6 +426,43 @@ def kiosk_place_order_ajax(request):
 
 
 @login_required
+def kiosk_ticket_print_view(request, order_id):
+    """
+    Dedicated 58mm-wide print-only page for an order — mirrors the
+    queue_print pattern from the sister branch. Opened in a new tab
+    from the main ticket page. Page-local 'Print Ticket' button calls
+    window.print() (silent under Fully Kiosk; dialog otherwise).
+    """
+    order = get_object_or_404(Order, pk=order_id, customer=request.user)
+    qr_image = _generate_qr_image_base64(order.qr_token, box_size=5)
+    name = ''
+    if order.customer_id:
+        name = getattr(order.customer, 'display_name', '') or getattr(order.customer, 'full_name', '') or ''
+    if not name:
+        name = getattr(order, 'public_name', '') or 'Guest'
+    return render(request, 'cafeteria/ticket_print.html', {
+        'order': order,
+        'qr_image': qr_image,
+        'name': name,
+    })
+
+
+def public_ticket_print_view(request, order_id):
+    """
+    Public walk-in print-only page — no login required (matches the public
+    ticket). 58mm layout identical to kiosk_ticket_print.
+    """
+    order = get_object_or_404(Order, pk=order_id, is_public=True)
+    qr_image = _generate_qr_image_base64(order.qr_token, box_size=5)
+    name = getattr(order, 'public_name', '') or 'Walk-in'
+    return render(request, 'cafeteria/ticket_print.html', {
+        'order': order,
+        'qr_image': qr_image,
+        'name': name,
+    })
+
+
+@login_required
 def kiosk_ticket_view(request, order_id):
     """QR collection slip — shown after successful order.
 
@@ -768,7 +805,7 @@ def cafe_bar_complete_payment_ajax(request, order_id):
     return JsonResponse({
         'success': True,
         'order_number': order.order_number,
-        'collection_receipt_url': f'/cafeteria/public/ticket/{order.id}/',
+        'collection_receipt_url': f'/cafeteria/public/ticket/{order.id}/print/',
     })
 
 

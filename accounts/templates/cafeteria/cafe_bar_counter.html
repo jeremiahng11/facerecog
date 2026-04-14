@@ -262,9 +262,10 @@ async function completePayment(orderId) {
   });
   const data = await resp.json();
   if (data.success) {
-    // Open collection receipt in new window with autoprint=1 —
-    // customer gets the collection QR slip from the thermal printer.
-    window.open(data.collection_receipt_url + '?autoprint=1', '_blank');
+    // Open the dedicated 58mm print page in a new tab — matches
+    // the queue_print silent-print flow. collection_receipt_url already
+    // points at /cafeteria/public/ticket/<id>/print/.
+    window.open(data.collection_receipt_url, '_blank');
     closePopup();
     setTimeout(() => location.reload(), 500);
   } else {

@@ -1,0 +1,96 @@
+{% load static %}<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Print Order {{ order.order_number }}</title>
+<style>
+  /* 58mm thermal printer: ~48mm printable width ≈ 384px at 203dpi */
+  @page { size: 58mm auto; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 48mm;
+    font-family: 'Courier New', monospace;
+    color: #000;
+    background: #fff;
+    padding: 3mm 2mm;
+    text-align: center;
+  }
+  .brand { font-size: 10pt; font-weight: bold; margin-bottom: 2mm; }
+  .divider { border-top: 1px dashed #000; margin: 2mm 0; }
+  .name { font-size: 9pt; margin-bottom: 1mm; }
+  .order-num {
+    font-size: 32pt; font-weight: bold; letter-spacing: 2mm;
+    margin: 3mm 0 2mm;
+  }
+  .menu-tag { font-size: 8pt; margin-bottom: 2mm; }
+  .qr-code { margin: 2mm auto; }
+  .qr-code img { width: 32mm; height: 32mm; }
+  .items { font-size: 8pt; text-align: left; margin: 2mm 0; }
+  .items .row { display: flex; justify-content: space-between; }
+  .total { font-size: 9pt; font-weight: bold; display: flex; justify-content: space-between; margin-top: 1mm; }
+  .timestamp { font-size: 7pt; color: #333; margin-top: 1mm; }
+  .footer { font-size: 7pt; color: #666; margin-top: 2mm; }
+
+  @media screen {
+    body {
+      width: 320px; margin: 40px auto;
+      border: 1px solid #ccc; padding: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .no-print { display: block; margin: 20px auto; }
+  }
+  @media print { .no-print { display: none; } }
+</style>
+</head>
+<body>
+  <div class="brand">CAFETERIA</div>
+  <div class="divider"></div>
+
+  <div class="name">{{ name }}</div>
+
+  <div class="order-num">{{ order.order_number }}</div>
+
+  <div class="menu-tag">
+    {% if order.is_mixed %}MIXED ORDER
+    {% elif order.menu_type == 'halal' %}HALAL KITCHEN
+    {% elif order.menu_type == 'non_halal' %}NON-HALAL KITCHEN
+    {% elif order.menu_type == 'cafe_bar' %}CAFE BAR{% endif %}
+  </div>
+
+  {% if qr_image %}
+  <div class="qr-code">
+    <img src="{{ qr_image }}" alt="QR">
+  </div>
+  {% endif %}
+
+  <div class="divider"></div>
+  <div class="items">
+    {% for item in order.items.all %}
+    <div class="row">
+      <span>{{ item.quantity }}x {{ item.name_snapshot|truncatechars:20 }}</span>
+      <span>S${{ item.subtotal|floatformat:2 }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="divider"></div>
+  <div class="total"><span>Total</span><span>S${{ order.subtotal|floatformat:2 }}</span></div>
+  {% if order.credits_applied and order.credits_applied > 0 %}
+  <div class="total"><span>Credits</span><span>-S${{ order.credits_applied|floatformat:2 }}</span></div>
+  {% endif %}
+
+  <div class="timestamp">
+    {{ order.created_at|date:"d M Y" }}<br>
+    {{ order.created_at|date:"H:i:s" }}
+  </div>
+
+  <div class="divider"></div>
+  <div class="footer">Show QR at counter to collect</div>
+  <div class="footer">Thank you!</div>
+
+  <button class="no-print" onclick="window.print()" style="
+    padding:10px 24px; font-size:14px; cursor:pointer;
+    background:#1e56b8; color:#fff; border:none; border-radius:8px;
+    font-weight:600; margin-top:16px;
+  ">Print Ticket</button>
+</body>
+</html>
