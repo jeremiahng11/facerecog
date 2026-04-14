@@ -150,6 +150,80 @@ def _generate_qr_image_base64(data: str, box_size: int = 6) -> str:
     return 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode()
 
 
+def _escpos_receipt_b64(order) -> str:
+    """
+    Build an ESC/POS thermal-printer receipt for the given order and return
+    it as base64. Consumed via the `rawbt:<base64>` URL scheme (RawBT app on
+    Android) so the receipt prints silently — no browser print dialog.
+    """
+    ESC = b'\x1b'
+    GS = b'\x1d'
+    INIT = ESC + b'@'
+    CENTER = ESC + b'a\x01'
+    LEFT = ESC + b'a\x00'
+    DBL = ESC + b'!\x30'     # double width + height
+    NORMAL = ESC + b'!\x00'
+    CUT = GS + b'V\x01'      # partial cut
+
+    def feed(n):
+        return ESC + b'd' + bytes([max(0, min(255, n))])
+
+    def line(s):
+        return s.encode('ascii', 'ignore') + b'\n'
+
+    buf = bytearray()
+    buf += INIT
+    buf += CENTER
+    buf += DBL + line('CAFETERIA') + NORMAL
+    buf += line('------------------------')
+    buf += LEFT
+
+    name = ''
+    if order.customer_id:
+        name = getattr(order.customer, 'display_name', '') or getattr(order.customer, 'full_name', '') or ''
+    if not name:
+        name = getattr(order, 'public_name', '') or 'Guest'
+    buf += line(name[:32])
+    buf += b'\n'
+
+    buf += CENTER + DBL + line(order.order_number) + NORMAL + LEFT
+
+    # Embed the collection QR natively (no image decode required).
+    qr_data = (order.qr_token or '').encode('ascii', 'ignore')
+    if qr_data:
+        buf += CENTER
+        # model 2
+        buf += GS + b'(k\x04\x00\x31\x41\x32\x00'
+        # module size 6
+        buf += GS + b'(k\x03\x00\x31\x43\x06'
+        # error correction M
+        buf += GS + b'(k\x03\x00\x31\x45\x31'
+        # store
+        store_len = len(qr_data) + 3
+        buf += GS + b'(k' + bytes([store_len & 0xff, (store_len >> 8) & 0xff]) + b'\x31\x50\x30' + qr_data
+        # print
+        buf += GS + b'(k\x03\x00\x31\x51\x30'
+        buf += b'\n'
+
+    buf += LEFT
+    buf += line('------------------------')
+    for it in order.items.all():
+        buf += line(f'{it.quantity}x {it.name_snapshot}'[:32])
+    buf += line('------------------------')
+    buf += line(f'Total    S${order.subtotal:.2f}')
+    if order.credits_applied and order.credits_applied > 0:
+        buf += line(f'Credits -S${order.credits_applied:.2f}')
+    buf += b'\n'
+    buf += CENTER
+    buf += line(order.created_at.strftime('%d %b %Y  %H:%M'))
+    buf += b'\n'
+    buf += line('Thank you!')
+    buf += feed(3)
+    buf += CUT
+
+    return base64.b64encode(bytes(buf)).decode('ascii')
+
+
 # ─── Ordering Hours ──────────────────────────────────────────────────────────
 
 def _is_menu_open(menu_type: str) -> bool:
@@ -446,6 +520,7 @@ def kiosk_ticket_view(request, order_id):
         'qr_image': qr_image,
         'done_url': done_url,
         'done_label': done_label,
+        'escpos_b64': _escpos_receipt_b64(order),
     })
 
 
@@ -1316,11 +1391,15 @@ def public_ticket_view(request, order_id):
         qr_image = _generate_qr_image_base64(order.qr_token, box_size=8)
         qr_kind = 'collection'
 
+    # Only print a collection slip (not a payment-pending slip).
+    escpos_b64 = _escpos_receipt_b64(order) if qr_kind == 'collection' else ''
+
     return render(request, 'cafeteria/public_ticket.html', {
         'order': order,
         'qr_image': qr_image,
         'qr_kind': qr_kind,
         'autoprint': request.GET.get('autoprint') == '1',
+        'escpos_b64': escpos_b64,
     })
 
 

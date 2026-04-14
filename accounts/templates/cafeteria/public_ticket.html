@@ -70,12 +70,30 @@
   </div>
 
   <div class="btns" style="display:flex;gap:10px;margin-top:20px">
-    <button class="btn btn-secondary" onclick="window.print()">🖨 Print</button>
+    <button class="btn btn-secondary" onclick="printReceipt()">🖨 Print</button>
     <button class="btn btn-primary" onclick="window.location='/cafeteria/kiosk/'">Done</button>
   </div>
 </div>
 
-{% if autoprint %}
-<script>window.addEventListener('load', () => setTimeout(() => window.print(), 400));</script>
-{% endif %}
+<script>
+  // Silent-print: prefer RawBT (Android thermal-printer bridge) when the
+  // server provided an ESC/POS payload — no browser print dialog. Fall back
+  // to window.print() otherwise (silent under Chromium --kiosk-printing).
+  function printReceipt() {
+    const payload = "{{ escpos_b64|default:'' }}";
+    if (payload) {
+      const a = document.createElement('a');
+      a.href = 'rawbt:' + payload;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => a.remove(), 500);
+      return;
+    }
+    window.print();
+  }
+  {% if autoprint %}
+  window.addEventListener('load', () => setTimeout(printReceipt, 400));
+  {% endif %}
+</script>
 {% endblock %}

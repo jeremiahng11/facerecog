@@ -112,9 +112,30 @@
   </div>
 
   <div class="btns">
-    <button class="btn btn-secondary" onclick="window.print()">🖨 Print</button>
+    <button class="btn btn-secondary" onclick="printReceipt()">🖨 Print</button>
     <button class="btn btn-primary" onclick="window.location='{{ done_url|default:"/cafeteria/kiosk/" }}'">{{ done_label|default:"Done" }}</button>
   </div>
+
+<script>
+  // Silent-print helper:
+  //   - If an ESC/POS payload is available, launch RawBT via its URL scheme
+  //     (Android thermal-printer bridge) — no browser dialog.
+  //   - Otherwise fall back to window.print(). On a Chromium kiosk built
+  //     with --kiosk-printing this also prints silently.
+  function printReceipt() {
+    const payload = "{{ escpos_b64|default:'' }}";
+    if (payload) {
+      const a = document.createElement('a');
+      a.href = 'rawbt:' + payload;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => a.remove(), 500);
+      return;
+    }
+    window.print();
+  }
+</script>
 </div>
 
 <!-- Hidden print area -->
