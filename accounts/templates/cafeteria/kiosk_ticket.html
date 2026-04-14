@@ -141,11 +141,27 @@
   const KIOSK_TICKET_IDLE_MS = {{ idle_timeout|default:30 }} * 1000;
 
   function printReceipt() {
-    window.print();
+    // Kiosk-origin: only schedule the auto-logout AFTER the print job
+    // actually completes. Fully Kiosk's silent print is async — if we
+    // schedule the logout immediately, the kiosk navigates to the idle
+    // screen before the print job renders, and the printer ends up
+    // rasterising the wrong page (the 'Order Your Meal' landing).
     if (IS_KIOSK_SOURCE) {
       try { sessionStorage.removeItem('kiosk_cart'); } catch (e) {}
-      scheduleKioskReturn(KIOSK_POST_PRINT_MS);
+      let scheduled = false;
+      const onAfter = () => {
+        if (scheduled) return;
+        scheduled = true;
+        window.removeEventListener('afterprint', onAfter);
+        setTimeout(kioskLogoutAndReturn, KIOSK_POST_PRINT_MS);
+      };
+      window.addEventListener('afterprint', onAfter);
+      // Safety net: if afterprint never fires (some Fully Kiosk versions
+      // skip it for silent prints), still return to idle after a generous
+      // timeout so the kiosk doesn't get stuck on the ticket.
+      setTimeout(onAfter, 20000);
     }
+    window.print();
   }
 
   // POST logout with next=/cafeteria/kiosk/ so the kiosk lands on the idle
