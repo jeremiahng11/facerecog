@@ -32,7 +32,7 @@ from django.views.decorators.http import require_POST
 
 from .models import (
     StaffUser, MenuItem, Order, OrderItem, CreditTransaction,
-    QRScanLog, OrderingHours,
+    QRScanLog, OrderingHours, KioskConfig,
 )
 from .consumers import push_order_event
 
@@ -153,8 +153,14 @@ def _generate_qr_image_base64(data: str, box_size: int = 6) -> str:
 def _escpos_receipt_b64(order) -> str:
     """
     Build an ESC/POS thermal-printer receipt for the given order and return
-    it as base64. Consumed via the `rawbt:<base64>` URL scheme (RawBT app on
-    Android) so the receipt prints silently — no browser print dialog.
+    it as URL-safe base64. Consumed via the `rawbt:<base64>` URL scheme
+    (RawBT app on Android) so the receipt prints silently — no browser
+    print dialog.
+
+    Uses only the most compatible ESC/POS commands (init, alignment,
+    double-size text, line feed, partial cut) — no native QR tag, which
+    many cheap thermal printers render as random characters. Customers
+    still see the QR on screen for collection.
     """
     ESC = b'\x1b'
     GS = b'\x1d'
@@ -165,9 +171,6 @@ def _escpos_receipt_b64(order) -> str:
     NORMAL = ESC + b'!\x00'
     CUT = GS + b'V\x01'      # partial cut
 
-    def feed(n):
-        return ESC + b'd' + bytes([max(0, min(255, n))])
-
     def line(s):
         return s.encode('ascii', 'ignore') + b'\n'
 
@@ -175,8 +178,7 @@ def _escpos_receipt_b64(order) -> str:
     buf += INIT
     buf += CENTER
     buf += DBL + line('CAFETERIA') + NORMAL
-    buf += line('------------------------')
-    buf += LEFT
+    buf += line('-' * 32)
 
     name = ''
     if order.customer_id:
@@ -184,44 +186,32 @@ def _escpos_receipt_b64(order) -> str:
     if not name:
         name = getattr(order, 'public_name', '') or 'Guest'
     buf += line(name[:32])
+
+    buf += line('ORDER NUMBER')
+    buf += DBL + line(order.order_number) + NORMAL
     buf += b'\n'
 
-    buf += CENTER + DBL + line(order.order_number) + NORMAL + LEFT
-
-    # Embed the collection QR natively (no image decode required).
-    qr_data = (order.qr_token or '').encode('ascii', 'ignore')
-    if qr_data:
-        buf += CENTER
-        # model 2
-        buf += GS + b'(k\x04\x00\x31\x41\x32\x00'
-        # module size 6
-        buf += GS + b'(k\x03\x00\x31\x43\x06'
-        # error correction M
-        buf += GS + b'(k\x03\x00\x31\x45\x31'
-        # store
-        store_len = len(qr_data) + 3
-        buf += GS + b'(k' + bytes([store_len & 0xff, (store_len >> 8) & 0xff]) + b'\x31\x50\x30' + qr_data
-        # print
-        buf += GS + b'(k\x03\x00\x31\x51\x30'
-        buf += b'\n'
-
     buf += LEFT
-    buf += line('------------------------')
+    buf += line('-' * 32)
     for it in order.items.all():
         buf += line(f'{it.quantity}x {it.name_snapshot}'[:32])
-    buf += line('------------------------')
+    buf += line('-' * 32)
     buf += line(f'Total    S${order.subtotal:.2f}')
     if order.credits_applied and order.credits_applied > 0:
         buf += line(f'Credits -S${order.credits_applied:.2f}')
     buf += b'\n'
+
     buf += CENTER
     buf += line(order.created_at.strftime('%d %b %Y  %H:%M'))
     buf += b'\n'
+    buf += line('Show QR on screen to collect')
     buf += line('Thank you!')
-    buf += feed(3)
+    buf += b'\n\n\n\n'
     buf += CUT
 
-    return base64.b64encode(bytes(buf)).decode('ascii')
+    # URL-safe base64 so + / in the payload don't get mangled by the URL
+    # handler. Strip any trailing '=' padding — RawBT handles it fine.
+    return base64.urlsafe_b64encode(bytes(buf)).decode('ascii').rstrip('=')
 
 
 # ─── Ordering Hours ──────────────────────────────────────────────────────────
@@ -256,8 +246,9 @@ def kiosk_idle_view(request):
     # Clear any existing kiosk session data when returning to idle.
     if 'cafeteria_cart' in request.session:
         del request.session['cafeteria_cart']
+    cfg = KioskConfig.get()
     return render(request, 'cafeteria/kiosk_idle.html', {
-        'idle_timeout': getattr(settings, 'STAFF_IDLE_TIMEOUT_SECONDS', 60),
+        'idle_timeout': cfg.idle_landing_seconds,
     })
 
 
@@ -269,7 +260,7 @@ def kiosk_staff_login_view(request):
     if request.user.is_authenticated and not request.user.is_anonymous:
         return redirect('cafeteria_menu_select')
     return render(request, 'cafeteria/kiosk_staff_login.html', {
-        'idle_timeout': getattr(settings, 'STAFF_IDLE_TIMEOUT_SECONDS', 30),
+        'idle_timeout': KioskConfig.get().idle_session_seconds,
     })
 
 
@@ -311,7 +302,7 @@ def kiosk_menu_select_view(request):
         'cafe_bar_open': cafe_bar_open,
         'kitchen_hours': OrderingHours.objects.filter(menu_type='kitchen', is_active=True),
         'cafe_bar_hours': OrderingHours.objects.filter(menu_type='cafe_bar', is_active=True),
-        'idle_timeout': getattr(settings, 'STAFF_IDLE_TIMEOUT_SECONDS', 30),
+        'idle_timeout': KioskConfig.get().idle_session_seconds,
     }
     return render(request, 'cafeteria/kiosk_menu_select.html', context)
 
@@ -341,7 +332,7 @@ def kiosk_menu_view(request, menu_type):
         'menu_type': menu_type,
         'items_by_type': items_by_type,
         'cart': cart,
-        'idle_timeout': getattr(settings, 'STAFF_IDLE_TIMEOUT_SECONDS', 30),
+        'idle_timeout': KioskConfig.get().idle_session_seconds,
     })
 
 
@@ -525,6 +516,8 @@ def kiosk_ticket_view(request, order_id):
         'done_url': done_url,
         'done_label': done_label,
         'escpos_b64': _escpos_receipt_b64(order),
+        'idle_timeout': KioskConfig.get().idle_session_seconds,
+        'post_print_timeout': KioskConfig.get().post_print_seconds,
     })
 
 
@@ -1226,7 +1219,7 @@ def public_order_view(request, menu_type):
     return render(request, 'cafeteria/public_order.html', {
         'menu_type': menu_type,
         'items_by_type': items_by_type,
-        'idle_timeout': getattr(settings, 'STAFF_IDLE_TIMEOUT_SECONDS', 30),
+        'idle_timeout': KioskConfig.get().idle_session_seconds,
     })
 
 
@@ -1450,6 +1443,28 @@ def admin_new_order_view(request):
         'cafe_items': cafe,
         'tabs': {'halal': halal, 'non_halal': non_halal, 'cafe_bar': cafe},
     })
+
+
+@login_required
+@user_passes_test(is_admin)
+def cafeteria_kiosk_config_view(request):
+    """Admin: edit kiosk idle / post-print timeouts."""
+    cfg = KioskConfig.get()
+    if request.method == 'POST':
+        try:
+            landing = int(request.POST.get('idle_landing_seconds') or cfg.idle_landing_seconds)
+            session_s = int(request.POST.get('idle_session_seconds') or cfg.idle_session_seconds)
+            post_print = int(request.POST.get('post_print_seconds') or cfg.post_print_seconds)
+            # Sane bounds.
+            cfg.idle_landing_seconds = max(5, min(600, landing))
+            cfg.idle_session_seconds = max(5, min(600, session_s))
+            cfg.post_print_seconds = max(1, min(120, post_print))
+            cfg.save()
+            messages.success(request, 'Kiosk timeouts updated.')
+        except (TypeError, ValueError):
+            messages.error(request, 'Please enter whole numbers only.')
+        return redirect('cafeteria_kiosk_config')
+    return render(request, 'cafeteria/admin_kiosk_config.html', {'cfg': cfg})
 
 
 @login_required

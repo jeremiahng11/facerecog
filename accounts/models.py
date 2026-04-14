@@ -459,3 +459,40 @@ class QRScanLog(models.Model):
 
     def __str__(self):
         return f'{self.get_result_display()} — {self.order_id} @ {self.scanned_at}'
+
+
+class KioskConfig(models.Model):
+    """
+    Singleton holding runtime-editable kiosk timeouts (admin/root can
+    change them without a redeploy).
+
+    Access via KioskConfig.get() — it will create a default row on first
+    use. Values are in SECONDS.
+    """
+    # Idle countdown on the kiosk landing screen (no login yet).
+    idle_landing_seconds = models.PositiveIntegerField(
+        default=15, help_text='Idle screen countdown before kiosk resets.'
+    )
+    # Idle auto-logout once a staff user is signed in OR public walk-in
+    # is picking items (staff-login page, menu-select, menu browsing,
+    # public_order).
+    idle_session_seconds = models.PositiveIntegerField(
+        default=30, help_text='Auto-logout after this many seconds of inactivity on any post-login kiosk screen.'
+    )
+    # After printing the receipt, how long to wait before auto-returning
+    # the kiosk to the idle screen.
+    post_print_seconds = models.PositiveIntegerField(
+        default=5, help_text='Auto-return to idle screen this many seconds after Print is clicked.'
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Kiosk Configuration'
+
+    def __str__(self):
+        return f'KioskConfig (idle={self.idle_session_seconds}s, post-print={self.post_print_seconds}s)'
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj

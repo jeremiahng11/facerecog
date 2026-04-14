@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block title %}Kiosk Timeouts{% endblock %}
+{% block content %}
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="page-title">Kiosk Timeouts</div>
+      <div class="page-subtitle">Configure how long the kiosk waits before auto-returning to the idle screen.</div>
+    </div>
+    <a href="{% url 'cafeteria_dashboard' %}" class="btn btn-secondary">← Dashboard</a>
+  </div>
+
+  <form method="post" class="card" style="max-width:640px">
+    {% csrf_token %}
+
+    <div class="form-group">
+      <label>Idle landing-screen countdown (seconds)</label>
+      <input type="number" name="idle_landing_seconds" min="5" max="600"
+             value="{{ cfg.idle_landing_seconds }}" required>
+      <div class="hint">Countdown shown on the &ldquo;Touch to get started&rdquo; kiosk landing screen
+        before any visitor interaction. Range 5 – 600.</div>
+    </div>
+
+    <div class="form-group">
+      <label>Session idle timeout (seconds)</label>
+      <input type="number" name="idle_session_seconds" min="5" max="600"
+             value="{{ cfg.idle_session_seconds }}" required>
+      <div class="hint">Auto-logout after this many seconds of inactivity once a staff user has signed in
+        OR a walk-in public visitor is browsing (staff login, menu-select, menu browsing, public order,
+        and the order-confirmation ticket). Range 5 – 600.</div>
+    </div>
+
+    <div class="form-group">
+      <label>Post-print auto-return (seconds)</label>
+      <input type="number" name="post_print_seconds" min="1" max="120"
+             value="{{ cfg.post_print_seconds }}" required>
+      <div class="hint">After the Print button is tapped on the order ticket, wait this many seconds
+        before signing the user out and returning to the idle screen. Range 1 – 120.</div>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:24px">
+      <div class="text-dim text-xs">Last updated: {{ cfg.updated_at|date:"d M Y H:i" }}</div>
+      <button type="submit" class="btn btn-primary">💾 Save Timeouts</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

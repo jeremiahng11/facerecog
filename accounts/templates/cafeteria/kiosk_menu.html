@@ -197,7 +197,7 @@
                 <div class="price">S${{ item.staff_price }}</div>
                 <div class="public-price">S${{ item.public_price }}</div>
               </div>
-              <button class="add-btn" data-id="{{ item.id }}" data-name="{{ item.name }}" data-price="{{ item.staff_price }}" data-stock="{{ item.quantity_remaining }}" {% if item.is_sold_out %}disabled{% endif %}>+</button>
+              <button class="add-btn" data-id="{{ item.id }}" data-name="{{ item.name }}" data-price="{{ item.staff_price }}" data-stock="{{ item.quantity_remaining }}" data-menu="{{ item.menu_type }}" {% if item.is_sold_out %}disabled{% endif %}>+</button>
             </div>
           </div>
         </div>
@@ -229,6 +229,7 @@
       <div class="row"><span>Subtotal</span><span id="subtotal">S$0.00</span></div>
       <div class="row"><span>Credits Applied</span><span class="credit-applied" id="creditsApplied">-S$0.00</span></div>
       <div class="row total"><span>Balance Due</span><span id="balanceDue">S$0.00</span></div>
+      <button class="btn btn-secondary" style="width:100%;margin-bottom:8px" onclick="addMoreFromOtherMenu()">+ Add items from another menu</button>
       <button class="checkout-btn" id="checkoutBtn" disabled onclick="checkout()">Checkout &amp; Get QR →</button>
       <div class="cart-hint">QR code to collect your meal<br>will be shown on screen to print</div>
     </div>
@@ -245,8 +246,22 @@ function getCSRF() {
 const MENU_TYPE = '{{ menu_type }}';
 const CREDIT_BALANCE = parseFloat('{{ user.credit_balance|stringformat:".2f" }}');
 
-// Cart: map of id → {id, name, price, qty, menu_type}
-let cart = {};
+// Cart is persisted to sessionStorage so items added from the Kitchen
+// menu stay in the cart if the user navigates back and picks items from
+// Cafe Bar (or vice-versa). Cleared after checkout or idle logout.
+const CART_KEY = 'kiosk_cart';
+function loadCart() {
+  try { return JSON.parse(sessionStorage.getItem(CART_KEY) || '{}'); } catch (e) { return {}; }
+}
+function saveCart() {
+  try { sessionStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch (e) {}
+}
+function clearCart() {
+  try { sessionStorage.removeItem(CART_KEY); } catch (e) {}
+}
+
+// Cart: map of id → {id, name, price, qty, stock, menu}
+let cart = loadCart();
 let collectionTime = 0;
 let currentTab = 'halal';
 
@@ -302,6 +317,7 @@ function changeQty(id, delta) {
   if (!cart[id]) return;
   cart[id].qty += delta;
   if (cart[id].qty <= 0) delete cart[id];
+  saveCart();
   renderCart();
 }
 
@@ -312,14 +328,23 @@ document.querySelectorAll('.add-btn').forEach(btn => {
     const name = btn.dataset.name;
     const price = parseFloat(btn.dataset.price);
     const stock = parseInt(btn.dataset.stock);
+    const menu = btn.dataset.menu || '';
     if (cart[id]) {
       if (cart[id].qty < stock) cart[id].qty += 1;
     } else {
-      cart[id] = { id, name, price, qty: 1, stock };
+      cart[id] = { id, name, price, qty: 1, stock, menu };
     }
+    saveCart();
     renderCart();
   });
 });
+
+function addMoreFromOtherMenu() {
+  // Cart stays in sessionStorage — go back to menu-select and pick
+  // the other menu. Items from both will appear in the cart.
+  saveCart();
+  window.location = '/cafeteria/kiosk/menu-select/';
+}
 
 async function checkout() {
   const items = Object.keys(cart).map(k => ({
@@ -344,6 +369,7 @@ async function checkout() {
     });
     const data = await resp.json();
     if (data.success) {
+      clearCart();
       if (data.requires_payment && data.checkout_url) {
         // Stripe — redirect to Checkout.
         window.location.href = data.checkout_url;
@@ -378,6 +404,7 @@ async function checkout() {
 }
 
 function logout() {
+  clearCart();
   const f = document.createElement('form');
   f.method = 'POST'; f.action = '/logout/';
   const t = document.createElement('input');

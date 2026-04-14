@@ -78,6 +78,14 @@
     <p>Select a menu to browse</p>
   </div>
 
+  <div id="cartBanner" style="display:none;background:var(--primary-light);border:1px solid var(--primary);border-radius:12px;padding:14px 18px;margin-bottom:16px;display:none;align-items:center;justify-content:space-between;gap:12px">
+    <div>
+      <div style="font-size:12px;font-weight:700;color:var(--primary);letter-spacing:1px">YOU HAVE ITEMS IN CART</div>
+      <div id="cartSummary" style="font-size:14px;color:var(--text2);margin-top:2px"></div>
+    </div>
+    <button class="btn btn-primary" id="continueBtn" onclick="continueCheckout()" style="white-space:nowrap">Continue →</button>
+  </div>
+
   <div class="menu-card kitchen {% if not kitchen_open %}disabled{% endif %}" onclick="{% if kitchen_open %}window.location='/cafeteria/kiosk/menu/kitchen/'{% endif %}">
     <div class="emoji">🍚</div>
     <div class="body">
@@ -113,6 +121,7 @@
 
 <script>
 function logout() {
+  try { sessionStorage.removeItem('kiosk_cart'); } catch (e) {}
   const f = document.createElement('form');
   f.method = 'POST'; f.action = '/logout/';
   const t = document.createElement('input');
@@ -123,6 +132,35 @@ function logout() {
   n.type = 'hidden'; n.name = 'next'; n.value = '/cafeteria/kiosk/';
   f.appendChild(n);
   document.body.appendChild(f); f.submit();
+}
+
+// Show cart banner if items are still in sessionStorage from a previous
+// menu visit (so user can add cross-menu items).
+(function(){
+  let cart = {};
+  try { cart = JSON.parse(sessionStorage.getItem('kiosk_cart') || '{}'); } catch (e) {}
+  const keys = Object.keys(cart);
+  if (!keys.length) return;
+  const count = keys.reduce((s, k) => s + (cart[k].qty || 0), 0);
+  const total = keys.reduce((s, k) => s + (cart[k].price || 0) * (cart[k].qty || 0), 0);
+  document.getElementById('cartSummary').textContent = count + ' item' + (count !== 1 ? 's' : '') + ' · S$' + total.toFixed(2);
+  const banner = document.getElementById('cartBanner');
+  banner.style.display = 'flex';
+})();
+
+function continueCheckout() {
+  // Go back to whichever menu has items; default kitchen.
+  let cart = {};
+  try { cart = JSON.parse(sessionStorage.getItem('kiosk_cart') || '{}'); } catch (e) {}
+  const menus = new Set();
+  Object.values(cart).forEach(it => { if (it.menu) menus.add(it.menu); });
+  if (menus.has('halal') || menus.has('non_halal')) {
+    window.location = '/cafeteria/kiosk/menu/kitchen/';
+  } else if (menus.has('cafe_bar')) {
+    window.location = '/cafeteria/kiosk/menu/cafe_bar/';
+  } else {
+    window.location = '/cafeteria/kiosk/menu/kitchen/';
+  }
 }
 
 // Idle auto-logout → kiosk main page after N seconds of inactivity.

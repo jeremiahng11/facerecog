@@ -122,6 +122,10 @@
   //     (Android thermal-printer bridge) — no browser dialog.
   //   - Otherwise fall back to window.print(). On a Chromium kiosk built
   //     with --kiosk-printing this also prints silently.
+  const IS_KIOSK_SOURCE = {% if request.GET.source == 'kiosk' or not request.GET.source %}true{% else %}false{% endif %};
+  const KIOSK_POST_PRINT_MS = {{ post_print_timeout|default:5 }} * 1000;
+  const KIOSK_TICKET_IDLE_MS = {{ idle_timeout|default:30 }} * 1000;
+
   function printReceipt() {
     const payload = "{{ escpos_b64|default:'' }}";
     if (payload) {
@@ -131,9 +135,43 @@
       document.body.appendChild(a);
       a.click();
       setTimeout(() => a.remove(), 500);
-      return;
+    } else {
+      window.print();
     }
-    window.print();
+    // Kiosk-origin orders: clear any in-progress cart and auto-return to the
+    // idle screen after the configured post-print delay.
+    if (IS_KIOSK_SOURCE) {
+      try { sessionStorage.removeItem('kiosk_cart'); } catch (e) {}
+      scheduleKioskReturn(KIOSK_POST_PRINT_MS);
+    }
+  }
+
+  // POST logout with next=/cafeteria/kiosk/ so the kiosk lands on the idle
+  // screen, not the regular login page.
+  function kioskLogoutAndReturn() {
+    const f = document.createElement('form');
+    f.method = 'POST'; f.action = '/logout/';
+    const csrf = document.createElement('input');
+    csrf.type = 'hidden'; csrf.name = 'csrfmiddlewaretoken';
+    csrf.value = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+    const nxt = document.createElement('input');
+    nxt.type = 'hidden'; nxt.name = 'next'; nxt.value = '/cafeteria/kiosk/';
+    f.appendChild(csrf); f.appendChild(nxt);
+    document.body.appendChild(f); f.submit();
+  }
+
+  function scheduleKioskReturn(ms) {
+    setTimeout(kioskLogoutAndReturn, ms);
+  }
+
+  // Kiosk-only: idle auto-return even without printing.
+  if (IS_KIOSK_SOURCE) {
+    (function(){
+      let t;
+      function reset() { clearTimeout(t); t = setTimeout(kioskLogoutAndReturn, KIOSK_TICKET_IDLE_MS); }
+      ['touchstart','mousedown','keydown','scroll','pointerdown'].forEach(ev => document.addEventListener(ev, reset, { passive: true }));
+      reset();
+    })();
   }
 </script>
 </div>
