@@ -75,9 +75,12 @@
 
       <div style="font-size:12px;font-weight:700;color:var(--text3);margin-top:14px">PAYMENT METHOD</div>
       <div class="pay-opts">
-        <div class="pay-opt active" data-method="cash" onclick="setPay('cash', this)">💵 Cash</div>
+        <div class="pay-opt active" data-method="terminal" onclick="setPay('terminal', this)" style="grid-column:span 2">🏪 Pay at Cafe Bar Counter</div>
         <div class="pay-opt" data-method="paynow" onclick="setPay('paynow', this)">📱 PayNow</div>
-        <div class="pay-opt" data-method="stripe" onclick="setPay('stripe', this)" style="grid-column:span 2">💳 Card (Stripe)</div>
+        <div class="pay-opt" data-method="stripe" onclick="setPay('stripe', this)">💳 Card</div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">
+        💡 <strong>Pay at Counter</strong>: we'll print a payment QR for you — take it to the cafe bar, pay cash/card, then get your food collection QR.
       </div>
 
       <button class="btn btn-primary btn-full" id="checkoutBtn" disabled onclick="checkout()" style="background:var(--cafe)">Pay &amp; Get QR →</button>
@@ -91,7 +94,7 @@ function getCSRF() { const m = document.cookie.match(/csrftoken=([^;]+)/); retur
 
 let cart = {};
 let currentTab = '{% if menu_type == "kitchen" %}halal{% else %}cafe_bar{% endif %}';
-let payMethod = 'cash';
+let payMethod = 'terminal';
 
 function switchTab(t) {
   currentTab = t;
@@ -146,21 +149,25 @@ async function checkout() {
   const name = document.getElementById('customerName').value.trim() || 'Walk-in';
   const email = document.getElementById('customerEmail').value.trim();
   const items = Object.values(cart).map(i => ({ id: parseInt(i.id), quantity: i.qty, customizations: {} }));
-  // Determine menu_type — use tab if kitchen, else cafe_bar.
-  const menus = [...new Set(Object.values(cart).map(i => i.menu))];
-  if (menus.length > 1) { alert('Please order one menu type at a time.'); return; }
-  const menu_type = menus[0];
+  if (!items.length) return;
 
   const btn = document.getElementById('checkoutBtn');
   btn.disabled = true; btn.textContent = 'Processing…';
 
   const resp = await fetch('/cafeteria/api/public-place-order/', {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
-    body: JSON.stringify({ menu_type, items, public_name: name, payment_method: payMethod, email }),
+    body: JSON.stringify({ items, public_name: name, payment_method: payMethod, email }),
   });
   const data = await resp.json();
-  if (data.success) window.location = data.redirect;
-  else { alert(data.message); btn.disabled = false; btn.textContent = 'Pay & Get QR →'; }
+  if (data.success) {
+    if (data.checkout_url) {
+      window.location.href = data.checkout_url;
+    } else {
+      window.location = '/cafeteria/public/ticket/' + data.order_id + '/';
+    }
+  } else {
+    alert(data.message); btn.disabled = false; btn.textContent = 'Pay & Get QR →';
+  }
 }
 </script>
 {% endblock %}

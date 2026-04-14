@@ -77,6 +77,7 @@ urlpatterns = [
     path('cafeteria/kitchen/<str:kitchen_type>/', cafeteria_views.kitchen_view, name='cafeteria_kitchen'),
     path('cafeteria/api/kitchen/mark-ready/<int:order_id>/', cafeteria_views.kitchen_mark_ready_ajax, name='cafeteria_mark_ready'),
     path('cafeteria/api/kitchen/mark-collected/<int:order_id>/', cafeteria_views.kitchen_mark_collected_ajax, name='cafeteria_mark_collected'),
+    path('cafeteria/api/cafe-bar/complete-payment/<int:order_id>/', cafeteria_views.cafe_bar_complete_payment_ajax, name='cafeteria_complete_payment'),
 
     # Admin
     path('cafeteria/admin/menu/', cafeteria_views.admin_menu_list_view, name='cafeteria_admin_menu_list'),

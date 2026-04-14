@@ -151,9 +151,12 @@
         </div>
         <div class="customer">{{ order.customer.display_name|default:order.public_name }}{% if order.credits_applied %} · <span style="color:var(--success)">S${{ order.credits_applied|floatformat:2 }} credits</span>{% endif %}</div>
         <ul class="items">
-          {% for item in order.items.all %}
-          <li><span class="qty">{{ item.quantity }}×</span>{{ item.name_snapshot }}</li>
+          {% for item in order.counter_items %}
+          <li><span class="qty">{{ item.quantity }}×</span>{{ item.name_snapshot }}{% if item.collected_at %} <span style="color:var(--success);font-size:11px">✓ collected</span>{% endif %}</li>
           {% endfor %}
+          {% if order.is_mixed %}
+          <li style="font-size:11px;color:var(--text3);font-style:italic;padding-top:4px;border-top:1px dashed var(--border);margin-top:4px">🔀 Mixed order — other items at another counter</li>
+          {% endif %}
         </ul>
         <div class="actions">
           {% if order.status != 'ready' %}
@@ -214,7 +217,11 @@ async function markReady(id) {
 }
 async function markCollected(orderId) {
   try {
-    const r = await fetch(`/cafeteria/api/kitchen/mark-collected/${orderId}/`, { method: 'POST', headers: { 'X-CSRFToken': getCSRF() } });
+    const r = await fetch(`/cafeteria/api/kitchen/mark-collected/${orderId}/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+      body: JSON.stringify({ counter: KITCHEN }),
+    });
     const d = await r.json();
     if (d.success) { closePopup(); setTimeout(() => location.reload(), 300); }
     else alert(d.message || 'Error');

@@ -322,7 +322,6 @@ document.querySelectorAll('.add-btn').forEach(btn => {
 });
 
 async function checkout() {
-  const tabMenuType = MENU_TYPE === 'kitchen' ? currentTab : MENU_TYPE;
   const items = Object.keys(cart).map(k => ({
     id: parseInt(k), quantity: cart[k].qty, customizations: {},
   }));
@@ -337,14 +336,34 @@ async function checkout() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
       body: JSON.stringify({
-        menu_type: tabMenuType,
         items: items,
         collection_time_minutes: collectionTime,
+        pay_method: 'credits',  // try credits first
       }),
     });
     const data = await resp.json();
     if (data.success) {
-      window.location.replace(data.redirect);
+      if (data.requires_payment && data.checkout_url) {
+        // Stripe — redirect to Checkout.
+        window.location.href = data.checkout_url;
+      } else {
+        window.location.replace(data.redirect || ('/cafeteria/kiosk/ticket/' + data.order_id + '/'));
+      }
+    } else if (data.insufficient_credits) {
+      const choice = confirm(`Insufficient credits. Balance due: S$${data.balance_due}.\n\nOK = Pay balance with Stripe card\nCancel = Cancel order`);
+      if (choice) {
+        // Retry with Stripe.
+        const r2 = await fetch('/cafeteria/api/place-order/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+          body: JSON.stringify({ items, collection_time_minutes: collectionTime, pay_method: 'stripe' }),
+        });
+        const d2 = await r2.json();
+        if (d2.success && d2.checkout_url) window.location.href = d2.checkout_url;
+        else { alert(d2.message || 'Error'); btn.disabled = false; btn.textContent = 'Checkout & Get QR →'; }
+      } else {
+        btn.disabled = false; btn.textContent = 'Checkout & Get QR →';
+      }
     } else {
       alert(data.message);
       btn.disabled = false;

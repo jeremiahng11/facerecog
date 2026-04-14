@@ -24,7 +24,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Sum, Q
 from django.http import JsonResponse, Http404
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
@@ -236,29 +236,29 @@ def kiosk_menu_view(request, menu_type):
 @require_POST
 def kiosk_place_order_ajax(request):
     """
-    Place an order: deduct credits, reduce stock atomically, generate QR.
-    Expects JSON: {menu_type, items: [{id, quantity, customizations}], collection_time_minutes}
+    Place a staff order. Supports mixed carts (items from multiple menus).
+    Credits auto-applied; if insufficient, pay_method=stripe/paynow can cover
+    the balance (returns checkout URL for the balance).
+    Expects JSON: {items: [{id, quantity, customizations}], collection_time_minutes, pay_method}
     """
     try:
         data = json.loads(request.body)
-        menu_type = data.get('menu_type')
         items_data = data.get('items', [])
         collection_time_minutes = int(data.get('collection_time_minutes', 0))
+        pay_method = data.get('pay_method', 'credits')  # 'credits', 'stripe', 'paynow'
 
-        if menu_type not in ('halal', 'non_halal', 'cafe_bar'):
-            return JsonResponse({'success': False, 'message': 'Invalid menu type'})
         if not items_data:
             return JsonResponse({'success': False, 'message': 'Cart is empty'})
 
         user = request.user
 
         with transaction.atomic():
-            # Lock menu items for update to prevent race conditions on stock.
             item_ids = [int(i.get('id')) for i in items_data]
             menu_items = {mi.id: mi for mi in MenuItem.objects.select_for_update().filter(id__in=item_ids)}
 
             subtotal = Decimal('0')
             order_items_buffer = []
+            menu_types_in_cart = set()
 
             for raw in items_data:
                 mid = int(raw.get('id'))
@@ -275,44 +275,47 @@ def kiosk_place_order_ajax(request):
                 price = mi.staff_price
                 line_total = price * qty
                 subtotal += line_total
-
-                # Reserve stock.
                 mi.quantity_remaining -= qty
                 mi.save(update_fields=['quantity_remaining'])
 
+                menu_types_in_cart.add(mi.menu_type)
                 order_items_buffer.append({
-                    'menu_item': mi,
-                    'name': mi.name,
-                    'price': price,
-                    'qty': qty,
-                    'cust': cust,
-                    'line_total': line_total,
+                    'menu_item': mi, 'name': mi.name, 'price': price,
+                    'qty': qty, 'cust': cust, 'line_total': line_total,
+                    'menu_type': mi.menu_type,
                 })
+
+            # Determine order-level menu type and prefix.
+            is_mixed = len(menu_types_in_cart) > 1
+            order_menu_type = 'mixed' if is_mixed else next(iter(menu_types_in_cart))
 
             # Credit calculation.
             available = user.credit_balance
             credits_applied = min(available, subtotal)
             balance_due = subtotal - credits_applied
 
-            if balance_due > 0:
-                # Phase 1: reject if insufficient credits (Stripe/PayNow in Phase 2).
+            # Validate payment if balance remains.
+            if balance_due > 0 and pay_method == 'credits':
                 return JsonResponse({
                     'success': False,
-                    'message': f'Insufficient credits. Subtotal: S${subtotal}, credits available: S${available}. Card/PayNow payment coming soon.',
+                    'insufficient_credits': True,
+                    'balance_due': str(balance_due),
+                    'message': f'Insufficient credits. Balance due: S${balance_due}. Choose Stripe or PayNow to pay the balance.',
                 })
 
             # Create order.
             order = Order.objects.create(
-                order_number=Order.next_number(menu_type, is_public=False),
+                order_number=Order.next_number(order_menu_type, is_public=False, is_mixed=is_mixed),
                 customer=user,
-                menu_type=menu_type,
-                status='confirmed',
+                menu_type=order_menu_type,
+                is_mixed=is_mixed,
+                status='confirmed' if balance_due == 0 else 'pending',
                 subtotal=subtotal,
                 credits_applied=credits_applied,
-                balance_due=Decimal('0'),
-                payment_method='credits',
+                balance_due=balance_due,
+                payment_method='credits' if balance_due == 0 else pay_method,
                 collection_time_minutes=collection_time_minutes,
-                confirmed_at=timezone.now(),
+                confirmed_at=timezone.now() if balance_due == 0 else None,
             )
             order.qr_token = sign_order_qr(order)
             order.save(update_fields=['qr_token'])
@@ -326,16 +329,39 @@ def kiosk_place_order_ajax(request):
                     quantity=b['qty'],
                     customizations=b['cust'],
                     subtotal=b['line_total'],
+                    menu_type_snapshot=b['menu_type'],
                 )
 
             # Debit credits.
-            user.credit_balance = available - credits_applied
-            user.save(update_fields=['credit_balance'])
-            CreditTransaction.objects.create(
-                user=user, type='order', amount=-credits_applied,
-                balance_after=user.credit_balance, related_order=order,
-                notes=f'Order {order.order_number}',
-            )
+            if credits_applied > 0:
+                user.credit_balance = available - credits_applied
+                user.save(update_fields=['credit_balance'])
+                CreditTransaction.objects.create(
+                    user=user, type='order', amount=-credits_applied,
+                    balance_after=user.credit_balance, related_order=order,
+                    notes=f'Order {order.order_number}',
+                )
+
+            # Handle balance-due payment via Stripe/PayNow.
+            if balance_due > 0:
+                from .payments import create_stripe_checkout_session, build_paynow_qr
+                if pay_method == 'stripe':
+                    sess = create_stripe_checkout_session(
+                        balance_due, user.staff_id, {'order_id': str(order.id)}
+                    )
+                    if sess:
+                        return JsonResponse({
+                            'success': True, 'requires_payment': True,
+                            'order_id': order.id, 'order_number': order.order_number,
+                            'checkout_url': sess['url'],
+                        })
+                elif pay_method == 'paynow':
+                    qr = build_paynow_qr(balance_due, reference=f'Order-{order.order_number}')
+                    return JsonResponse({
+                        'success': True, 'requires_payment': True,
+                        'order_id': order.id, 'order_number': order.order_number,
+                        'paynow_qr': qr, 'balance_due': str(balance_due),
+                    })
 
         # Clear cart from session.
         if 'cafeteria_cart' in request.session:
@@ -373,18 +399,27 @@ def kiosk_ticket_view(request, order_id):
 @user_passes_test(is_admin)
 def kitchen_view(request, kitchen_type):
     """
-    Kitchen/Cafe Bar order display.
-    kitchen_type: 'halal', 'non_halal', or 'cafe_bar'.
+    Kitchen/Cafe Bar order display. Shows only items belonging to this
+    counter (for mixed orders, filters the item list per counter).
     """
     if kitchen_type not in ('halal', 'non_halal', 'cafe_bar'):
         raise Http404()
 
     today_start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+    # Include mixed orders that contain items for this counter.
     active_orders = Order.objects.filter(
-        menu_type=kitchen_type,
         status__in=['confirmed', 'preparing', 'ready'],
         created_at__gte=today_start,
-    ).prefetch_related('items').order_by('created_at')
+    ).filter(
+        Q(menu_type=kitchen_type) | Q(items__menu_type_snapshot=kitchen_type)
+    ).distinct().prefetch_related('items', 'items__menu_item').order_by('created_at')
+
+    # For each order, attach the filtered item list for this counter.
+    for order in active_orders:
+        order.counter_items = [
+            i for i in order.items.all()
+            if (i.menu_type_snapshot or (i.menu_item.menu_type if i.menu_item else '')) == kitchen_type
+        ]
 
     return render(request, 'cafeteria/kitchen_view.html', {
         'kitchen_type': kitchen_type,
@@ -410,17 +445,71 @@ def kitchen_mark_ready_ajax(request, order_id):
 @require_POST
 def kitchen_scan_qr_ajax(request):
     """
-    Scan QR at counter. Returns one of 5 scenarios:
-    valid, wrong_counter, duplicate, invalid, not_ready.
+    Scan QR at counter. Detects both:
+    - PAYMENT QR (public terminal payment) → cafe bar only, shows pay-up UI
+    - COLLECTION QR (normal) → 5 scenarios: valid, wrong_counter, duplicate,
+      invalid, not_ready.
+    Mixed orders: scan shows only the items belonging to this counter;
+    marking collected only marks those items (other counter marks its own).
     """
     try:
         data = json.loads(request.body)
         token = (data.get('token') or '').strip()
         scanner_counter = data.get('scanner_counter', '')
 
-        order = verify_order_qr(token)
+        # ── First check: is it a payment QR? ──────────────────────
+        if token.startswith('pay-') or ':' in token and 'pay' in token.split(':')[0]:
+            from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
+            signer = TimestampSigner(salt='payment-qr')
+            try:
+                val = signer.unsign(token, max_age=60 * 60 * 24)  # 24h validity
+                if not val.startswith('pay-'):
+                    raise BadSignature()
+                order_id = int(val[4:])
+                order = Order.objects.prefetch_related('items').get(pk=order_id)
+            except (BadSignature, SignatureExpired, ValueError, Order.DoesNotExist):
+                QRScanLog.objects.create(
+                    scanner_device=scanner_counter, scanned_by=request.user,
+                    result='invalid', token_preview=token[:40],
+                    notes='Invalid payment QR',
+                )
+                return JsonResponse({
+                    'result': 'invalid',
+                    'message': 'Invalid payment QR code.',
+                })
 
-        # Invalid token (tampered/unknown)
+            # Payment QR only usable at cafe bar.
+            if scanner_counter != 'cafe_bar':
+                return JsonResponse({
+                    'result': 'wrong_counter',
+                    'order_number': order.order_number,
+                    'correct_counter': 'Cafe Bar (for payment)',
+                    'message': 'Payment QRs are processed at the Cafe Bar Counter.',
+                })
+
+            if order.payment_received_at:
+                return JsonResponse({
+                    'result': 'duplicate',
+                    'order_number': order.order_number,
+                    'message': 'Payment already received for this order.',
+                    'original_collected_at': order.payment_received_at.strftime('%H:%M:%S'),
+                })
+
+            # Payment QR is valid — show payment UI.
+            return JsonResponse({
+                'result': 'payment_pending',
+                'order_id': order.id,
+                'order_number': order.order_number,
+                'customer_name': order.public_name or 'Walk-in',
+                'amount_due': str(order.subtotal),
+                'items': [
+                    {'name': i.name_snapshot, 'quantity': i.quantity, 'subtotal': str(i.subtotal)}
+                    for i in order.items.all()
+                ],
+            })
+
+        # ── Otherwise it's a collection QR ────────────────────────
+        order = verify_order_qr(token)
         if not order:
             QRScanLog.objects.create(
                 scanner_device=scanner_counter, scanned_by=request.user,
@@ -428,89 +517,176 @@ def kitchen_scan_qr_ajax(request):
                 notes='HMAC verification failed',
             )
             return JsonResponse({
-                'success': False,
                 'result': 'invalid',
                 'message': 'Invalid QR code. Please contact staff.',
             })
 
-        # Already used
-        if order.qr_used or order.status == 'collected':
-            QRScanLog.objects.create(
-                order=order, scanner_device=scanner_counter, scanned_by=request.user,
-                result='duplicate', token_preview=token[:40],
-                notes=f'Originally collected at {order.collected_at}',
-            )
-            return JsonResponse({
-                'success': False,
-                'result': 'duplicate',
-                'order_number': order.order_number,
-                'original_collected_at': order.collected_at.strftime('%H:%M:%S') if order.collected_at else '',
-                'customer_name': order.customer.display_name if order.customer else order.public_name,
-                'message': 'QR already used — duplicate scan',
-            })
+        # Which items in this order belong to this counter?
+        all_items = list(order.items.all())
+        counter_items = [i for i in all_items if (i.menu_type_snapshot or (i.menu_item.menu_type if i.menu_item else '')) == scanner_counter]
+        other_items = [i for i in all_items if i not in counter_items]
 
-        # Wrong counter
-        if order.menu_type != scanner_counter:
+        # If this counter has no items in the order → wrong counter.
+        if not counter_items:
+            # Tell the user which counter(s) the order IS for.
+            other_types = sorted({(i.menu_type_snapshot or (i.menu_item.menu_type if i.menu_item else 'unknown')) for i in all_items})
+            human = ', '.join({
+                'halal': 'Halal Kitchen', 'non_halal': 'Non-Halal Kitchen', 'cafe_bar': 'Cafe Bar',
+            }.get(t, t) for t in other_types)
             QRScanLog.objects.create(
                 order=order, scanner_device=scanner_counter, scanned_by=request.user,
                 result='wrong_counter', token_preview=token[:40],
-                notes=f'Order is for {order.menu_type}, scanned at {scanner_counter}',
+                notes=f'Scanned at {scanner_counter}, order has items for {human}',
             )
             return JsonResponse({
-                'success': False,
                 'result': 'wrong_counter',
                 'order_number': order.order_number,
-                'correct_counter': order.get_menu_type_display(),
-                'message': f'Wrong counter. This order is for {order.get_menu_type_display()}.',
+                'correct_counter': human,
+                'message': f'Wrong counter. This order has items for {human}.',
             })
 
-        # Not ready yet
-        if order.status not in ('ready',):
+        # Already all collected at this counter?
+        if all(i.collected_at for i in counter_items):
+            QRScanLog.objects.create(
+                order=order, scanner_device=scanner_counter, scanned_by=request.user,
+                result='duplicate', token_preview=token[:40],
+                notes=f'All {scanner_counter} items already collected',
+            )
+            first_collected = min(i.collected_at for i in counter_items)
+            return JsonResponse({
+                'result': 'duplicate',
+                'order_number': order.order_number,
+                'original_collected_at': first_collected.strftime('%H:%M:%S'),
+                'customer_name': order.customer.display_name if order.customer else order.public_name,
+                'message': f'Items at this counter already collected.',
+            })
+
+        # Not ready yet?
+        if order.status not in ('ready', 'preparing'):
             QRScanLog.objects.create(
                 order=order, scanner_device=scanner_counter, scanned_by=request.user,
                 result='not_ready', token_preview=token[:40],
                 notes=f'Current status: {order.status}',
             )
             return JsonResponse({
-                'success': False,
                 'result': 'not_ready',
                 'order_number': order.order_number,
                 'current_status': order.get_status_display(),
                 'message': f'Order not ready yet. Status: {order.get_status_display()}',
             })
 
-        # Valid — return order details for confirmation popup.
+        # Scheduled? Orders with collection_time_minutes can still be
+        # collected early — no extra check needed; status=ready is enough.
+
+        # Valid — return items for THIS counter only.
         return JsonResponse({
-            'success': True,
             'result': 'valid',
             'order_id': order.id,
             'order_number': order.order_number,
             'customer_name': order.customer.display_name if order.customer else order.public_name,
             'items': [
-                {'name': i.name_snapshot, 'quantity': i.quantity, 'customizations': i.customizations}
-                for i in order.items.all()
+                {
+                    'id': i.id,
+                    'name': i.name_snapshot,
+                    'quantity': i.quantity,
+                    'customizations': i.customizations,
+                }
+                for i in counter_items if not i.collected_at
             ],
+            'other_counter_items': len(other_items),  # informational
+            'is_mixed': order.is_mixed,
         })
     except Exception as e:
-        return JsonResponse({'success': False, 'result': 'invalid', 'message': str(e)})
+        return JsonResponse({'result': 'invalid', 'message': str(e)})
 
 
 @login_required
 @user_passes_test(is_admin)
 @require_POST
 def kitchen_mark_collected_ajax(request, order_id):
-    """After valid QR scan, mark order as collected."""
+    """
+    Mark the items for THIS counter (not the whole order) as collected.
+    If all items across all counters are then collected, the order itself
+    becomes 'collected'.
+    """
     order = get_object_or_404(Order, pk=order_id)
-    if order.qr_used or order.status == 'collected':
-        return JsonResponse({'success': False, 'message': 'Already collected'})
-    order.status = 'collected'
-    order.collected_at = timezone.now()
-    order.qr_used = True
-    order.qr_used_at = timezone.now()
-    order.save(update_fields=['status', 'collected_at', 'qr_used', 'qr_used_at'])
-    QRScanLog.objects.filter(order=order, result='valid').update(notes='Marked collected')
-    _broadcast_order(order, 'collected')
-    return JsonResponse({'success': True, 'order_number': order.order_number})
+    scanner_counter = request.POST.get('counter', '') or (json.loads(request.body or '{}').get('counter', ''))
+    if not scanner_counter:
+        return JsonResponse({'success': False, 'message': 'counter required'})
+
+    now = timezone.now()
+    counter_items = order.items.filter(
+        menu_type_snapshot=scanner_counter, collected_at__isnull=True,
+    )
+    # Fallback: if menu_type_snapshot wasn't set (legacy orders), use menu_item.menu_type.
+    if not counter_items.exists():
+        counter_items = order.items.filter(
+            menu_item__menu_type=scanner_counter, collected_at__isnull=True,
+        )
+
+    updated = counter_items.update(collected_at=now)
+    if updated == 0:
+        return JsonResponse({'success': False, 'message': 'Nothing to collect at this counter'})
+
+    # Is the entire order now collected?
+    all_collected = not order.items.filter(collected_at__isnull=True).exists()
+    if all_collected:
+        order.status = 'collected'
+        order.collected_at = now
+        order.qr_used = True
+        order.qr_used_at = now
+        order.save(update_fields=['status', 'collected_at', 'qr_used', 'qr_used_at'])
+        QRScanLog.objects.filter(order=order, result='valid').update(notes='Marked collected')
+        _broadcast_order(order, 'collected')
+    else:
+        # Partial — broadcast as still-ready so the TV/kitchen reflects.
+        _broadcast_order(order, 'partial_collected')
+
+    return JsonResponse({
+        'success': True,
+        'order_number': order.order_number,
+        'fully_collected': all_collected,
+        'counter': scanner_counter,
+    })
+
+
+# ─── Public terminal payment completion (cafe bar) ──────────────────────────
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def cafe_bar_complete_payment_ajax(request, order_id):
+    """
+    Cafe bar staff calls this after accepting cash/card for a public order.
+    Marks payment received, activates the order for the kitchen/bar, and
+    returns the signed collection token so the cafe bar can print the
+    collection slip for the customer.
+    """
+    order = get_object_or_404(Order, pk=order_id, is_public=True)
+    if order.payment_received_at:
+        return JsonResponse({'success': False, 'message': 'Payment already recorded'})
+
+    with transaction.atomic():
+        order.payment_received_at = timezone.now()
+        order.payment_received_by = request.user
+        order.status = 'confirmed'
+        order.confirmed_at = timezone.now()
+        # Ensure collection QR exists.
+        if not order.qr_token:
+            order.qr_token = sign_order_qr(order)
+        order.save(update_fields=[
+            'payment_received_at', 'payment_received_by',
+            'status', 'confirmed_at', 'qr_token',
+        ])
+
+    _broadcast_order(order, 'created')
+
+    # Return the printable collection receipt URL.
+    return JsonResponse({
+        'success': True,
+        'order_number': order.order_number,
+        'collection_receipt_url': f'/cafeteria/public/ticket/{order.id}/',
+    })
 
 
 # ─── Admin ───────────────────────────────────────────────────────────────────
@@ -685,16 +861,20 @@ def tv_queue_data_ajax(request):
     today_start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
     scope = request.GET.get('scope', 'kitchen')  # 'kitchen' or 'cafe_bar'
 
-    if scope == 'cafe_bar':
-        menu_filter = ['cafe_bar']
-    else:
-        menu_filter = ['halal', 'non_halal']
-
-    orders = Order.objects.filter(
-        menu_type__in=menu_filter,
+    base = Order.objects.filter(
         status__in=['confirmed', 'preparing', 'ready'],
         created_at__gte=today_start,
-    ).prefetch_related('items').order_by('created_at')
+    )
+    if scope == 'cafe_bar':
+        qs = base.filter(
+            Q(menu_type='cafe_bar') | Q(items__menu_type_snapshot='cafe_bar')
+        )
+    else:
+        qs = base.filter(
+            Q(menu_type__in=['halal', 'non_halal']) |
+            Q(items__menu_type_snapshot__in=['halal', 'non_halal'])
+        )
+    orders = qs.distinct().prefetch_related('items').order_by('created_at')
 
     def ser(o):
         return {
@@ -719,18 +899,44 @@ def tv_queue_data_ajax(request):
 @login_required
 @user_passes_test(is_admin)
 def cafe_bar_counter_view(request):
-    """Split-layout Cafe Bar counter: incoming | ready."""
+    """
+    Split-layout Cafe Bar counter: incoming | ready.
+    Also shows pending-payment orders (public terminal payment flow).
+    Includes mixed orders with cafe_bar items.
+    """
     today_start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
-    incoming = Order.objects.filter(
-        menu_type='cafe_bar', status__in=['confirmed', 'preparing'],
+
+    # Orders pending payment (public terminal flow) — cafe bar processes these.
+    pending_payment = Order.objects.filter(
+        is_public=True, payment_method='terminal',
+        payment_received_at__isnull=True,
+        status='pending',
         created_at__gte=today_start,
     ).prefetch_related('items').order_by('created_at')
-    ready = Order.objects.filter(
-        menu_type='cafe_bar', status='ready',
+
+    incoming = Order.objects.filter(
+        status__in=['confirmed', 'preparing'],
         created_at__gte=today_start,
-    ).prefetch_related('items').order_by('-ready_at')
+    ).filter(
+        Q(menu_type='cafe_bar') | Q(items__menu_type_snapshot='cafe_bar')
+    ).distinct().prefetch_related('items', 'items__menu_item').order_by('created_at')
+    ready = Order.objects.filter(
+        status='ready',
+        created_at__gte=today_start,
+    ).filter(
+        Q(menu_type='cafe_bar') | Q(items__menu_type_snapshot='cafe_bar')
+    ).distinct().prefetch_related('items').order_by('-ready_at')
+
+    # Attach per-counter item list.
+    for order in list(incoming) + list(ready):
+        order.counter_items = [
+            i for i in order.items.all()
+            if (i.menu_type_snapshot or (i.menu_item.menu_type if i.menu_item else '')) == 'cafe_bar'
+        ]
+
     return render(request, 'cafeteria/cafe_bar_counter.html', {
         'incoming': incoming, 'ready': ready,
+        'pending_payment': pending_payment,
     })
 
 
@@ -847,21 +1053,20 @@ def public_order_view(request, menu_type):
 @require_POST
 def public_place_order_ajax(request):
     """
-    Place a public order with a stub payment (cash default).
-    In production, wire Stripe or PayNow here and only create the
-    order on successful payment confirmation.
+    Place a public walk-in order. Supports:
+    - Mixed carts (kitchen + cafe bar items)
+    - payment_method = 'stripe' or 'paynow' (pay at kiosk)
+    - payment_method = 'terminal' (generates payment QR to pay at cafe bar)
+    For terminal: order is created with status='pending_payment' and a
+    payment_token QR. Only becomes 'confirmed' (and items reserved) after
+    cafe bar scans the QR and accepts cash/card.
     """
-    from .payments import attempt_payment
-
     try:
         data = json.loads(request.body)
-        menu_type = data.get('menu_type')
         items_data = data.get('items', [])
         customer_name = (data.get('public_name') or 'Walk-in').strip()
-        payment_method = data.get('payment_method', 'cash')
+        payment_method = data.get('payment_method', 'terminal')
 
-        if menu_type not in ('halal', 'non_halal', 'cafe_bar'):
-            return JsonResponse({'success': False, 'message': 'Invalid menu type'})
         if not items_data:
             return JsonResponse({'success': False, 'message': 'Cart is empty'})
 
@@ -871,6 +1076,7 @@ def public_place_order_ajax(request):
 
             subtotal = Decimal('0')
             buf = []
+            menu_types_in_cart = set()
             for raw in items_data:
                 mid = int(raw.get('id'))
                 qty = int(raw.get('quantity', 1))
@@ -884,29 +1090,53 @@ def public_place_order_ajax(request):
                 subtotal += price * qty
                 mi.quantity_remaining -= qty
                 mi.save(update_fields=['quantity_remaining'])
-                buf.append({'menu_item': mi, 'name': mi.name, 'price': price, 'qty': qty, 'cust': cust})
+                menu_types_in_cart.add(mi.menu_type)
+                buf.append({
+                    'menu_item': mi, 'name': mi.name, 'price': price,
+                    'qty': qty, 'cust': cust, 'menu_type': mi.menu_type,
+                })
 
-            # Attempt payment (stub in dev, Stripe/PayNow in production).
-            pay_result = attempt_payment(subtotal, payment_method, customer_name)
-            if not pay_result.get('success'):
-                # Roll back stock (atomic will handle this if we raise).
-                return JsonResponse({'success': False, 'message': pay_result.get('message', 'Payment failed')})
+            is_mixed = len(menu_types_in_cart) > 1
+            order_menu_type = 'mixed' if is_mixed else next(iter(menu_types_in_cart))
+
+            # Determine initial status based on payment method.
+            if payment_method == 'terminal':
+                initial_status = 'pending'  # awaiting cafe bar payment
+                confirmed_at = None
+            elif payment_method == 'stripe':
+                initial_status = 'pending'  # confirmed by webhook
+                confirmed_at = None
+            elif payment_method == 'paynow':
+                initial_status = 'pending'  # trust paynow QR scan (no webhook)
+                confirmed_at = None
+            else:  # cash (legacy)
+                initial_status = 'confirmed'
+                confirmed_at = timezone.now()
 
             order = Order.objects.create(
-                order_number=Order.next_number(menu_type, is_public=True),
+                order_number=Order.next_number(
+                    order_menu_type, is_public=True, is_mixed=is_mixed
+                ),
                 customer=None,
                 is_public=True,
                 public_name=customer_name,
-                menu_type=menu_type,
-                status='confirmed',
+                menu_type=order_menu_type,
+                is_mixed=is_mixed,
+                status=initial_status,
                 subtotal=subtotal,
                 credits_applied=Decimal('0'),
-                balance_due=Decimal('0'),
+                balance_due=subtotal,
                 payment_method=payment_method,
-                confirmed_at=timezone.now(),
+                confirmed_at=confirmed_at,
             )
+            # Collection QR (used after payment completes).
             order.qr_token = sign_order_qr(order)
-            order.save(update_fields=['qr_token'])
+            # Payment QR (used by terminal-payment flow only).
+            if payment_method == 'terminal':
+                from django.core.signing import TimestampSigner
+                signer = TimestampSigner(salt='payment-qr')
+                order.payment_token = signer.sign(f'pay-{order.id}')
+            order.save(update_fields=['qr_token', 'payment_token'])
 
             for b in buf:
                 OrderItem.objects.create(
@@ -917,7 +1147,29 @@ def public_place_order_ajax(request):
                     quantity=b['qty'],
                     customizations=b['cust'],
                     subtotal=b['price'] * b['qty'],
+                    menu_type_snapshot=b['menu_type'],
                 )
+
+            # For Stripe, generate checkout session.
+            if payment_method == 'stripe':
+                from .payments import create_stripe_checkout_session
+                sess = create_stripe_checkout_session(
+                    subtotal, customer_name, {'order_id': str(order.id)}
+                )
+                if sess:
+                    return JsonResponse({
+                        'success': True, 'order_id': order.id, 'order_number': order.order_number,
+                        'checkout_url': sess['url'],
+                    })
+
+            # For PayNow, return QR for balance.
+            if payment_method == 'paynow':
+                from .payments import build_paynow_qr
+                qr = build_paynow_qr(subtotal, reference=f'Order-{order.order_number}')
+                return JsonResponse({
+                    'success': True, 'order_id': order.id, 'order_number': order.order_number,
+                    'paynow_qr': qr, 'balance_due': str(subtotal),
+                })
 
         # Optional email receipt (async via Celery if available).
         if data.get('email'):
@@ -947,11 +1199,28 @@ def public_place_order_ajax(request):
 
 
 def public_ticket_view(request, order_id):
-    """Public order confirmation with QR code."""
+    """
+    Public order ticket:
+    - If payment still pending (terminal flow): show PAYMENT QR + instructions
+    - If paid: show COLLECTION QR.
+    Both include full item details for printing.
+    """
     order = get_object_or_404(Order, pk=order_id, is_public=True)
-    qr_image = _generate_qr_image_base64(order.qr_token, box_size=8)
+
+    # Determine which QR to show.
+    is_pending = order.payment_method == 'terminal' and not order.payment_received_at
+    if is_pending and order.payment_token:
+        qr_image = _generate_qr_image_base64(order.payment_token, box_size=8)
+        qr_kind = 'payment'
+    else:
+        qr_image = _generate_qr_image_base64(order.qr_token, box_size=8)
+        qr_kind = 'collection'
+
     return render(request, 'cafeteria/public_ticket.html', {
-        'order': order, 'qr_image': qr_image,
+        'order': order,
+        'qr_image': qr_image,
+        'qr_kind': qr_kind,
+        'autoprint': request.GET.get('autoprint') == '1',
     })
 
 

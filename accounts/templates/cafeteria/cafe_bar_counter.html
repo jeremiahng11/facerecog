@@ -33,11 +33,28 @@
 {% block content %}
 <div class="top">
   <h1>☕ Cafe Bar Counter</h1>
-  <div class="text-sm text-muted">{{ incoming|length }} incoming · {{ ready|length }} ready</div>
+  <div class="text-sm text-muted">{{ pending_payment|length }} awaiting payment · {{ incoming|length }} preparing · {{ ready|length }} ready</div>
 </div>
-<div class="scan-hint">📷 Scanner ready — scan a customer's QR to validate
+<div class="scan-hint">📷 Camera scanner active — scan customer's QR to validate, process payment, or mark collected
   <input type="text" id="scanInput" style="position:absolute;left:-9999px" autofocus>
 </div>
+
+<!-- Pending payment (public terminal flow) -->
+{% if pending_payment %}
+<div style="background:#fef3c7;padding:10px 16px;border-bottom:1px solid #fbbf24">
+  <div style="font-size:11px;font-weight:700;color:#c2410c;letter-spacing:2px;margin-bottom:6px">⚠ AWAITING PAYMENT ({{ pending_payment|length }})</div>
+  {% for order in pending_payment %}
+  <div style="background:#fff;border:1px solid #fbbf24;border-radius:8px;padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
+    <div>
+      <strong style="color:#c2410c">{{ order.order_number }}</strong> · {{ order.public_name }} ·
+      <strong>S${{ order.subtotal|floatformat:2 }}</strong>
+      <div style="font-size:11px;color:var(--text3)">{{ order.created_at|time:"H:i" }}</div>
+    </div>
+    <div style="font-size:11px;color:var(--text3)">Scan customer's payment QR</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 
 <div class="split">
   <div class="pane left">
@@ -53,11 +70,12 @@
       </div>
       <div class="text-sm text-muted">{{ order.customer.display_name|default:order.public_name }}</div>
       <ul class="oc-items">
-        {% for item in order.items.all %}
+        {% for item in order.counter_items %}
         <li><strong>{{ item.quantity }}×</strong> {{ item.name_snapshot }}
           {% if item.customizations %}<div class="cust">{% for k, v in item.customizations.items %}{{ k }}: {{ v }}{% if not forloop.last %} · {% endif %}{% endfor %}</div>{% endif %}
         </li>
         {% endfor %}
+        {% if order.is_mixed %}<li style="font-size:11px;color:var(--text3);font-style:italic;padding-top:4px;border-top:1px dashed var(--border)">🔀 Other items collected from Kitchen counter</li>{% endif %}
       </ul>
       <div class="oc-actions">
         <button style="background:var(--success);color:#fff" onclick="markReady({{ order.id }})">Ready →</button>
@@ -92,8 +110,28 @@ async function markReady(id) {
   location.reload();
 }
 async function markCollected(id) {
-  await fetch(`/cafeteria/api/kitchen/mark-collected/${id}/`, { method: 'POST', headers: { 'X-CSRFToken': getCSRF() } });
+  await fetch(`/cafeteria/api/kitchen/mark-collected/${id}/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+    body: JSON.stringify({ counter: 'cafe_bar' }),
+  });
   closePopup(); location.reload();
+}
+
+async function completePayment(orderId) {
+  const resp = await fetch(`/cafeteria/api/cafe-bar/complete-payment/${orderId}/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': getCSRF() },
+  });
+  const data = await resp.json();
+  if (data.success) {
+    // Open the collection receipt in a new window for printing.
+    const w = window.open(data.collection_receipt_url + '?autoprint=1', '_blank');
+    closePopup();
+    setTimeout(() => location.reload(), 400);
+  } else {
+    alert(data.message || 'Error');
+  }
 }
 function closePopup() { document.getElementById('scanPopup').classList.remove('active'); document.getElementById('scanInput').focus(); }
 
@@ -111,12 +149,24 @@ async function processScan(token) {
   });
   const data = await resp.json();
   let html = '';
-  if (data.result === 'valid') {
+  if (data.result === 'payment_pending') {
+    html = `<div class="emoji">💳</div>
+      <h2 style="color:var(--warn)">Process Payment</h2>
+      <div style="font-size:32px;font-weight:800;color:var(--primary);margin:10px 0">${data.order_number}</div>
+      <div>${data.customer_name || 'Walk-in'}</div>
+      <ul style="text-align:left;margin:10px 0;padding-left:16px">${data.items.map(i => '<li>' + i.quantity + '× ' + i.name + ' — S$' + i.subtotal + '</li>').join('')}</ul>
+      <div style="font-size:26px;font-weight:800;color:var(--success);margin:14px 0">Amount Due: S$${parseFloat(data.amount_due).toFixed(2)}</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" style="flex:1" onclick="closePopup()">Cancel</button>
+        <button class="btn btn-success" style="flex:2" onclick="completePayment(${data.order_id})">Received Payment — Print Collection QR</button>
+      </div>`;
+  } else if (data.result === 'valid') {
     html = `<div class="emoji">✅</div><h2 style="color:var(--success)">Valid</h2>
       <div style="font-size:32px;font-weight:800;color:var(--primary);margin:10px 0">${data.order_number}</div>
       <div>${data.customer_name || ''}</div>
-      <ul style="text-align:left;margin:10px 0">${data.items.map(i => '<li>' + i.quantity + '× ' + i.name + '</li>').join('')}</ul>
-      <button class="btn btn-success" style="width:100%" onclick="markCollected(${data.order_id})">Mark Collected</button>`;
+      <ul style="text-align:left;margin:10px 0;padding-left:16px">${data.items.map(i => '<li>' + i.quantity + '× ' + i.name + '</li>').join('')}</ul>
+      ${data.is_mixed ? '<div style="font-size:11px;color:var(--text3);font-style:italic">🔀 Mixed order — other items at Kitchen counter</div>' : ''}
+      <button class="btn btn-success" style="width:100%;margin-top:10px" onclick="markCollected(${data.order_id})">Mark Collected</button>`;
   } else {
     html = `<div class="emoji">${data.result === 'wrong_counter' ? '⚠️' : data.result === 'duplicate' ? '🚫' : data.result === 'not_ready' ? '⏳' : '❌'}</div>
       <h2>${data.message || 'Invalid'}</h2>

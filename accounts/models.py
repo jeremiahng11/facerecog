@@ -253,12 +253,14 @@ class Order(models.Model):
         ('halal', 'Halal Kitchen'),
         ('non_halal', 'Non-Halal Kitchen'),
         ('cafe_bar', 'Cafe Bar'),
+        ('mixed', 'Mixed'),
     ]
     PAYMENT_CHOICES = [
         ('credits', 'Staff Credits'),
         ('stripe', 'Stripe Card'),
         ('paynow', 'PayNow QR'),
         ('cash', 'Cash'),
+        ('terminal', 'Terminal at Counter'),
         ('mixed', 'Credits + Card/PayNow'),
     ]
 
@@ -283,6 +285,19 @@ class Order(models.Model):
     qr_used = models.BooleanField(default=False)
     qr_used_at = models.DateTimeField(null=True, blank=True)
 
+    # Payment QR for public "pay at counter" flow.
+    # Customer prints this at the kiosk, takes it to cafe bar, staff scans
+    # to process cash/card payment on the terminal.
+    payment_token = models.CharField(max_length=200, blank=True)
+    payment_received_at = models.DateTimeField(null=True, blank=True)
+    payment_received_by = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='payments_received'
+    )
+
+    # Mixed-menu orders (kitchen + cafe bar in one cart) get an 'M' prefix.
+    is_mixed = models.BooleanField(default=False)
+
     # Collection time for Cafe Bar scheduling (Now / +10 / +20 minutes)
     collection_time_minutes = models.PositiveIntegerField(default=0)
 
@@ -301,10 +316,20 @@ class Order(models.Model):
         return f'{self.order_number} — {name}'
 
     @classmethod
-    def next_number(cls, menu_type: str, is_public: bool = False) -> str:
-        """Generate next order number for today with correct prefix."""
+    def next_number(cls, menu_type: str, is_public: bool = False, is_mixed: bool = False) -> str:
+        """
+        Generate next order number for today with correct prefix.
+        Prefix rules:
+          M — mixed (items from multiple menus)
+          P — public walk-in (single menu)
+          H — Halal Kitchen
+          N — Non-Halal Kitchen
+          C — Cafe Bar
+        """
         from django.utils import timezone as tz
-        if is_public:
+        if is_mixed:
+            prefix = 'M'
+        elif is_public:
             prefix = 'P'
         elif menu_type == 'halal':
             prefix = 'H'
@@ -340,6 +365,13 @@ class OrderItem(models.Model):
     quantity = models.PositiveIntegerField(default=1)
     customizations = models.JSONField(default=dict, blank=True)
     subtotal = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+
+    # Snapshot of the menu type at order time — survives menu_item deletion.
+    # Also drives per-counter collection: items with menu_type='halal' can
+    # only be collected from the halal kitchen, etc.
+    menu_type_snapshot = models.CharField(max_length=16, blank=True)
+    # When this specific item was collected at its counter. Null = not collected.
+    collected_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f'{self.quantity}× {self.name_snapshot}'
