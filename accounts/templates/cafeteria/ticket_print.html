@@ -87,10 +87,29 @@
   <div class="footer">Show QR at counter to collect</div>
   <div class="footer">Thank you!</div>
 
-  <button class="no-print" onclick="window.print()" style="
+  <button class="no-print" id="printBtn" onclick="window.print()" style="
     padding:10px 24px; font-size:14px; cursor:pointer;
     background:#1e56b8; color:#fff; border:none; border-radius:8px;
     font-weight:600; margin-top:16px;
   ">Print Ticket</button>
+
+<script>
+  // Auto-fire window.print() on load. The user gesture that opened this
+  // tab (clicking the Print link on the main ticket) carries over here,
+  // so Fully Kiosk / Chromium --kiosk-printing treats this as a legit
+  // user-initiated print and skips the dialog. After the print job is
+  // dispatched, close this tab so the kiosk returns to the main ticket.
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      window.print();
+      // Close the tab a moment after the print is queued. If we can't
+      // (the browser only allows window.close on tabs it opened with
+      // window.open), leave the Print Ticket button visible.
+      setTimeout(() => { try { window.close(); } catch (e) {} }, 1500);
+    }, 150);
+  });
+  // If afterprint is supported, close as soon as the job is done.
+  window.addEventListener('afterprint', () => { try { window.close(); } catch (e) {} });
+</script>
 </body>
 </html>
