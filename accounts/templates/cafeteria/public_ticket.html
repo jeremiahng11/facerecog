@@ -78,21 +78,29 @@
   </div>
 
   <div class="btns" style="display:flex;gap:10px;margin-top:20px">
-    <a class="btn btn-secondary" href="{% url 'cafeteria_public_ticket_print' order.id %}" target="_blank" rel="noopener">🖨 Print</a>
+    <button class="btn btn-secondary" onclick="printReceipt()">🖨 Print</button>
     <button class="btn btn-primary" onclick="window.location='/cafeteria/kiosk/'">Done</button>
   </div>
 </div>
 
 <script>
-  // Print is handled by the dedicated /print/ 58mm-wide page (opened in
-  // a new tab via the Print link above) — matches the queue_print flow.
+  // Silent print via RawBT URL scheme — see kiosk_ticket.html for full
+  // rationale. Falls back to the dedicated /print/ page in a new tab.
+  const ESCPOS_B64 = "{{ escpos_b64|default:'' }}";
+  function printReceipt() {
+    if (ESCPOS_B64) {
+      const a = document.createElement('a');
+      a.href = 'rawbt:' + ESCPOS_B64;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => a.remove(), 500);
+    } else {
+      window.open('{% url "cafeteria_public_ticket_print" order.id %}', '_blank');
+    }
+  }
   {% if autoprint %}
-  // Cafe-bar counter opens this page with ?autoprint=1 after a payment
-  // is confirmed; automatically redirect into the print page so the
-  // silent print pipeline kicks in immediately.
-  window.addEventListener('load', () => {
-    window.location.replace('{% url "cafeteria_public_ticket_print" order.id %}');
-  });
+  window.addEventListener('load', () => setTimeout(printReceipt, 300));
   {% endif %}
 </script>
 {% endblock %}

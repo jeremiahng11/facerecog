@@ -425,6 +425,106 @@ def kiosk_place_order_ajax(request):
         return JsonResponse({'success': False, 'message': str(e)})
 
 
+def _escpos_qr_raster(data: str, box_size: int = 5) -> bytes:
+    """
+    Render a QR code for `data` as an ESC/POS raster bitmap (GS v 0).
+
+    MPT-2 and most 58mm BT thermals support GS v 0 even when they don't
+    support the native QR tag GS ( k. Returns the complete ESC/POS byte
+    sequence ready to be appended to the print stream.
+    """
+    import qrcode
+    from PIL import Image
+
+    qr = qrcode.QRCode(version=None, box_size=box_size, border=2)
+    qr.add_data(data)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color='black', back_color='white').convert('1')
+
+    w, h = img.size
+    pad = (8 - (w % 8)) % 8
+    if pad:
+        new = Image.new('1', (w + pad, h), color=1)
+        new.paste(img, (0, 0))
+        img = new
+        w += pad
+    bytes_per_row = w // 8
+
+    raster = bytearray()
+    for y in range(h):
+        for xb in range(bytes_per_row):
+            byte = 0
+            for bit in range(8):
+                x = xb * 8 + bit
+                if img.getpixel((x, y)) == 0:
+                    byte |= 1 << (7 - bit)
+            raster.append(byte)
+
+    header = bytearray(b'\x1d\x76\x30\x00')  # GS v 0, mode 0
+    header.append(bytes_per_row & 0xff)
+    header.append((bytes_per_row >> 8) & 0xff)
+    header.append(h & 0xff)
+    header.append((h >> 8) & 0xff)
+    return bytes(header) + bytes(raster)
+
+
+def _escpos_receipt_b64(order) -> str:
+    """
+    MPT-2-compatible ESC/POS thermal receipt encoded as base64 — handed
+    to RawBT via the rawbt:<base64> URL scheme for true silent printing
+    (no browser dialog). Requires: MPT-2 in ESC/POS mode + RawBT app
+    installed + printer paired.
+    """
+    ESC = b'\x1b'
+    INIT = ESC + b'@'
+    CENTER = ESC + b'a\x01'
+    LEFT = ESC + b'a\x00'
+    DBL = ESC + b'!\x30'
+    NORMAL = ESC + b'!\x00'
+
+    def line(s):
+        return s.encode('ascii', 'ignore') + b'\n'
+
+    buf = bytearray()
+    buf += INIT
+    buf += CENTER
+    buf += DBL + line('CAFETERIA') + NORMAL
+    buf += line('=' * 32)
+
+    name = ''
+    if order.customer_id:
+        name = getattr(order.customer, 'display_name', '') or getattr(order.customer, 'full_name', '') or ''
+    if not name:
+        name = getattr(order, 'public_name', '') or 'Guest'
+    buf += line(name[:32])
+    buf += b'\n'
+
+    buf += line('ORDER NUMBER')
+    buf += DBL + line(order.order_number) + NORMAL
+    buf += b'\n'
+
+    if order.qr_token:
+        buf += _escpos_qr_raster(order.qr_token, box_size=5)
+        buf += b'\n'
+
+    buf += LEFT
+    buf += line('-' * 32)
+    for it in order.items.all():
+        buf += line(f'{it.quantity}x {it.name_snapshot}'[:32])
+    buf += line('-' * 32)
+    buf += line(f'Total    S${order.subtotal:.2f}')
+    if order.credits_applied and order.credits_applied > 0:
+        buf += line(f'Credits -S${order.credits_applied:.2f}')
+    buf += b'\n'
+
+    buf += CENTER
+    buf += line(order.created_at.strftime('%d %b %Y  %H:%M'))
+    buf += line('Thank you!')
+    buf += b'\n\n\n\n\n'
+
+    return base64.b64encode(bytes(buf)).decode('ascii')
+
+
 @login_required
 def kiosk_ticket_print_view(request, order_id):
     """
@@ -490,6 +590,7 @@ def kiosk_ticket_view(request, order_id):
         'done_label': done_label,
         'idle_timeout': KioskConfig.get().idle_session_seconds,
         'post_print_timeout': KioskConfig.get().post_print_seconds,
+        'escpos_b64': _escpos_receipt_b64(order),
     })
 
 
@@ -1366,6 +1467,7 @@ def public_ticket_view(request, order_id):
         'qr_image': qr_image,
         'qr_kind': qr_kind,
         'autoprint': request.GET.get('autoprint') == '1',
+        'escpos_b64': _escpos_receipt_b64(order) if qr_kind == 'collection' else '',
     })
 
 
