@@ -17,7 +17,7 @@
     <form method="post">
       {% csrf_token %}
 
-      <div style="background:rgba(0,212,255,0.06);border:1px solid rgba(0,212,255,0.3);border-radius:10px;padding:14px;margin-bottom:20px;font-size:13px;color:var(--text2)">
+      <div style="background:rgba(30,86,184,0.06);border:1px solid rgba(30,86,184,0.3);border-radius:10px;padding:14px;margin-bottom:20px;font-size:13px;color:var(--text2)">
         <strong style="color:var(--accent)">📅 Automatic monthly reset</strong><br>
         Credits reset to the monthly allowance on day {{ credit_reset_day }} of each month at 00:01 Singapore time.
         <strong>No carry-forward</strong> — any unused balance is replaced, not added.

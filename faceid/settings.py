@@ -208,7 +208,7 @@ FACE_LOCKOUT_DURATION_MINUTES = int(os.environ.get('FACE_LOCKOUT_DURATION_MINUTE
 # ─── Branding (customise via env vars) ────────────────────────────────────────
 BRAND_NAME = os.environ.get('BRAND_NAME', 'FaceID Portal')
 BRAND_COMPANY = os.environ.get('BRAND_COMPANY', '')
-BRAND_ACCENT_COLOR = os.environ.get('BRAND_ACCENT_COLOR', '#00d4ff')
+BRAND_ACCENT_COLOR = os.environ.get('BRAND_ACCENT_COLOR', '#1e56b8')
 
 # ─── Kiosk ────────────────────────────────────────────────────────────────────
 # Idle timeout: seconds of inactivity before the kiosk auto-resets to scan.

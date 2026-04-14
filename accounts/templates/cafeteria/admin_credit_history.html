@@ -49,7 +49,7 @@
               {% if tx.type == 'allowance' %}<span class="badge badge-green">Allowance</span>
               {% elif tx.type == 'order' %}<span class="badge" style="background:rgba(239,68,68,0.1);color:var(--danger)">Order</span>
               {% elif tx.type == 'refund' %}<span class="badge badge-green">Refund</span>
-              {% elif tx.type == 'admin_adjust' %}<span class="badge" style="background:rgba(124,58,237,0.1);color:#a78bfa">Admin</span>
+              {% elif tx.type == 'admin_adjust' %}<span class="badge" style="background:rgba(124,58,237,0.1);color:#7c3aed">Admin</span>
               {% endif %}
             </td>
             <td class="mono" style="color:{% if tx.amount > 0 %}var(--accent3){% elif tx.amount < 0 %}var(--danger){% else %}var(--text2){% endif %}">

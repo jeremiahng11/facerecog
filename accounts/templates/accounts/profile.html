@@ -15,7 +15,7 @@
     position: relative;
     width: 100%;
     aspect-ratio: 4/3;
-    background: #000;
+    background: #0b1a2e;
     border-radius: 12px;
     overflow: hidden;
     border: 1px solid var(--border);
@@ -31,19 +31,19 @@
     position: absolute; inset: 0;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    background: rgba(8,12,18,0.85);
-    color: var(--text2); font-size: 13px; gap: 10px;
+    background: rgba(15,39,70,0.6);
+    color: #ffffff; font-size: 13px; gap: 10px;
     cursor: pointer;
     transition: background 0.2s;
   }
-  .enroll-camera .cam-overlay:hover { background: rgba(8,12,18,0.7); }
+  .enroll-camera .cam-overlay:hover { background: rgba(15,39,70,0.75); }
   .enroll-camera .cam-overlay.hidden { display: none; }
   .face-oval {
     position: absolute;
     top: 50%; left: 50%;
     transform: translate(-50%, -50%);
     width: 55%; aspect-ratio: 3/4;
-    border: 2px dashed rgba(0,212,255,0.4);
+    border: 2px dashed rgba(30,86,184,0.5);
     border-radius: 50%;
     pointer-events: none;
   }
@@ -60,9 +60,9 @@
     background: var(--bg);
     color: var(--text2);
   }
-  .enroll-status.ok { border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.07); color: var(--accent3); }
-  .enroll-status.err { border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.07); color: #f87171; }
-  .enroll-status.info { border-color: rgba(0,212,255,0.3); background: rgba(0,212,255,0.06); color: var(--accent); }
+  .enroll-status.ok { border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.08); color: var(--accent3); }
+  .enroll-status.err { border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.08); color: var(--danger); }
+  .enroll-status.info { border-color: rgba(30,86,184,0.3); background: rgba(30,86,184,0.06); color: var(--accent); }
 
   .current-face {
     width: 80px; height: 80px;
@@ -194,7 +194,7 @@
       </div>
 
       <!-- Enrollment instructions banner -->
-      <div style="background:rgba(0,212,255,0.06);border:1px solid rgba(0,212,255,0.2);border-radius:10px;padding:14px;margin-bottom:14px;font-size:13px;color:var(--text2)">
+      <div style="background:rgba(30,86,184,0.06);border:1px solid rgba(30,86,184,0.2);border-radius:10px;padding:14px;margin-bottom:14px;font-size:13px;color:var(--text2)">
         <div style="font-weight:600;color:var(--accent);margin-bottom:6px;font-size:12px;font-family:var(--mono);letter-spacing:1px">HOW ENROLLMENT WORKS</div>
         <div style="margin-bottom:6px">When you click <strong>Capture & Enroll</strong>, the system will take <strong>{{ enroll_num_samples|default:"5" }} photos</strong> over a few seconds.</div>
         <div style="display:flex;flex-direction:column;gap:4px">

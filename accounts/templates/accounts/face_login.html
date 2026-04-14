@@ -4,7 +4,7 @@
 {% block extra_head %}
 <style>
   body {
-    background: radial-gradient(ellipse at 50% 50%, rgba(0,212,255,0.04) 0%, transparent 70%), var(--bg);
+    background: radial-gradient(ellipse at 50% 50%, rgba(30,86,184,0.04) 0%, transparent 70%), var(--bg);
     min-height: 100vh;
     display: flex;
     align-items: center;
@@ -26,11 +26,11 @@
     border-radius: 8px;
     position: relative;
     z-index: 10;
-    -webkit-tap-highlight-color: rgba(0, 212, 255, 0.2);
+    -webkit-tap-highlight-color: rgba(30, 86, 184, 0.2);
     touch-action: manipulation;
   }
-  .back-link:hover { color: var(--accent); text-decoration: none; background: rgba(0,212,255,0.05); }
-  .back-link:active { background: rgba(0,212,255,0.12); }
+  .back-link:hover { color: var(--accent); text-decoration: none; background: rgba(30,86,184,0.05); }
+  .back-link:active { background: rgba(30,86,184,0.12); }
 
   .scan-title {
     text-align: center;
@@ -51,13 +51,13 @@
     border-radius: 50%;
     overflow: hidden;
     border: 2px solid var(--border);
-    background: #000;
+    background: #0b1a2e;
     margin: 0 auto 24px;
     max-width: 320px;
-    box-shadow: 0 0 0 1px var(--border), 0 0 40px rgba(0,212,255,0.08);
+    box-shadow: 0 0 0 1px var(--border), 0 0 40px rgba(30,86,184,0.08);
     transition: border-color 0.3s;
   }
-  .camera-container.scanning { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 40px rgba(0,212,255,0.25); }
+  .camera-container.scanning { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 40px rgba(30,86,184,0.25); }
   .camera-container.success { border-color: var(--accent3); box-shadow: 0 0 0 1px var(--accent3), 0 0 40px rgba(16,185,129,0.3); }
   .camera-container.failed { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger), 0 0 40px rgba(239,68,68,0.2); }
 
@@ -83,7 +83,7 @@
     position: absolute;
     inset: 10%;
     border-radius: 50%;
-    border: 1px dashed rgba(0,212,255,0.3);
+    border: 1px dashed rgba(30,86,184,0.3);
     pointer-events: none;
   }
 
@@ -91,11 +91,11 @@
     position: absolute;
     inset: 0;
     display: flex; align-items: center; justify-content: center;
-    background: rgba(0,0,0,0.7);
+    background: rgba(15,39,70,0.55);
     backdrop-filter: blur(4px);
     flex-direction: column;
     gap: 12px;
-    color: var(--text2);
+    color: #ffffff;
     font-size: 13px;
     text-align: center;
     padding: 20px;
@@ -122,7 +122,7 @@
     color: var(--text3);
     transition: all 0.3s;
   }
-  .status-scanning .status-icon { background: rgba(0,212,255,0.1); color: var(--accent); }
+  .status-scanning .status-icon { background: rgba(30,86,184,0.1); color: var(--accent); }
   .status-success .status-icon { background: rgba(16,185,129,0.1); color: var(--accent3); }
   .status-failed .status-icon { background: rgba(239,68,68,0.1); color: var(--danger); }
 
@@ -151,14 +151,14 @@
     font-weight: 600;
     border-radius: 10px;
     background: var(--accent);
-    color: #000;
+    color: #ffffff;
     border: none;
     cursor: pointer;
     display: flex; align-items: center; justify-content: center; gap: 8px;
     transition: all 0.2s;
     font-family: var(--sans);
   }
-  .btn-scan:hover { background: #33ddff; }
+  .btn-scan:hover { background: #1747a0; }
   .btn-scan:disabled { opacity: 0.5; cursor: not-allowed; }
 
   @keyframes spin {

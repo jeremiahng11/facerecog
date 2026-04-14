@@ -6,8 +6,9 @@
   <title>Face ID Kiosk</title>
   <style>
     :root {
-      --bg: #080c12; --accent: #00d4ff; --accent3: #10b981;
-      --danger: #ef4444; --text: #e2eaf8; --text2: #8ba4c8; --text3: #4a6080;
+      --bg: #f4f7fb; --accent: #1e56b8; --accent3: #10b981;
+      --danger: #ef4444; --text: #0f2746; --text2: #3b5a82; --text3: #8aa5c4;
+      --border: #d6e2f0;
       --mono: 'Space Mono', monospace; --sans: 'DM Sans', sans-serif;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -22,12 +23,12 @@
     }
     .camera-ring {
       width: min(70vw, 380px); aspect-ratio: 1; border-radius: 50%;
-      overflow: hidden; border: 3px solid var(--text3);
-      position: relative; background: #000;
-      box-shadow: 0 0 60px rgba(0,0,0,0.6);
+      overflow: hidden; border: 3px solid var(--border);
+      position: relative; background: #0b1a2e;
+      box-shadow: 0 8px 32px rgba(15,39,70,0.12);
       transition: border-color 0.4s, box-shadow 0.4s;
     }
-    .camera-ring.scanning { border-color: var(--accent); box-shadow: 0 0 60px rgba(0,212,255,0.15); }
+    .camera-ring.scanning { border-color: var(--accent); box-shadow: 0 0 60px rgba(30,86,184,0.15); }
     .camera-ring.success { border-color: var(--accent3); box-shadow: 0 0 80px rgba(16,185,129,0.3); }
     .camera-ring.failed { border-color: var(--danger); box-shadow: 0 0 60px rgba(239,68,68,0.15); }
     .camera-ring video {

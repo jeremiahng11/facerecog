@@ -28,9 +28,9 @@
           <tr>
             <td>
               {% if log.action == 'create' %}<span class="badge badge-green">Create</span>
-              {% elif log.action == 'edit' %}<span class="badge" style="background:rgba(0,212,255,0.1);color:var(--accent);border-color:rgba(0,212,255,0.3)">Edit</span>
+              {% elif log.action == 'edit' %}<span class="badge" style="background:rgba(30,86,184,0.1);color:var(--accent);border-color:rgba(30,86,184,0.3)">Edit</span>
               {% elif log.action == 'delete' %}<span class="badge badge-red">Delete</span>
-              {% elif log.action == 'reencode' %}<span class="badge" style="background:rgba(124,58,237,0.1);color:#a78bfa;border-color:rgba(124,58,237,0.3)">Re-encode</span>
+              {% elif log.action == 'reencode' %}<span class="badge" style="background:rgba(124,58,237,0.1);color:#7c3aed;border-color:rgba(124,58,237,0.3)">Re-encode</span>
               {% else %}<span class="badge">{{ log.action }}</span>{% endif %}
             </td>
             <td class="td-main">{{ log.admin_user.full_name|default:"—" }}</td>
