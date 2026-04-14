@@ -16,7 +16,20 @@ if RAILWAY_PUBLIC_DOMAIN:
     CSRF_TRUSTED_ORIGINS.append(f'https://{RAILWAY_PUBLIC_DOMAIN}')
 
 # ─── Apps ─────────────────────────────────────────────────────────────────────
-INSTALLED_APPS = [
+# Detect optional packages — project runs without them, gains real-time
+# and async capabilities when they're installed + Redis is deployed.
+try:
+    import channels  # noqa: F401
+    import daphne    # noqa: F401
+    _CHANNELS_INSTALLED = True
+except ImportError:
+    _CHANNELS_INSTALLED = False
+
+INSTALLED_APPS = []
+if _CHANNELS_INSTALLED:
+    # Daphne must come BEFORE django.contrib.staticfiles for ASGI support.
+    INSTALLED_APPS.append('daphne')
+INSTALLED_APPS += [
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -25,8 +38,13 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'cloudinary_storage',   # must come before staticfiles for media
     'cloudinary',
-    'accounts',
 ]
+if _CHANNELS_INSTALLED:
+    INSTALLED_APPS.append('channels')
+INSTALLED_APPS.append('accounts')
+
+if _CHANNELS_INSTALLED:
+    ASGI_APPLICATION = 'faceid.asgi.application'
 
 # ─── Middleware ────────────────────────────────────────────────────────────────
 MIDDLEWARE = [
@@ -207,5 +225,42 @@ STAFF_IDLE_TIMEOUT_SECONDS = int(os.environ.get('STAFF_IDLE_TIMEOUT_SECONDS', '6
 MONTHLY_STAFF_CREDIT = float(os.environ.get('MONTHLY_STAFF_CREDIT', '50.00'))
 # Day of month to reset credits (used by future Celery Beat task).
 CREDIT_RESET_DAY = int(os.environ.get('CREDIT_RESET_DAY', '1'))
+
+# ─── Redis-backed Channels + Celery (auto-active when REDIS_URL is set) ─────
+REDIS_URL = os.environ.get('REDIS_URL', '')
+
+if _CHANNELS_INSTALLED and REDIS_URL:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {'hosts': [REDIS_URL]},
+        },
+    }
+elif _CHANNELS_INSTALLED:
+    # In-memory channel layer — works for a single-process dev server but
+    # NOT for multi-worker production. Deploy Redis on Railway to upgrade.
+    CHANNEL_LAYERS = {
+        'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'},
+    }
+
+# Celery — auto-active when REDIS_URL is set. Tasks degrade to no-ops without.
+CELERY_BROKER_URL = REDIS_URL or 'memory://'
+CELERY_RESULT_BACKEND = REDIS_URL or 'cache+memory://'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+
+# ─── Stripe ────────────────────────────────────────────────────────────────
+STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
+STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
+STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+
+# ─── PayNow ────────────────────────────────────────────────────────────────
+PAYNOW_UEN = os.environ.get('PAYNOW_UEN', '')
+PAYNOW_MERCHANT_NAME = os.environ.get('PAYNOW_MERCHANT_NAME', 'Cafeteria')
+
+# ─── Cron endpoint secret (for GitHub Actions scheduled tasks) ──────────────
+CRON_SECRET = os.environ.get('CRON_SECRET', '')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

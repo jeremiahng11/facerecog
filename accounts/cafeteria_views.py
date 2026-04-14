@@ -34,6 +34,31 @@ from .models import (
     StaffUser, MenuItem, Order, OrderItem, CreditTransaction,
     QRScanLog, OrderingHours,
 )
+from .consumers import push_order_event
+
+
+def _broadcast_order(order, event_type):
+    """Push a WebSocket event to relevant groups (kitchen + TV + admin)."""
+    payload = {
+        'order_id': order.id,
+        'order_number': order.order_number,
+        'menu_type': order.menu_type,
+        'menu_label': order.get_menu_type_display(),
+        'status': order.status,
+        'customer': order.customer.display_name if order.customer else (order.public_name or 'Public'),
+        'is_public': order.is_public,
+        'items': [{'name': i.name_snapshot, 'qty': i.quantity} for i in order.items.all()],
+        'collection_time_minutes': order.collection_time_minutes,
+    }
+    # Kitchen/Cafe counter group.
+    push_order_event(f'kitchen/{order.menu_type}', event_type, payload)
+    # TV displays.
+    if order.menu_type == 'cafe_bar':
+        push_order_event('tv-cafe-bar', event_type, payload)
+    else:
+        push_order_event('tv-kitchen', event_type, payload)
+    # Admin alerts.
+    push_order_event('admin', event_type, payload)
 
 
 def is_admin(user):
@@ -316,6 +341,9 @@ def kiosk_place_order_ajax(request):
         if 'cafeteria_cart' in request.session:
             del request.session['cafeteria_cart']
 
+        # Broadcast to kitchen + TV + admin via WebSocket.
+        _broadcast_order(order, 'created')
+
         return JsonResponse({
             'success': True,
             'order_id': order.id,
@@ -373,6 +401,7 @@ def kitchen_mark_ready_ajax(request, order_id):
     order.status = 'ready'
     order.ready_at = timezone.now()
     order.save(update_fields=['status', 'ready_at'])
+    _broadcast_order(order, 'ready')
     return JsonResponse({'success': True})
 
 
@@ -480,6 +509,7 @@ def kitchen_mark_collected_ajax(request, order_id):
     order.qr_used_at = timezone.now()
     order.save(update_fields=['status', 'collected_at', 'qr_used', 'qr_used_at'])
     QRScanLog.objects.filter(order=order, result='valid').update(notes='Marked collected')
+    _broadcast_order(order, 'collected')
     return JsonResponse({'success': True, 'order_number': order.order_number})
 
 
@@ -626,6 +656,7 @@ def admin_cancel_order_ajax(request, order_id):
         order.cancel_reason = request.POST.get('reason', 'Admin cancelled')
         order.save(update_fields=['status', 'cancelled_at', 'cancel_reason'])
 
+    _broadcast_order(order, 'cancelled')
     return JsonResponse({'success': True, 'message': f'Order {order.order_number} cancelled, credits reinstated.'})
 
 
@@ -888,10 +919,20 @@ def public_place_order_ajax(request):
                     subtotal=b['price'] * b['qty'],
                 )
 
-        # Optional email receipt.
-        from .emails import send_order_receipt
+        # Optional email receipt (async via Celery if available).
         if data.get('email'):
-            send_order_receipt(order, data['email'])
+            try:
+                from .tasks import send_order_email_async
+                if send_order_email_async.delay:
+                    send_order_email_async.delay(order.id, data['email'])
+                else:
+                    raise RuntimeError('no-celery')
+            except Exception:
+                from .emails import send_order_receipt
+                send_order_receipt(order, data['email'])
+
+        # Broadcast to kitchen + TV + admin.
+        _broadcast_order(order, 'created')
 
         return JsonResponse({
             'success': True,
@@ -1059,3 +1100,73 @@ def cafeteria_staff_adjust_credit_ajax(request, user_id):
         return JsonResponse({'success': True, 'new_balance': str(user.credit_balance)})
     except Exception as e:
         return JsonResponse({'success': False, 'message': str(e)})
+
+
+# ─── Stripe return URLs + webhook ────────────────────────────────────────────
+
+def stripe_success_view(request):
+    """Customer lands here after successful Stripe Checkout."""
+    session_id = request.GET.get('session_id', '')
+    return render(request, 'cafeteria/stripe_success.html', {'session_id': session_id})
+
+
+from django.views.decorators.csrf import csrf_exempt
+
+
+@csrf_exempt
+@require_POST
+def stripe_webhook_view(request):
+    """
+    Stripe sends payment confirmations here.
+    Set endpoint in Stripe Dashboard: https://<domain>/cafeteria/stripe/webhook/
+    """
+    import logging
+    payload = request.body
+    sig_header = request.META.get('HTTP_STRIPE_SIGNATURE', '')
+    webhook_secret = getattr(settings, 'STRIPE_WEBHOOK_SECRET', '')
+
+    if not webhook_secret:
+        logging.warning('Stripe webhook hit but STRIPE_WEBHOOK_SECRET not set')
+        return JsonResponse({'ok': True})
+
+    try:
+        import stripe
+        stripe.api_key = getattr(settings, 'STRIPE_SECRET_KEY', '')
+        event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+    except Exception as e:
+        logging.exception('Stripe webhook signature verification failed')
+        return JsonResponse({'error': str(e)}, status=400)
+
+    if event['type'] == 'checkout.session.completed':
+        session = event['data']['object']
+        order_id = (session.get('metadata') or {}).get('order_id')
+        if order_id:
+            try:
+                order = Order.objects.get(pk=int(order_id))
+                order.status = 'confirmed'
+                order.confirmed_at = timezone.now()
+                order.save(update_fields=['status', 'confirmed_at'])
+                _broadcast_order(order, 'created')
+            except Order.DoesNotExist:
+                pass
+
+    return JsonResponse({'ok': True})
+
+
+# ─── Internal cron endpoint (for GitHub Actions scheduled tasks) ─────────────
+
+def cron_reset_credits_view(request):
+    """
+    Triggers monthly credit reset. Protected by CRON_SECRET bearer token.
+    Called by a GitHub Actions scheduled workflow on CREDIT_RESET_DAY.
+    """
+    auth = request.META.get('HTTP_AUTHORIZATION', '')
+    expected = getattr(settings, 'CRON_SECRET', '')
+    if not expected or not auth.startswith('Bearer ') or auth[7:] != expected:
+        return JsonResponse({'error': 'unauthorized'}, status=403)
+
+    from django.core.management import call_command
+    from io import StringIO
+    out = StringIO()
+    call_command('reset_credits', stdout=out)
+    return JsonResponse({'ok': True, 'output': out.getvalue()})

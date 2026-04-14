@@ -10,7 +10,15 @@ psycopg2-binary>=2.9.9
 cloudinary>=1.36.0
 django-cloudinary-storage>=0.3.0
 qrcode>=7.4.0
-# Optional — only needed if you enable the matching feature:
-# stripe>=9.0.0            # set STRIPE_SECRET_KEY to activate
-# celery>=5.3.0            # for async tasks + monthly credit reset
-# redis>=5.0.0             # for Celery broker
+
+# Real-time WebSockets (activated when Redis is deployed)
+channels>=4.0.0
+channels-redis>=4.1.0
+daphne>=4.0.0
+
+# Async task queue (activated when Redis is deployed)
+celery>=5.3.0
+redis>=5.0.0
+
+# Payment integration (activated when STRIPE_SECRET_KEY is set)
+stripe>=9.0.0

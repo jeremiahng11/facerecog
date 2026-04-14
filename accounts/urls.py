@@ -115,4 +115,11 @@ urlpatterns = [
     path('cafeteria/admin/refunds/', cafeteria_views.cafeteria_refunds_view, name='cafeteria_admin_refunds'),
     path('cafeteria/admin/staff/', cafeteria_views.cafeteria_staff_view, name='cafeteria_admin_staff'),
     path('cafeteria/admin/staff/<int:user_id>/adjust/', cafeteria_views.cafeteria_staff_adjust_credit_ajax, name='cafeteria_staff_adjust'),
+
+    # Stripe
+    path('cafeteria/stripe/success/', cafeteria_views.stripe_success_view, name='cafeteria_stripe_success'),
+    path('cafeteria/stripe/webhook/', cafeteria_views.stripe_webhook_view, name='cafeteria_stripe_webhook'),
+
+    # Internal cron (GitHub Actions hits this; protected by CRON_SECRET)
+    path('internal/reset-credits/', cafeteria_views.cron_reset_credits_view, name='cron_reset_credits'),
 ]

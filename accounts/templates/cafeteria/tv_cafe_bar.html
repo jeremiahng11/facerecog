@@ -67,8 +67,18 @@ async function refresh() {
 function tickClock() {
   document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
-refresh(); setInterval(refresh, 3000);
+refresh();
 tickClock(); setInterval(tickClock, 1000);
+function connectWS() {
+  try {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${proto}//${location.host}/ws/cafeteria/tv-cafe-bar/`);
+    ws.onmessage = () => refresh();
+    ws.onclose = () => setTimeout(connectWS, 3000);
+  } catch (e) {}
+}
+connectWS();
+setInterval(refresh, 10000);
 </script>
 </body>
 </html>

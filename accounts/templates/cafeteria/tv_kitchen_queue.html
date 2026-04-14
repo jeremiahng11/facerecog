@@ -92,8 +92,21 @@ function tickClock() {
   const d = new Date();
   document.getElementById('clock').textContent = d.toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
-refresh(); setInterval(refresh, 3000);
+refresh();
 tickClock(); setInterval(tickClock, 1000);
+
+// Try WebSocket for instant updates; fall back to 3s polling if unavailable.
+function connectWS() {
+  try {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${proto}//${location.host}/ws/cafeteria/tv-kitchen/`);
+    ws.onmessage = () => refresh();  // any event → re-pull current state
+    ws.onclose = () => setTimeout(connectWS, 3000);
+  } catch (e) {}
+}
+connectWS();
+// Always poll every 10s as a safety net for missed events.
+setInterval(refresh, 10000);
 </script>
 </body>
 </html>
