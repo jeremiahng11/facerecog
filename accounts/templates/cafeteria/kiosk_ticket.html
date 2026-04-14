@@ -117,31 +117,17 @@
   </div>
 
 <script>
-  // Silent-print helper:
-  //   - If an ESC/POS payload is available, launch RawBT via its URL scheme
-  //     (Android thermal-printer bridge) — no browser dialog.
-  //   - Otherwise fall back to window.print(). On a Chromium kiosk built
-  //     with --kiosk-printing this also prints silently.
+  // Print strategy (matches the working queue_print flow):
+  //   - window.print() renders the HTML page (including the QR <img>) to the
+  //     system printer. Fully Kiosk Browser / Chromium --kiosk-printing
+  //     prints silently using the default printer. Because the QR is an
+  //     <img>, no ESC/POS interpretation is needed on the printer side.
   const IS_KIOSK_SOURCE = {% if request.GET.source == 'kiosk' or not request.GET.source %}true{% else %}false{% endif %};
   const KIOSK_POST_PRINT_MS = {{ post_print_timeout|default:5 }} * 1000;
   const KIOSK_TICKET_IDLE_MS = {{ idle_timeout|default:30 }} * 1000;
 
   function printReceipt() {
-    const payload = "{{ escpos_b64|default:'' }}";
-    if (payload) {
-      // RawBT URL scheme: rawbt:<standard-base64>. RawBT decodes the
-      // base64 and sends the resulting bytes to the paired printer.
-      // We send PLAIN TEXT bytes (no ESC/POS) for maximum printer
-      // compatibility.
-      const a = document.createElement('a');
-      a.href = 'rawbt:' + payload;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => a.remove(), 500);
-    } else {
-      window.print();
-    }
+    window.print();
     // Kiosk-origin orders: clear any in-progress cart and auto-return to the
     // idle screen after the configured post-print delay.
     if (IS_KIOSK_SOURCE) {

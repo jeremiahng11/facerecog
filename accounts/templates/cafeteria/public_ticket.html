@@ -80,18 +80,11 @@
   // server provided an ESC/POS payload — no browser print dialog. Fall back
   // to window.print() otherwise (silent under Chromium --kiosk-printing).
   function printReceipt() {
-    const payload = "{{ escpos_b64|default:'' }}";
-    if (payload) {
-      // RawBT URL scheme: rawbt:<standard-base64>. Payload is plain-text
-      // bytes (no ESC/POS) for maximum printer compatibility.
-      const a = document.createElement('a');
-      a.href = 'rawbt:' + payload;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => a.remove(), 500);
-      return;
-    }
+    // Rely on the browser's native print pipeline (matches queue_print
+    // flow that already works on the kiosk). Fully Kiosk Browser prints
+    // silently to the default printer using the @media print CSS below;
+    // the QR is an <img> inside #ticketRoot so the printer just rasterises
+    // the page — no ESC/POS needed.
     window.print();
   }
   {% if autoprint %}
