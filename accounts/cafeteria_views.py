@@ -150,78 +150,27 @@ def _generate_qr_image_base64(data: str, box_size: int = 6) -> str:
     return 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode()
 
 
-def _escpos_qr_raster(data: str, box_size: int = 5) -> bytes:
-    """
-    Render a QR code for `data` as an ESC/POS raster bitmap (GS v 0).
-
-    The MPT-2 and most 58mm BT thermal printers support GS v 0 even when
-    they do NOT support the native QR tag GS ( k. Returns the complete
-    ESC/POS byte sequence ready to be appended to the print stream.
-
-    Max usable width on MPT-2 is ~384 dots (48 bytes). We pad the QR
-    right side with white so the bitmap width is a multiple of 8.
-    """
-    import qrcode
-    from PIL import Image
-
-    qr = qrcode.QRCode(version=None, box_size=box_size, border=2)
-    qr.add_data(data)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color='black', back_color='white').convert('1')
-
-    w, h = img.size
-    pad = (8 - (w % 8)) % 8
-    if pad:
-        new = Image.new('1', (w + pad, h), color=1)  # 1 = white in mode '1'
-        new.paste(img, (0, 0))
-        img = new
-        w += pad
-    bytes_per_row = w // 8
-
-    raster = bytearray()
-    for y in range(h):
-        for xb in range(bytes_per_row):
-            byte = 0
-            for bit in range(8):
-                x = xb * 8 + bit
-                # In mode '1', getpixel returns 0 (black) or 255 (white).
-                if img.getpixel((x, y)) == 0:
-                    byte |= 1 << (7 - bit)
-            raster.append(byte)
-
-    header = bytearray(b'\x1d\x76\x30\x00')  # GS v 0, mode 0
-    header.append(bytes_per_row & 0xff)
-    header.append((bytes_per_row >> 8) & 0xff)
-    header.append(h & 0xff)
-    header.append((h >> 8) & 0xff)
-    return bytes(header) + bytes(raster)
-
-
 def _escpos_receipt_b64(order) -> str:
     """
-    Build an MPT-2-compatible ESC/POS thermal receipt for the given order
-    and return it as base64. Consumed via the `rawbt:<base64>` URL scheme.
+    Build a plain-text thermal-printer receipt and return it as base64.
 
-    Uses only the commands MPT-2 supports:
-      ESC @ (init), ESC a (alignment), ESC ! (font size), LF, and
-      GS v 0 (raster bitmap) for the QR code. Avoids GS ( k (native QR)
-      and GS V (cut) — both unsupported on MPT-2.
+    Sent via the `rawbt:<base64>` URL scheme. The payload is plain ASCII
+    text + line feeds — NO ESC/POS control bytes, NO raster bitmap. This
+    works on any printer / RawBT configuration because every byte is a
+    printable character.
+
+    Why no QR on the receipt: the MPT-2 on this deployment is running in
+    text-only mode (ESC/POS command bytes and raster bitmap bytes print
+    as literal glyphs). To enable a printed QR, switch the printer into
+    ESC/POS mode OR change RawBT's 'Default input format' to 'ESC/POS'
+    — see the admin note on the kiosk-config page.
     """
-    ESC = b'\x1b'
-    INIT = ESC + b'@'
-    CENTER = ESC + b'a\x01'
-    LEFT = ESC + b'a\x00'
-    DBL = ESC + b'!\x30'     # double width + height
-    NORMAL = ESC + b'!\x00'
-
     def line(s):
         return s.encode('ascii', 'ignore') + b'\n'
 
     buf = bytearray()
-    buf += INIT
-    buf += CENTER
-    buf += DBL + line('CAFETERIA') + NORMAL
-    buf += line('=' * 32)
+    buf += line('        CAFETERIA')
+    buf += line('================================')
 
     name = ''
     if order.customer_id:
@@ -230,30 +179,21 @@ def _escpos_receipt_b64(order) -> str:
         name = getattr(order, 'public_name', '') or 'Guest'
     buf += line(name[:32])
     buf += b'\n'
-
-    buf += line('ORDER NUMBER')
-    buf += DBL + line(order.order_number) + NORMAL
+    buf += line('ORDER NUMBER:')
+    buf += line('  ' + order.order_number)
     buf += b'\n'
-
-    # Collection QR as raster bitmap (MPT-2 supports GS v 0, not GS ( k).
-    if order.qr_token:
-        buf += _escpos_qr_raster(order.qr_token, box_size=5)
-        buf += b'\n'
-
-    buf += LEFT
-    buf += line('-' * 32)
+    buf += line('--------------------------------')
     for it in order.items.all():
         buf += line(f'{it.quantity}x {it.name_snapshot}'[:32])
-    buf += line('-' * 32)
+    buf += line('--------------------------------')
     buf += line(f'Total    S${order.subtotal:.2f}')
     if order.credits_applied and order.credits_applied > 0:
         buf += line(f'Credits -S${order.credits_applied:.2f}')
     buf += b'\n'
-
-    buf += CENTER
     buf += line(order.created_at.strftime('%d %b %Y  %H:%M'))
+    buf += line('Show QR on screen to collect')
     buf += line('Thank you!')
-    buf += b'\n\n\n\n\n'  # feed for tear-off (MPT-2 has no auto-cutter)
+    buf += b'\n\n\n\n\n'  # feed for tear-off
 
     return base64.b64encode(bytes(buf)).decode('ascii')
 
