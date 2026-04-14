@@ -2,89 +2,116 @@
 {% block title %}{{ kitchen_type|title }} Kitchen{% endblock %}
 {% block extra_head %}
 <style>
+  body { background: var(--bg); display: flex; flex-direction: column; min-height: 100vh; }
   .top {
-    padding: 16px 24px; background: #fff; border-bottom: 1px solid var(--border);
+    padding: 14px 20px; background: #fff; border-bottom: 1px solid var(--border);
     display: flex; align-items: center; justify-content: space-between;
   }
-  .top h1 { font-size: 22px; font-weight: 800; color: var(--text); }
-  .kitchen-badge { font-size: 11px; padding: 4px 12px; border-radius: 100px; font-weight: 700; }
+  .top h1 { font-size: 20px; font-weight: 800; color: var(--text); }
+  .kitchen-badge { font-size: 10px; padding: 4px 10px; border-radius: 100px; font-weight: 700; letter-spacing: 1px; }
   .kitchen-badge.halal { background: var(--success-soft); color: var(--success); }
-  .kitchen-badge.non-halal { background: #dbeafe; color: var(--non-halal); }
-  .kitchen-badge.cafe { background: var(--cafe-soft); color: var(--cafe); }
+  .kitchen-badge.non_halal { background: #dbeafe; color: var(--non-halal); }
+  .kitchen-badge.cafe_bar { background: var(--cafe-soft); color: var(--cafe); }
 
-  .scan-hint {
-    background: var(--primary-light); color: var(--primary);
-    padding: 10px 16px; font-size: 13px; text-align: center; font-weight: 600;
+  /* Split layout: orders grid on the left, camera scanner on the right */
+  .layout {
+    flex: 1; display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 0; min-height: 0;
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .scanner-pane { border-left: none !important; border-top: 1px solid var(--border); }
   }
 
+  .orders-pane { padding: 16px; overflow-y: auto; }
   .orders-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 16px; padding: 20px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
   }
   .order-card {
-    background: #fff; border: 1px solid var(--border); border-radius: 14px;
-    padding: 18px; box-shadow: var(--shadow);
+    background: #fff; border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px; box-shadow: var(--shadow);
     animation: fadeIn 0.3s ease;
   }
   .order-card.ready { border-color: var(--success); border-width: 2px; background: var(--success-soft); }
+  .order-card.scheduled { border-left: 4px solid var(--cafe); }
   .order-header {
     display: flex; justify-content: space-between; align-items: flex-start;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
   }
-  .order-num {
-    font-size: 32px; font-weight: 800; color: var(--primary);
-    letter-spacing: 2px;
-  }
-  .order-meta { text-align: right; font-size: 11px; color: var(--text3); }
-  .order-card .items {
-    border-top: 1px dashed var(--border); padding-top: 10px;
-  }
-  .order-card .items li {
-    list-style: none; padding: 4px 0; font-size: 14px; color: var(--text);
-  }
-  .order-card .items .qty { font-weight: 700; color: var(--primary); margin-right: 6px; }
-  .order-card .customer { font-size: 12px; color: var(--text2); margin-bottom: 6px; }
-  .order-card .actions { margin-top: 12px; display: flex; gap: 8px; }
-  .order-card .actions button {
-    flex: 1; padding: 10px; border-radius: 8px; font-weight: 700; font-size: 13px;
+  .order-num { font-size: 26px; font-weight: 800; color: var(--primary); letter-spacing: 1px; }
+  .order-meta { text-align: right; font-size: 10px; color: var(--text3); }
+  .order-meta .collect-time { font-size: 11px; color: var(--cafe); font-weight: 700; margin-top: 2px; }
+  .customer { font-size: 11px; color: var(--text2); margin-bottom: 6px; }
+  .items { border-top: 1px dashed var(--border); padding-top: 6px; }
+  .items li { list-style: none; padding: 2px 0; font-size: 13px; }
+  .items .qty { font-weight: 700; color: var(--primary); margin-right: 4px; }
+  .actions { margin-top: 10px; display: flex; gap: 6px; }
+  .actions button {
+    flex: 1; padding: 8px; border-radius: 6px; font-weight: 700; font-size: 12px;
     cursor: pointer; border: none;
   }
 
-  .empty {
-    grid-column: 1 / -1; text-align: center; padding: 60px 20px;
-    color: var(--text3); font-size: 14px;
-  }
+  .empty { grid-column: 1/-1; text-align: center; padding: 40px 20px; color: var(--text3); font-size: 14px; }
 
-  /* Scan popup */
-  .scan-popup {
-    position: fixed; inset: 0; background: rgba(15,39,70,0.55);
-    display: none; align-items: center; justify-content: center; z-index: 100;
+  /* Camera scanner side pane */
+  .scanner-pane {
+    background: #fff; border-left: 1px solid var(--border);
+    padding: 16px; display: flex; flex-direction: column;
+    min-height: 100%;
   }
+  .scanner-title {
+    font-size: 11px; font-weight: 700; color: var(--text3);
+    letter-spacing: 2px; text-transform: uppercase; margin-bottom: 10px;
+    text-align: center;
+  }
+  .camera-frame {
+    width: 100%; aspect-ratio: 1; border-radius: 14px;
+    background: #000; overflow: hidden; position: relative;
+    border: 2px solid var(--primary);
+  }
+  .camera-frame video {
+    width: 100%; height: 100%; object-fit: cover;
+  }
+  .camera-frame canvas {
+    position: absolute; inset: 0; pointer-events: none;
+  }
+  .scan-line {
+    position: absolute; left: 8%; right: 8%; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: scanline 2s linear infinite;
+    box-shadow: 0 0 8px var(--accent);
+    top: 10%;
+  }
+  @keyframes scanline { 0% { top: 10%; } 100% { top: 90%; } }
+  .camera-status {
+    margin-top: 10px; text-align: center; font-size: 12px;
+    color: var(--success); font-weight: 600; min-height: 18px;
+  }
+  .camera-status.err { color: var(--danger); }
+  .camera-hint { text-align: center; font-size: 11px; color: var(--text3); margin-top: 4px; }
+
+  /* 5-scenario popup */
+  .scan-popup { position: fixed; inset: 0; background: rgba(15,39,70,0.55); display: none; align-items: center; justify-content: center; z-index: 100; }
   .scan-popup.active { display: flex; }
   .scan-modal {
-    background: #fff; border-radius: 16px; padding: 32px 28px;
+    background: #fff; border-radius: 16px; padding: 28px;
     max-width: 440px; width: 90%; text-align: center;
     animation: fadeIn 0.2s ease;
   }
   .scan-modal.valid { border-top: 8px solid var(--success); }
-  .scan-modal.wrong { border-top: 8px solid var(--warn); }
+  .scan-modal.wrong_counter { border-top: 8px solid var(--warn); }
   .scan-modal.duplicate { border-top: 8px solid var(--danger); }
   .scan-modal.invalid { border-top: 8px solid var(--danger); }
   .scan-modal.not_ready { border-top: 8px solid var(--primary); }
-  .scan-modal .emoji { font-size: 60px; margin-bottom: 12px; }
+  .scan-modal .emoji { font-size: 54px; margin-bottom: 10px; }
   .scan-modal h2 { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
-  .scan-modal p { color: var(--text2); margin-bottom: 16px; }
-  .scan-modal .order-preview {
-    background: var(--bg); padding: 14px; border-radius: 10px; text-align: left;
-    margin: 14px 0; font-size: 14px;
-  }
-  .scan-modal .order-preview .on { font-size: 30px; font-weight: 800; color: var(--primary); text-align: center; }
-  .scan-modal .order-preview ul { margin-top: 8px; }
-  .scan-modal .order-preview li { padding: 2px 0; }
-  .scan-modal .actions { display: flex; gap: 10px; margin-top: 16px; }
-  .scan-modal .actions button {
-    flex: 1; padding: 12px; font-weight: 700; border-radius: 8px; cursor: pointer; border: none;
-  }
+  .scan-modal p { color: var(--text2); margin-bottom: 12px; }
+  .scan-modal .order-preview { background: var(--bg); padding: 12px; border-radius: 10px; text-align: left; margin: 12px 0; font-size: 13px; }
+  .scan-modal .on { font-size: 28px; font-weight: 800; color: var(--primary); text-align: center; }
+  .scan-modal .actions { display: flex; gap: 8px; margin-top: 14px; }
+  .scan-modal .actions button { flex: 1; padding: 12px; font-weight: 700; border-radius: 8px; cursor: pointer; border: none; font-size: 14px; }
 </style>
 {% endblock %}
 {% block content %}
@@ -98,100 +125,161 @@
     <div class="text-sm text-muted">{{ orders|length }} active orders</div>
   </div>
   <span class="kitchen-badge {{ kitchen_type }}">
-    {% if kitchen_type == 'halal' %}HALAL CERTIFIED{% elif kitchen_type == 'non_halal' %}NON-HALAL{% else %}CAFE BAR{% endif %}
+    {% if kitchen_type == 'halal' %}HALAL CERTIFIED
+    {% elif kitchen_type == 'non_halal' %}NON-HALAL
+    {% else %}CAFE BAR{% endif %}
   </span>
 </div>
 
-<div class="scan-hint">
-  📷 Scanner ready — scan a customer's QR code to validate
-  <input type="text" id="scanInput" style="position:absolute;left:-9999px" autofocus>
-</div>
-
-<div class="orders-grid">
-  {% for order in orders %}
-  <div class="order-card {% if order.status == 'ready' %}ready{% endif %}" id="order-{{ order.id }}">
-    <div class="order-header">
-      <div class="order-num">{{ order.order_number }}</div>
-      <div class="order-meta">
-        {% if order.is_public %}<div style="color:var(--cafe)">PUBLIC</div>{% else %}<div>STAFF</div>{% endif %}
-        <div>{{ order.created_at|time:"H:i" }}</div>
-        {% if order.status == 'ready' %}<span class="badge badge-ready">READY</span>
-        {% else %}<span class="badge badge-confirmed">{{ order.get_status_display }}</span>{% endif %}
+<div class="layout">
+  <!-- Left: Orders -->
+  <div class="orders-pane">
+    <div class="orders-grid">
+      {% for order in orders %}
+      <div class="order-card {% if order.status == 'ready' %}ready{% endif %} {% if order.collection_time_minutes %}scheduled{% endif %}" id="order-{{ order.id }}">
+        <div class="order-header">
+          <div class="order-num">{{ order.order_number }}</div>
+          <div class="order-meta">
+            {% if order.is_public %}<span style="color:var(--cafe);font-weight:700">PUBLIC</span>{% else %}<span style="color:var(--primary);font-weight:700">STAFF</span>{% endif %}
+            <div>{{ order.created_at|time:"H:i" }}</div>
+            {% if order.collection_time_minutes %}
+              <div class="collect-time">⏱ +{{ order.collection_time_minutes }} min</div>
+            {% endif %}
+            {% if order.status == 'ready' %}<span class="badge badge-ready">READY</span>
+            {% else %}<span class="badge badge-confirmed">{{ order.get_status_display }}</span>{% endif %}
+          </div>
+        </div>
+        <div class="customer">{{ order.customer.display_name|default:order.public_name }}{% if order.credits_applied %} · <span style="color:var(--success)">S${{ order.credits_applied|floatformat:2 }} credits</span>{% endif %}</div>
+        <ul class="items">
+          {% for item in order.items.all %}
+          <li><span class="qty">{{ item.quantity }}×</span>{{ item.name_snapshot }}</li>
+          {% endfor %}
+        </ul>
+        <div class="actions">
+          {% if order.status != 'ready' %}
+          <button style="background:var(--primary);color:#fff" onclick="markReady({{ order.id }})">Mark Ready →</button>
+          {% else %}
+          <div style="flex:1;padding:8px;text-align:center;color:var(--success);font-weight:700;font-size:12px">✓ Awaiting collection</div>
+          {% endif %}
+        </div>
       </div>
-    </div>
-    <div class="customer">{{ order.customer.display_name|default:order.public_name }}</div>
-    <ul class="items">
-      {% for item in order.items.all %}
-      <li><span class="qty">{{ item.quantity }}×</span>{{ item.name_snapshot }}</li>
+      {% empty %}
+      <div class="empty">No active orders.</div>
       {% endfor %}
-    </ul>
-    <div class="actions">
-      {% if order.status != 'ready' %}
-      <button class="btn-primary" style="background:var(--primary);color:#fff" onclick="markReady({{ order.id }})">Mark Ready →</button>
-      {% else %}
-      <div style="flex:1;padding:10px;text-align:center;color:var(--success);font-weight:700">✓ Waiting for collection</div>
-      {% endif %}
     </div>
   </div>
-  {% empty %}
-  <div class="empty">No active orders right now.</div>
-  {% endfor %}
-</div>
 
-<!-- Scan Popup -->
-<div class="scan-popup" id="scanPopup">
-  <div class="scan-modal" id="scanModal">
-    <div id="scanBody"></div>
+  <!-- Right: Live camera scanner -->
+  <div class="scanner-pane">
+    <div class="scanner-title">📷 QR SCANNER</div>
+    <div class="camera-frame">
+      <video id="cam" autoplay playsinline muted></video>
+      <canvas id="camCanvas"></canvas>
+      <div class="scan-line"></div>
+    </div>
+    <div class="camera-status" id="camStatus">Initialising camera…</div>
+    <div class="camera-hint">Hold customer's QR in view — auto-detects</div>
+
+    <div style="margin-top:16px;padding-top:14px;border-top:1px dashed var(--border);font-size:11px;color:var(--text3)">
+      <strong>Scan results</strong>
+      <ul style="list-style:none;padding-left:0;margin-top:6px;line-height:1.6">
+        <li>✅ <strong style="color:var(--success)">Valid</strong> — confirm &amp; collect</li>
+        <li>⚠️ <strong style="color:var(--warn)">Wrong counter</strong></li>
+        <li>🚫 <strong style="color:var(--danger)">Duplicate</strong></li>
+        <li>⏳ <strong style="color:var(--primary)">Not ready</strong></li>
+        <li>❌ <strong style="color:var(--danger)">Invalid</strong></li>
+      </ul>
+    </div>
   </div>
 </div>
 
+<!-- Scan popup -->
+<div class="scan-popup" id="scanPopup">
+  <div class="scan-modal" id="scanModal"><div id="scanBody"></div></div>
+</div>
+
+<!-- jsQR library for camera QR decoding -->
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script>
 const CSRF = '{{ csrf_token }}';
-function getCSRF() {
-  const m = document.cookie.match(/csrftoken=([^;]+)/);
-  return m ? m[1] : CSRF;
-}
-
+function getCSRF() { const m = document.cookie.match(/csrftoken=([^;]+)/); return m ? m[1] : CSRF; }
 const KITCHEN = '{{ kitchen_type }}';
 
 async function markReady(id) {
   try {
-    const resp = await fetch(`/cafeteria/api/kitchen/mark-ready/${id}/`, {
-      method: 'POST',
-      headers: { 'X-CSRFToken': getCSRF() },
-    });
-    const data = await resp.json();
-    if (data.success) setTimeout(() => location.reload(), 200);
+    const r = await fetch(`/cafeteria/api/kitchen/mark-ready/${id}/`, { method: 'POST', headers: { 'X-CSRFToken': getCSRF() } });
+    const d = await r.json();
+    if (d.success) setTimeout(() => location.reload(), 200);
   } catch (e) { alert('Error'); }
 }
+async function markCollected(orderId) {
+  try {
+    const r = await fetch(`/cafeteria/api/kitchen/mark-collected/${orderId}/`, { method: 'POST', headers: { 'X-CSRFToken': getCSRF() } });
+    const d = await r.json();
+    if (d.success) { closePopup(); setTimeout(() => location.reload(), 300); }
+    else alert(d.message || 'Error');
+  } catch (e) { alert('Error'); }
+}
+function closePopup() {
+  document.getElementById('scanPopup').classList.remove('active');
+  // Resume scanning after a 1.5s cooldown to prevent re-scanning the same QR.
+  setTimeout(() => { cooldown = false; }, 1500);
+}
 
-// ── Keyboard-wedge QR scanner input ─────────────────
-const scanInput = document.getElementById('scanInput');
-let scanBuffer = '';
-let scanTimer = null;
+// ── Camera QR scanner ─────────────────────────────────────────
+const video = document.getElementById('cam');
+const canvas = document.getElementById('camCanvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+const camStatus = document.getElementById('camStatus');
+let scanning = false;
+let cooldown = false;          // prevents re-scanning same QR repeatedly
+let lastScannedToken = '';
+let lastScanTime = 0;
 
-document.addEventListener('keydown', (e) => {
-  // Ignore if focused in a visible input (popup actions).
-  const active = document.activeElement;
-  if (active && active.tagName === 'INPUT' && active !== scanInput) return;
-
-  if (e.key === 'Enter') {
-    if (scanBuffer.length > 10) {
-      processScan(scanBuffer);
-    }
-    scanBuffer = '';
-    return;
+async function initCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
+    });
+    video.srcObject = stream;
+    await new Promise(r => { if (video.readyState >= 1) return r(); video.onloadedmetadata = r; });
+    camStatus.textContent = '● Scanning for QR codes';
+    scanning = true;
+    requestAnimationFrame(scanLoop);
+  } catch (e) {
+    camStatus.className = 'camera-status err';
+    camStatus.textContent = '⚠ Camera unavailable: ' + (e.message || 'denied');
   }
-  if (e.key.length === 1) scanBuffer += e.key;
-  clearTimeout(scanTimer);
-  scanTimer = setTimeout(() => { scanBuffer = ''; }, 200);
-});
+}
+
+function scanLoop() {
+  if (!scanning) return;
+  if (cooldown) { requestAnimationFrame(scanLoop); return; }
+
+  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+    if (code && code.data) {
+      // Debounce: ignore same token within 3s
+      const now = Date.now();
+      if (code.data !== lastScannedToken || now - lastScanTime > 3000) {
+        lastScannedToken = code.data;
+        lastScanTime = now;
+        cooldown = true;  // pause until popup closes
+        processScan(code.data);
+      }
+    }
+  }
+  requestAnimationFrame(scanLoop);
+}
 
 async function processScan(token) {
   try {
     const resp = await fetch('/cafeteria/api/scan-qr/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
       body: JSON.stringify({ token, scanner_counter: KITCHEN }),
     });
     const data = await resp.json();
@@ -209,15 +297,15 @@ function showPopup(data) {
   let html = '';
   if (data.result === 'valid') {
     html = `<div class="emoji">✅</div>
-      <h2 style="color:var(--success)">Valid QR — Confirm</h2>
+      <h2 style="color:var(--success)">Valid — Confirm Collection</h2>
       <div class="order-preview">
         <div class="on">${data.order_number}</div>
         <div style="text-align:center;margin:6px 0 10px;color:var(--text2)">${data.customer_name || ''}</div>
-        <ul>${data.items.map(i => `<li>${i.quantity}× ${i.name}</li>`).join('')}</ul>
+        <ul style="list-style:none;padding:0">${data.items.map(i => `<li>${i.quantity}× ${i.name}</li>`).join('')}</ul>
       </div>
       <div class="actions">
         <button style="background:#fff;border:1px solid var(--border);color:var(--text2)" onclick="closePopup()">Cancel</button>
-        <button style="background:var(--success);color:#fff" onclick="markCollected(${data.order_id})">Mark as Collected</button>
+        <button style="background:var(--success);color:#fff" onclick="markCollected(${data.order_id})">Mark Collected</button>
       </div>`;
   } else if (data.result === 'wrong_counter') {
     html = `<div class="emoji">⚠️</div>
@@ -226,14 +314,15 @@ function showPopup(data) {
       <div class="actions"><button style="background:var(--warn);color:#000" onclick="closePopup()">Got It</button></div>`;
   } else if (data.result === 'duplicate') {
     html = `<div class="emoji">🚫</div>
-      <h2 style="color:var(--danger)">Duplicate QR</h2>
-      <p>Order <strong>${data.order_number}</strong> was already collected at ${data.original_collected_at || 'an earlier time'}.</p>
+      <h2 style="color:var(--danger)">Duplicate Scan</h2>
+      <p>Order <strong>${data.order_number}</strong> was already collected${data.original_collected_at ? ' at ' + data.original_collected_at : ''}.</p>
       <p style="font-size:13px">Customer: ${data.customer_name || 'Unknown'}</p>
       <div class="actions"><button style="background:var(--danger);color:#fff" onclick="closePopup()">Close</button></div>`;
   } else if (data.result === 'not_ready') {
     html = `<div class="emoji">⏳</div>
       <h2 style="color:var(--primary)">Not Ready Yet</h2>
       <p>Order <strong>${data.order_number}</strong> status: ${data.current_status}</p>
+      <p style="font-size:12px;color:var(--text3)">Mark the order Ready first, then scan again.</p>
       <div class="actions"><button style="background:var(--primary);color:#fff" onclick="closePopup()">OK</button></div>`;
   } else {
     html = `<div class="emoji">❌</div>
@@ -245,35 +334,28 @@ function showPopup(data) {
   document.getElementById('scanPopup').classList.add('active');
 }
 
-function closePopup() {
-  document.getElementById('scanPopup').classList.remove('active');
-  scanInput.focus();
-}
+initCamera();
 
-async function markCollected(orderId) {
-  try {
-    const resp = await fetch(`/cafeteria/api/kitchen/mark-collected/${orderId}/`, {
-      method: 'POST',
-      headers: { 'X-CSRFToken': getCSRF() },
-    });
-    const data = await resp.json();
-    if (data.success) {
-      closePopup();
-      setTimeout(() => location.reload(), 300);
-    } else {
-      alert(data.message || 'Error');
-    }
-  } catch (e) { alert('Error'); }
-}
-
-// Refocus scanner input every second.
+// Refresh order list every 20 seconds (or faster via WebSocket if available).
 setInterval(() => {
   if (!document.getElementById('scanPopup').classList.contains('active')) {
-    scanInput.focus();
+    location.reload();
   }
-}, 1000);
+}, 20000);
 
-// Auto-refresh order list every 30 seconds.
-setInterval(() => location.reload(), 30000);
+// Try WebSocket for instant new-order alerts.
+function connectWS() {
+  try {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${proto}//${location.host}/ws/cafeteria/kitchen/${KITCHEN}/`);
+    ws.onmessage = () => {
+      if (!document.getElementById('scanPopup').classList.contains('active')) {
+        location.reload();
+      }
+    };
+    ws.onclose = () => setTimeout(connectWS, 3000);
+  } catch (e) {}
+}
+connectWS();
 </script>
 {% endblock %}
