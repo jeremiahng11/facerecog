@@ -84,15 +84,13 @@
 </div>
 
 <script>
-  // Silent print: navigate to ?print=1 so window.print() fires on load
-  // (Fully Kiosk treats page-load prints as silent/kiosk prints). A print
-  // triggered by a button click shows the dialog.
-  function printReceipt() {
-    const sep = window.location.search ? '&' : '?';
-    window.location.href = window.location.pathname + window.location.search + sep + 'print=1';
-  }
-  {% if autoprint or request.GET.print == '1' %}
-  window.addEventListener('load', () => setTimeout(() => window.print(), 200));
+  // Direct print — carries a user gesture, which Chromium/Fully Kiosk
+  // require for window.print(). With Fully Kiosk's "Kiosk Printing"
+  // option enabled, this prints silently; otherwise it shows the
+  // browser dialog.
+  function printReceipt() { window.print(); }
+  {% if autoprint %}
+  window.addEventListener('load', () => setTimeout(() => window.print(), 400));
   {% endif %}
 </script>
 {% endblock %}

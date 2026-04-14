@@ -129,25 +129,19 @@
   </div>
 
 <script>
-  // Print strategy (matches the working queue_print flow):
-  //   Clicking Print navigates to the same URL with ?print=1. The page
-  //   reloads and auto-calls window.print() on load — Fully Kiosk Browser
-  //   treats a page-load print as a silent/kiosk print and does NOT show
-  //   the browser print dialog. (A print triggered by a button click
-  //   usually does trigger the dialog, which is what you were seeing.)
+  // Print strategy:
+  //   window.print() is called directly from the button click so the call
+  //   carries a user gesture (required by Chromium / Fully Kiosk — without
+  //   a gesture the call is silently ignored). If Fully Kiosk's
+  //   "Kiosk Printing / Suppress Print Dialog" option is enabled, the
+  //   call prints silently to the default printer; otherwise the browser
+  //   shows its print dialog.
   const IS_KIOSK_SOURCE = {% if request.GET.source == 'kiosk' or not request.GET.source %}true{% else %}false{% endif %};
-  const IS_PRINT_MODE = {% if request.GET.print == '1' %}true{% else %}false{% endif %};
   const KIOSK_POST_PRINT_MS = {{ post_print_timeout|default:5 }} * 1000;
   const KIOSK_TICKET_IDLE_MS = {{ idle_timeout|default:30 }} * 1000;
 
   function printReceipt() {
-    // Navigate to self with ?print=1 so window.print() is triggered on
-    // page load (silent under Fully Kiosk).
-    const sep = window.location.search ? '&' : '?';
-    window.location.href = window.location.pathname + window.location.search + sep + 'print=1';
-  }
-    // Kiosk-origin orders: clear any in-progress cart and auto-return to the
-    // idle screen after the configured post-print delay.
+    window.print();
     if (IS_KIOSK_SOURCE) {
       try { sessionStorage.removeItem('kiosk_cart'); } catch (e) {}
       scheduleKioskReturn(KIOSK_POST_PRINT_MS);
@@ -172,32 +166,14 @@
     setTimeout(kioskLogoutAndReturn, ms);
   }
 
-  // Kiosk-only: idle auto-return even without printing.
-  if (IS_KIOSK_SOURCE && !IS_PRINT_MODE) {
+  // Kiosk-only: idle auto-return even if the user never prints.
+  if (IS_KIOSK_SOURCE) {
     (function(){
       let t;
       function reset() { clearTimeout(t); t = setTimeout(kioskLogoutAndReturn, KIOSK_TICKET_IDLE_MS); }
       ['touchstart','mousedown','keydown','scroll','pointerdown'].forEach(ev => document.addEventListener(ev, reset, { passive: true }));
       reset();
     })();
-  }
-
-  // Print mode: auto-fire window.print() on load (silent under Fully Kiosk).
-  // After the print job is dispatched, clear the cart and return the kiosk
-  // to the idle screen.
-  if (IS_PRINT_MODE) {
-    window.addEventListener('load', () => {
-      try { sessionStorage.removeItem('kiosk_cart'); } catch (e) {}
-      setTimeout(() => {
-        window.print();
-        if (IS_KIOSK_SOURCE) {
-          setTimeout(kioskLogoutAndReturn, KIOSK_POST_PRINT_MS);
-        } else {
-          // Admin / staff-portal: return to the caller's home after print.
-          setTimeout(() => { window.location = '{{ done_url|default:"/cafeteria/kiosk/" }}'; }, KIOSK_POST_PRINT_MS);
-        }
-      }, 120);
-    });
   }
 </script>
 </div>
