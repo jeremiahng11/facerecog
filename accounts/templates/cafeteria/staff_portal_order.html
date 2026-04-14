@@ -111,7 +111,7 @@ async function checkout() {
 
   const resp = await fetch('/cafeteria/api/place-order/', {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
-    body: JSON.stringify({ menu_type, items: menus[menu_type], collection_time_minutes: 0 }),
+    body: JSON.stringify({ menu_type, items: menus[menu_type], collection_time_minutes: 0, source: 'portal' }),
   });
   const data = await resp.json();
   if (data.success) window.location = data.redirect;

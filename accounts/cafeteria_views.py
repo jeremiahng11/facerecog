@@ -281,6 +281,8 @@ def kiosk_place_order_ajax(request):
         items_data = data.get('items', [])
         collection_time_minutes = int(data.get('collection_time_minutes', 0))
         pay_method = data.get('pay_method', 'credits')  # 'credits', 'stripe', 'paynow'
+        source = (data.get('source') or 'kiosk').strip().lower()  # 'kiosk' or 'portal'
+        source_suffix = f'?source={source}' if source in ('kiosk', 'portal') else ''
 
         if not items_data:
             return JsonResponse({'success': False, 'message': 'Cart is empty'})
@@ -410,7 +412,7 @@ def kiosk_place_order_ajax(request):
             'success': True,
             'order_id': order.id,
             'order_number': order.order_number,
-            'redirect': f'/cafeteria/kiosk/ticket/{order.id}/',
+            'redirect': f'/cafeteria/kiosk/ticket/{order.id}/{source_suffix}',
         })
     except Exception as e:
         import logging
@@ -420,12 +422,31 @@ def kiosk_place_order_ajax(request):
 
 @login_required
 def kiosk_ticket_view(request, order_id):
-    """QR collection slip — shown after successful order."""
+    """QR collection slip — shown after successful order.
+
+    Determines where the 'Done' button sends the user based on order source
+    (kiosk vs. staff portal) and the user's role.
+    """
     order = get_object_or_404(Order, pk=order_id, customer=request.user)
     qr_image = _generate_qr_image_base64(order.qr_token, box_size=8)
+
+    source = (request.GET.get('source') or '').strip().lower()
+    if source == 'portal':
+        if request.user.is_admin_role:
+            done_url = '/cafeteria/admin/dashboard/'
+            done_label = 'Back to Dashboard'
+        else:
+            done_url = '/cafeteria/portal/'
+            done_label = 'Back to Home'
+    else:
+        done_url = '/cafeteria/kiosk/'
+        done_label = 'Done'
+
     return render(request, 'cafeteria/kiosk_ticket.html', {
         'order': order,
         'qr_image': qr_image,
+        'done_url': done_url,
+        'done_label': done_label,
     })
 
 

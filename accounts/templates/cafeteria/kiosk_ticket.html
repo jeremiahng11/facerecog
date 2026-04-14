@@ -113,7 +113,7 @@
 
   <div class="btns">
     <button class="btn btn-secondary" onclick="window.print()">🖨 Print</button>
-    <button class="btn btn-primary" onclick="window.location='/cafeteria/kiosk/'">Done</button>
+    <button class="btn btn-primary" onclick="window.location='{{ done_url|default:"/cafeteria/kiosk/" }}'">{{ done_label|default:"Done" }}</button>
   </div>
 </div>
 

@@ -339,6 +339,7 @@ async function checkout() {
         items: items,
         collection_time_minutes: collectionTime,
         pay_method: 'credits',  // try credits first
+        source: 'kiosk',
       }),
     });
     const data = await resp.json();
@@ -356,7 +357,7 @@ async function checkout() {
         const r2 = await fetch('/cafeteria/api/place-order/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
-          body: JSON.stringify({ items, collection_time_minutes: collectionTime, pay_method: 'stripe' }),
+          body: JSON.stringify({ items, collection_time_minutes: collectionTime, pay_method: 'stripe', source: 'kiosk' }),
         });
         const d2 = await r2.json();
         if (d2.success && d2.checkout_url) window.location.href = d2.checkout_url;
