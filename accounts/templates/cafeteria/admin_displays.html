@@ -1,0 +1,199 @@
+{% extends 'base.html' %}
+{% block title %}Display Views — Cafeteria{% endblock %}
+{% block extra_head %}
+<style>
+  .display-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .display-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 20px; transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .display-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
+  .display-card .icon { font-size: 36px; margin-bottom: 8px; }
+  .display-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+  .display-card .device {
+    display: inline-block; background: rgba(0,212,255,0.1); color: var(--accent);
+    padding: 3px 10px; border-radius: 100px;
+    font-size: 10px; font-weight: 600; letter-spacing: 1px;
+    margin-bottom: 10px;
+  }
+  .display-card .url {
+    font-family: var(--mono); font-size: 11px; color: var(--text3);
+    background: var(--bg); padding: 6px 10px; border-radius: 6px;
+    margin: 10px 0; word-break: break-all;
+  }
+  .display-card p { font-size: 13px; color: var(--text2); margin-bottom: 12px; }
+  .display-card .open-btn {
+    display: block; text-align: center;
+    background: var(--accent); color: #000;
+    padding: 10px; border-radius: 8px;
+    font-weight: 700; font-size: 13px;
+  }
+  .display-card .copy-btn {
+    display: inline-block; font-size: 11px; color: var(--text3);
+    background: transparent; border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 10px; cursor: pointer; margin-top: 6px;
+  }
+  .section-label {
+    font-family: var(--mono); font-size: 12px; color: var(--text3);
+    letter-spacing: 2px; text-transform: uppercase;
+    margin: 24px 0 12px;
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <div>
+      <div class="page-title">Display Views</div>
+      <div class="page-subtitle">Open these URLs on the correct device to deploy each view</div>
+    </div>
+    <a href="{% url 'cafeteria_dashboard' %}" class="btn btn-secondary">← Dashboard</a>
+  </div>
+
+  <!-- Kitchen counter views -->
+  <div class="section-label">👨‍🍳 KITCHEN COUNTER (10" TABLETS)</div>
+  <div class="display-grid">
+
+    <div class="display-card" style="border-color:rgba(16,185,129,0.3)">
+      <div class="icon">🟢</div>
+      <h3>Halal Kitchen</h3>
+      <div class="device">10" TABLET · HALAL</div>
+      <p>Kitchen staff view — shows H-prefix orders, Mark Ready button, QR scanner active.</p>
+      <div class="url" id="url-halal">{{ request.scheme }}://{{ request.get_host }}/cafeteria/kitchen/halal/</div>
+      <a href="{% url 'cafeteria_kitchen' 'halal' %}" target="_blank" class="open-btn">Open in new tab →</a>
+      <button class="copy-btn" onclick="copy('url-halal', this)">📋 Copy URL</button>
+    </div>
+
+    <div class="display-card" style="border-color:rgba(37,99,235,0.3)">
+      <div class="icon">🔵</div>
+      <h3>Non-Halal Kitchen</h3>
+      <div class="device">10" TABLET · NON-HALAL</div>
+      <p>Kitchen staff view — shows N-prefix orders, Mark Ready button, QR scanner active.</p>
+      <div class="url" id="url-nonhalal">{{ request.scheme }}://{{ request.get_host }}/cafeteria/kitchen/non_halal/</div>
+      <a href="{% url 'cafeteria_kitchen' 'non_halal' %}" target="_blank" class="open-btn">Open in new tab →</a>
+      <button class="copy-btn" onclick="copy('url-nonhalal', this)">📋 Copy URL</button>
+    </div>
+
+    <div class="display-card" style="border-color:rgba(194,65,12,0.3)">
+      <div class="icon">☕</div>
+      <h3>Cafe Bar Counter</h3>
+      <div class="device">10" TABLET · CAFE</div>
+      <p>Split-layout — incoming orders on left, ready for collection on right, QR scanner active.</p>
+      <div class="url" id="url-cafe-counter">{{ request.scheme }}://{{ request.get_host }}/cafeteria/cafe-bar/counter/</div>
+      <a href="{% url 'cafeteria_cafe_bar_counter' %}" target="_blank" class="open-btn">Open in new tab →</a>
+      <button class="copy-btn" onclick="copy('url-cafe-counter', this)">📋 Copy URL</button>
+    </div>
+  </div>
+
+  <!-- TV displays -->
+  <div class="section-label">📺 CUSTOMER TV DISPLAYS (43" SAMSUNG)</div>
+  <div class="display-grid">
+
+    <div class="display-card" style="border-color:rgba(0,212,255,0.3)">
+      <div class="icon">📺</div>
+      <h3>Kitchen Queue TV</h3>
+      <div class="device">43" TV · CUSTOMER</div>
+      <p>Full-screen display — Preparing | Ready columns for H (Halal), N (Non-Halal), P (Public) orders.</p>
+      <div class="url" id="url-tv-kitchen">{{ request.scheme }}://{{ request.get_host }}/cafeteria/tv/kitchen/</div>
+      <a href="{% url 'cafeteria_tv_kitchen' %}" target="_blank" class="open-btn">Open in new tab →</a>
+      <button class="copy-btn" onclick="copy('url-tv-kitchen', this)">📋 Copy URL</button>
+    </div>
+
+    <div class="display-card" style="border-color:rgba(194,65,12,0.3)">
+      <div class="icon">📺</div>
+      <h3>Cafe Bar TV</h3>
+      <div class="device">43" TV · CUSTOMER</div>
+      <p>Full-screen display — Preparing | Ready columns for C-prefix orders with scheduled times.</p>
+      <div class="url" id="url-tv-cafe">{{ request.scheme }}://{{ request.get_host }}/cafeteria/tv/cafe-bar/</div>
+      <a href="{% url 'cafeteria_tv_cafe_bar' %}" target="_blank" class="open-btn">Open in new tab →</a>
+      <button class="copy-btn" onclick="copy('url-tv-cafe', this)">📋 Copy URL</button>
+    </div>
+  </div>
+
+  <!-- Kiosk + Staff Portal -->
+  <div class="section-label">🖥 SELF-SERVICE</div>
+  <div class="display-grid">
+
+    <div class="display-card" style="border-color:rgba(0,212,255,0.3)">
+      <div class="icon">🖥</div>
+      <h3>Kiosk — Ordering</h3>
+      <div class="device">32" TOUCHSCREEN</div>
+      <p>Customer-facing ordering kiosk — staff login or public walk-in.</p>
+      <div class="url" id="url-kiosk">{{ request.scheme }}://{{ request.get_host }}/cafeteria/kiosk/</div>
+      <a href="{% url 'cafeteria_kiosk' %}" target="_blank" class="open-btn">Open in new tab →</a>
+      <button class="copy-btn" onclick="copy('url-kiosk', this)">📋 Copy URL</button>
+    </div>
+
+    <div class="display-card" style="border-color:rgba(16,185,129,0.3)">
+      <div class="icon">📱</div>
+      <h3>Staff Portal (PWA)</h3>
+      <div class="device">MOBILE · PWA</div>
+      <p>Mobile web app — staff can order from their phone, view QR, check credit, history.</p>
+      <div class="url" id="url-portal">{{ request.scheme }}://{{ request.get_host }}/cafeteria/portal/</div>
+      <a href="{% url 'staff_portal_home' %}" target="_blank" class="open-btn">Open in new tab →</a>
+      <button class="copy-btn" onclick="copy('url-portal', this)">📋 Copy URL</button>
+    </div>
+  </div>
+
+  <!-- Admin / Operations -->
+  <div class="section-label">⚙ ADMIN &amp; OPERATIONS</div>
+  <div class="display-grid">
+
+    <div class="display-card">
+      <div class="icon">📊</div>
+      <h3>Admin Dashboard</h3>
+      <p>KPIs, revenue charts, recent orders, top items.</p>
+      <a href="{% url 'cafeteria_dashboard' %}" class="open-btn">Open →</a>
+    </div>
+
+    <div class="display-card">
+      <div class="icon">🍽</div>
+      <h3>Menu Management</h3>
+      <p>Add, edit, toggle menu items for Halal, Non-Halal and Cafe Bar.</p>
+      <a href="{% url 'cafeteria_admin_menu_list' %}" class="open-btn">Open →</a>
+    </div>
+
+    <div class="display-card">
+      <div class="icon">📦</div>
+      <h3>Daily Stock</h3>
+      <p>Set quantities at start of each service day.</p>
+      <a href="{% url 'cafeteria_admin_stock' %}" class="open-btn">Open →</a>
+    </div>
+
+    <div class="display-card">
+      <div class="icon">🧾</div>
+      <h3>Orders</h3>
+      <p>Track, filter and cancel orders.</p>
+      <a href="{% url 'cafeteria_admin_orders' %}" class="open-btn">Open →</a>
+    </div>
+
+    <div class="display-card">
+      <div class="icon">👥</div>
+      <h3>Staff Credits</h3>
+      <p>View and adjust monthly credit balances.</p>
+      <a href="{% url 'cafeteria_admin_staff' %}" class="open-btn">Open →</a>
+    </div>
+
+    <div class="display-card">
+      <div class="icon">🔍</div>
+      <h3>QR Scan Audit</h3>
+      <p>Every scan logged — valid, wrong counter, duplicate, invalid.</p>
+      <a href="{% url 'cafeteria_admin_qr_logs' %}" class="open-btn">Open →</a>
+    </div>
+  </div>
+</div>
+
+<script>
+function copy(id, btn) {
+  const text = document.getElementById(id).textContent.trim();
+  navigator.clipboard.writeText(text).then(() => {
+    const prev = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => { btn.textContent = prev; }, 1500);
+  });
+}
+</script>
+{% endblock %}

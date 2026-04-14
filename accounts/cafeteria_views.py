@@ -1170,3 +1170,10 @@ def cron_reset_credits_view(request):
     out = StringIO()
     call_command('reset_credits', stdout=out)
     return JsonResponse({'ok': True, 'output': out.getvalue()})
+
+
+@login_required
+@user_passes_test(is_admin)
+def cafeteria_displays_hub_view(request):
+    """Central landing page listing all display views and their devices."""
+    return render(request, 'cafeteria/admin_displays.html')

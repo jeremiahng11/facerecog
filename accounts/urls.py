@@ -115,6 +115,7 @@ urlpatterns = [
     path('cafeteria/admin/refunds/', cafeteria_views.cafeteria_refunds_view, name='cafeteria_admin_refunds'),
     path('cafeteria/admin/staff/', cafeteria_views.cafeteria_staff_view, name='cafeteria_admin_staff'),
     path('cafeteria/admin/staff/<int:user_id>/adjust/', cafeteria_views.cafeteria_staff_adjust_credit_ajax, name='cafeteria_staff_adjust'),
+    path('cafeteria/admin/displays/', cafeteria_views.cafeteria_displays_hub_view, name='cafeteria_displays_hub'),
 
     # Stripe
     path('cafeteria/stripe/success/', cafeteria_views.stripe_success_view, name='cafeteria_stripe_success'),
