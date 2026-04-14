@@ -344,13 +344,14 @@ def kiosk_place_order_ajax(request):
                 customer=user,
                 menu_type=order_menu_type,
                 is_mixed=is_mixed,
-                status='confirmed' if balance_due == 0 else 'pending',
+                status='ready' if balance_due == 0 else 'pending',
                 subtotal=subtotal,
                 credits_applied=credits_applied,
                 balance_due=balance_due,
                 payment_method='credits' if balance_due == 0 else pay_method,
                 collection_time_minutes=collection_time_minutes,
                 confirmed_at=timezone.now() if balance_due == 0 else None,
+                ready_at=timezone.now() if balance_due == 0 else None,
             )
             order.qr_token = sign_order_qr(order)
             order.save(update_fields=['qr_token'])
@@ -601,7 +602,9 @@ def kitchen_scan_qr_ajax(request):
             })
 
         # Not ready yet?
-        if order.status not in ('ready', 'preparing'):
+        # Accept any active (confirmed/preparing/ready) status — orders
+        # are ready to collect as soon as they're placed and paid.
+        if order.status not in ('confirmed', 'preparing', 'ready'):
             QRScanLog.objects.create(
                 order=order, scanner_device=scanner_counter, scanned_by=request.user,
                 result='not_ready', token_preview=token[:40],
@@ -708,14 +711,15 @@ def cafe_bar_complete_payment_ajax(request, order_id):
     with transaction.atomic():
         order.payment_received_at = timezone.now()
         order.payment_received_by = request.user
-        order.status = 'confirmed'
+        order.status = 'ready'  # ready for collection immediately on payment
         order.confirmed_at = timezone.now()
+        order.ready_at = timezone.now()
         # Ensure collection QR exists.
         if not order.qr_token:
             order.qr_token = sign_order_qr(order)
         order.save(update_fields=[
             'payment_received_at', 'payment_received_by',
-            'status', 'confirmed_at', 'qr_token',
+            'status', 'confirmed_at', 'ready_at', 'qr_token',
         ])
 
     _broadcast_order(order, 'created')
@@ -957,28 +961,22 @@ def cafe_bar_counter_view(request):
         created_at__gte=today_start,
     ).prefetch_related('items').order_by('created_at')
 
-    incoming = Order.objects.filter(
-        status__in=['confirmed', 'preparing'],
+    # All active cafe bar orders (ready for collection) — no mark-ready step.
+    ready = Order.objects.filter(
+        status__in=['confirmed', 'preparing', 'ready'],
         created_at__gte=today_start,
     ).filter(
         Q(menu_type='cafe_bar') | Q(items__menu_type_snapshot='cafe_bar')
     ).distinct().prefetch_related('items', 'items__menu_item').order_by('created_at')
-    ready = Order.objects.filter(
-        status='ready',
-        created_at__gte=today_start,
-    ).filter(
-        Q(menu_type='cafe_bar') | Q(items__menu_type_snapshot='cafe_bar')
-    ).distinct().prefetch_related('items').order_by('-ready_at')
 
-    # Attach per-counter item list.
-    for order in list(incoming) + list(ready):
+    for order in ready:
         order.counter_items = [
             i for i in order.items.all()
             if (i.menu_type_snapshot or (i.menu_item.menu_type if i.menu_item else '')) == 'cafe_bar'
         ]
 
     return render(request, 'cafeteria/cafe_bar_counter.html', {
-        'incoming': incoming, 'ready': ready,
+        'ready': ready,
         'pending_payment': pending_payment,
     })
 
@@ -1153,7 +1151,7 @@ def public_place_order_ajax(request):
                 initial_status = 'pending'  # trust paynow QR scan (no webhook)
                 confirmed_at = None
             else:  # cash (legacy)
-                initial_status = 'confirmed'
+                initial_status = 'ready'
                 confirmed_at = timezone.now()
 
             order = Order.objects.create(
@@ -1458,10 +1456,11 @@ def stripe_webhook_view(request):
         if order_id:
             try:
                 order = Order.objects.get(pk=int(order_id))
-                order.status = 'confirmed'
+                order.status = 'ready'
                 order.confirmed_at = timezone.now()
-                order.save(update_fields=['status', 'confirmed_at'])
-                _broadcast_order(order, 'created')
+                order.ready_at = timezone.now()
+                order.save(update_fields=['status', 'confirmed_at', 'ready_at'])
+                _broadcast_order(order, 'ready')
             except Order.DoesNotExist:
                 pass
 

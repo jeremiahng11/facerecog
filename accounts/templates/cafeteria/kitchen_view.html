@@ -159,11 +159,7 @@
           {% endif %}
         </ul>
         <div class="actions">
-          {% if order.status != 'ready' %}
-          <button style="background:var(--primary);color:#fff" onclick="markReady({{ order.id }})">Mark Ready →</button>
-          {% else %}
           <div style="flex:1;padding:8px;text-align:center;color:var(--success);font-weight:700;font-size:12px">✓ Awaiting collection</div>
-          {% endif %}
         </div>
       </div>
       {% empty %}
@@ -208,13 +204,6 @@ const CSRF = '{{ csrf_token }}';
 function getCSRF() { const m = document.cookie.match(/csrftoken=([^;]+)/); return m ? m[1] : CSRF; }
 const KITCHEN = '{{ kitchen_type }}';
 
-async function markReady(id) {
-  try {
-    const r = await fetch(`/cafeteria/api/kitchen/mark-ready/${id}/`, { method: 'POST', headers: { 'X-CSRFToken': getCSRF() } });
-    const d = await r.json();
-    if (d.success) setTimeout(() => location.reload(), 200);
-  } catch (e) { alert('Error'); }
-}
 async function markCollected(orderId) {
   try {
     const r = await fetch(`/cafeteria/api/kitchen/mark-collected/${orderId}/`, {

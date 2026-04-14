@@ -170,15 +170,14 @@
     <h1>☕ Cafe Bar Counter</h1>
     <div class="top-stats">
       <span class="chip"><strong>{{ pending_payment|length }}</strong> awaiting payment</span>
-      <span class="chip"><strong>{{ incoming|length }}</strong> preparing</span>
-      <span class="chip"><strong>{{ ready|length }}</strong> ready</span>
+      <span class="chip"><strong>{{ ready|length }}</strong> to collect</span>
     </div>
   </div>
   <div class="text-sm text-muted">{{ user.display_name }}</div>
 </div>
 
 <div class="layout">
-  <!-- LEFT: Compact incoming + pending payment -->
+  <!-- LEFT: Pending payment only -->
   <div class="left-pane">
     {% if pending_payment %}
     <div>
@@ -190,34 +189,24 @@
         <span class="amt">S${{ order.subtotal|floatformat:2 }}</span>
       </div>
       {% endfor %}
-    </div>
-    {% endif %}
-
-    <div>
-      <div class="section-label">⏳ Preparing ({{ incoming|length }})</div>
-      {% for order in incoming %}
-      <div class="compact-row">
-        <div style="flex:1;min-width:0">
-          <div><span class="num">{{ order.order_number }}</span> {% if order.collection_time_minutes %}<span style="color:var(--cafe);font-size:10px;font-weight:700">+{{ order.collection_time_minutes }}m</span>{% endif %}</div>
-          <div class="items-preview">
-            {% for item in order.counter_items %}{{ item.quantity }}×{{ item.name_snapshot }}{% if not forloop.last %}, {% endif %}{% endfor %}
-          </div>
-        </div>
-        <button class="ready-btn" onclick="markReady({{ order.id }})">Ready</button>
+      <div style="font-size:10px;color:var(--text3);margin-top:6px;padding:0 4px">
+        Scan payment QR on the right →<br>take cash/card → print collection slip
       </div>
-      {% empty %}<div class="empty">No orders</div>{% endfor %}
     </div>
+    {% else %}
+    <div class="empty" style="padding:20px 8px">No pending payments</div>
+    {% endif %}
   </div>
 
   <!-- MIDDLE: Ready for collection (large) -->
   <div class="ready-pane">
-    <div class="section-label" style="border-bottom-color:var(--success);color:var(--success);font-size:12px">✅ Ready for Collection ({{ ready|length }}) — scan customer QR on the right →</div>
+    <div class="section-label" style="border-bottom-color:var(--success);color:var(--success);font-size:12px">☕ Orders to Prepare &amp; Collect ({{ ready|length }}) — scan QR on the right →</div>
     {% if ready %}
     <div class="ready-grid">
       {% for order in ready %}
       <div class="ready-card {% if order.collection_time_minutes %}scheduled{% endif %}">
         <div class="num">{{ order.order_number }}</div>
-        <div class="meta">{{ order.ready_at|time:"H:i" }}{% if order.collection_time_minutes %} · +{{ order.collection_time_minutes }}m{% endif %}</div>
+        <div class="meta">{{ order.created_at|time:"H:i" }}{% if order.collection_time_minutes %} · +{{ order.collection_time_minutes }}m{% endif %}</div>
         <div class="name">{{ order.customer.display_name|default:order.public_name }}</div>
         <div class="items">{% for item in order.counter_items %}{{ item.quantity }}× {{ item.name_snapshot }}{% if not forloop.last %}<br>{% endif %}{% endfor %}</div>
         {% if order.is_mixed %}<div style="margin-top:4px;font-size:9px;color:var(--text3)">🔀 Kitchen has other items</div>{% endif %}
@@ -225,7 +214,7 @@
       {% endfor %}
     </div>
     {% else %}
-    <div class="empty" style="padding:40px 20px;font-size:14px">Nothing ready yet</div>
+    <div class="empty" style="padding:40px 20px;font-size:14px">No active orders</div>
     {% endif %}
   </div>
 
@@ -257,11 +246,6 @@
 <script>
 const CSRF = '{{ csrf_token }}';
 function getCSRF() { const m = document.cookie.match(/csrftoken=([^;]+)/); return m ? m[1] : CSRF; }
-
-async function markReady(id) {
-  await fetch(`/cafeteria/api/kitchen/mark-ready/${id}/`, { method: 'POST', headers: { 'X-CSRFToken': getCSRF() } });
-  location.reload();
-}
 
 async function markCollected(id) {
   await fetch(`/cafeteria/api/kitchen/mark-collected/${id}/`, {
