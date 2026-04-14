@@ -869,10 +869,22 @@ def admin_stock_view(request):
 def admin_orders_view(request):
     """Order management / cancellation."""
     status_filter = request.GET.get('status', '')
-    qs = Order.objects.all().select_related('customer').prefetch_related('items')
+    qs = Order.objects.all().select_related('customer').prefetch_related('items', 'items__menu_item')
     if status_filter:
         qs = qs.filter(status=status_filter)
-    orders = qs[:100]
+    orders = list(qs[:100])
+
+    # Attach counter_types — the distinct per-counter menu types an order
+    # actually touches. Mixed orders show a badge for each counter; single
+    # orders show one.
+    for o in orders:
+        seen = []
+        for it in o.items.all():
+            t = it.menu_type_snapshot or (it.menu_item.menu_type if it.menu_item else '')
+            if t and t not in seen:
+                seen.append(t)
+        o.counter_types = seen or [o.menu_type]
+
     return render(request, 'cafeteria/admin_orders.html', {
         'orders': orders,
         'status_filter': status_filter,

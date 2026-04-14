@@ -23,9 +23,15 @@
             <td class="mono text-accent"><strong>{{ order.order_number }}</strong></td>
             <td>{{ order.customer.display_name|default:order.public_name|default:"Public" }}</td>
             <td>
-              {% if order.menu_type == 'halal' %}<span class="badge badge-green">Halal</span>
-              {% elif order.menu_type == 'non_halal' %}<span class="badge" style="background:#dbeafe;color:#1e40af">Non-Halal</span>
-              {% else %}<span class="badge" style="background:#fef3c7;color:#c2410c">Cafe</span>{% endif %}
+              <div style="display:flex;gap:4px;flex-wrap:wrap">
+                {% for t in order.counter_types %}
+                  {% if t == 'halal' %}<span class="badge badge-green">Halal</span>
+                  {% elif t == 'non_halal' %}<span class="badge" style="background:#dbeafe;color:#1e40af">Non-Halal</span>
+                  {% elif t == 'cafe_bar' %}<span class="badge" style="background:#fef3c7;color:#c2410c">Cafe</span>
+                  {% else %}<span class="badge badge-gray">{{ t }}</span>{% endif %}
+                {% endfor %}
+                {% if order.is_mixed %}<span class="badge badge-purple">Mixed</span>{% endif %}
+              </div>
             </td>
             <td class="text-sm">
               {% for item in order.items.all %}{{ item.quantity }}× {{ item.name_snapshot }}{% if not forloop.last %}, {% endif %}{% endfor %}
