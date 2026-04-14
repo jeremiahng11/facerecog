@@ -87,4 +87,32 @@ urlpatterns = [
     path('cafeteria/admin/orders/', cafeteria_views.admin_orders_view, name='cafeteria_admin_orders'),
     path('cafeteria/admin/orders/<int:order_id>/cancel/', cafeteria_views.admin_cancel_order_ajax, name='cafeteria_admin_cancel_order'),
     path('cafeteria/admin/qr-logs/', cafeteria_views.admin_qr_logs_view, name='cafeteria_admin_qr_logs'),
+
+    # ═══ Phase 2 additions ═══
+    # TV Displays (no auth required)
+    path('cafeteria/tv/kitchen/', cafeteria_views.tv_kitchen_queue_view, name='cafeteria_tv_kitchen'),
+    path('cafeteria/tv/cafe-bar/', cafeteria_views.tv_cafe_bar_view, name='cafeteria_tv_cafe_bar'),
+    path('cafeteria/api/tv-queue/', cafeteria_views.tv_queue_data_ajax, name='cafeteria_tv_queue_data'),
+
+    # Cafe Bar counter
+    path('cafeteria/cafe-bar/counter/', cafeteria_views.cafe_bar_counter_view, name='cafeteria_cafe_bar_counter'),
+
+    # Public walk-in
+    path('cafeteria/public/<str:menu_type>/', cafeteria_views.public_order_view, name='cafeteria_public'),
+    path('cafeteria/public/ticket/<int:order_id>/', cafeteria_views.public_ticket_view, name='cafeteria_public_ticket'),
+    path('cafeteria/api/public-place-order/', cafeteria_views.public_place_order_ajax, name='cafeteria_public_place_order'),
+
+    # Staff Portal (mobile PWA)
+    path('cafeteria/portal/', cafeteria_views.staff_portal_home_view, name='staff_portal_home'),
+    path('cafeteria/portal/order/', cafeteria_views.staff_portal_order_view, name='staff_portal_order'),
+    path('cafeteria/portal/qr/', cafeteria_views.staff_portal_qr_view, name='staff_portal_qr'),
+    path('cafeteria/portal/history/', cafeteria_views.staff_portal_history_view, name='staff_portal_history'),
+    path('cafeteria/portal/profile/', cafeteria_views.staff_portal_profile_view, name='staff_portal_profile'),
+
+    # Admin dashboard/reports/staff/refunds
+    path('cafeteria/admin/dashboard/', cafeteria_views.cafeteria_dashboard_view, name='cafeteria_dashboard'),
+    path('cafeteria/admin/reports/', cafeteria_views.cafeteria_reports_view, name='cafeteria_admin_reports'),
+    path('cafeteria/admin/refunds/', cafeteria_views.cafeteria_refunds_view, name='cafeteria_admin_refunds'),
+    path('cafeteria/admin/staff/', cafeteria_views.cafeteria_staff_view, name='cafeteria_admin_staff'),
+    path('cafeteria/admin/staff/<int:user_id>/adjust/', cafeteria_views.cafeteria_staff_adjust_credit_ajax, name='cafeteria_staff_adjust'),
 ]

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>{% block title %}Staff Portal{% endblock %}</title>
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#1e56b8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f7fb; --card: #fff; --border: #d6e2f0;
+    --primary: #1e56b8; --accent: #00a3d9; --success: #10b981; --warn: #f59e0b; --danger: #ef4444;
+    --text: #0f2746; --text2: #3b5a82; --text3: #8aa5c4;
+    --primary-light: #eaf2ff; --success-soft: #d5f5e8; --danger-soft: #fde1e1;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; min-height: 100vh; padding-bottom: 72px; }
+  .top-bar { height: 5px; background: linear-gradient(90deg, var(--primary), var(--accent)); }
+  .page-header {
+    padding: 20px 20px 12px; background: #fff; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .page-header h1 { font-size: 20px; font-weight: 800; }
+  .main { padding: 16px; }
+
+  .bottom-nav {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: #fff; border-top: 1px solid var(--border);
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    padding: 6px 0; z-index: 10;
+  }
+  .bottom-nav a {
+    text-align: center; padding: 8px 4px;
+    font-size: 10px; font-weight: 600; color: var(--text3);
+    text-decoration: none;
+  }
+  .bottom-nav a .ico { display: block; font-size: 22px; margin-bottom: 2px; }
+  .bottom-nav a.active { color: var(--primary); }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; justify-content: center;
+    padding: 12px 18px; border-radius: 10px; font-size: 14px; font-weight: 600;
+    border: none; cursor: pointer;
+  }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-secondary { background: #fff; color: var(--text2); border: 1px solid var(--border); }
+  .btn-full { width: 100%; }
+  .badge { display: inline-flex; padding: 3px 10px; border-radius: 100px; font-size: 11px; font-weight: 600; }
+  .badge-ready { background: var(--success-soft); color: var(--success); }
+  .badge-confirmed { background: #fef3c7; color: #c2410c; }
+  .badge-collected { background: #e5e7eb; color: #6b7280; }
+  .badge-cancelled { background: var(--danger-soft); color: var(--danger); }
+
+  .credit-card {
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    color: #fff; padding: 24px; border-radius: 16px; margin-bottom: 16px;
+  }
+  .credit-card .label { font-size: 11px; letter-spacing: 2px; opacity: 0.9; font-weight: 600; }
+  .credit-card .amount { font-size: 44px; font-weight: 800; letter-spacing: 1px; }
+  .credit-card .sub { font-size: 12px; opacity: 0.85; margin-top: 4px; }
+</style>
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+<div class="top-bar"></div>
+<div class="page-header">
+  <h1>{% block header_title %}{% endblock %}</h1>
+  <div style="font-size:12px;color:var(--text3)">{{ user.staff_id }}</div>
+</div>
+<div class="main">
+  {% block content %}{% endblock %}
+</div>
+
+<nav class="bottom-nav">
+  <a href="{% url 'staff_portal_home' %}" {% if request.resolver_match.url_name == 'staff_portal_home' %}class="active"{% endif %}>
+    <span class="ico">🏠</span>Home
+  </a>
+  <a href="{% url 'staff_portal_order' %}" {% if request.resolver_match.url_name == 'staff_portal_order' %}class="active"{% endif %}>
+    <span class="ico">🍽</span>Order
+  </a>
+  <a href="{% url 'staff_portal_qr' %}" {% if request.resolver_match.url_name == 'staff_portal_qr' %}class="active"{% endif %}>
+    <span class="ico">🎟️</span>QR
+  </a>
+  <a href="{% url 'staff_portal_history' %}" {% if request.resolver_match.url_name == 'staff_portal_history' %}class="active"{% endif %}>
+    <span class="ico">📋</span>History
+  </a>
+  <a href="{% url 'staff_portal_profile' %}" {% if request.resolver_match.url_name == 'staff_portal_profile' %}class="active"{% endif %}>
+    <span class="ico">👤</span>Profile
+  </a>
+</nav>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

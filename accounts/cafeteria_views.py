@@ -512,6 +512,7 @@ def admin_menu_add_view(request):
                 is_available=request.POST.get('is_available') == 'on',
                 display_order=int(request.POST.get('display_order') or 0),
                 photo=request.FILES.get('photo'),
+                customizations=json.loads(request.POST.get('customizations_json') or '[]'),
             )
             messages.success(request, f'Menu item "{item.name}" added.')
             return redirect('cafeteria_admin_menu_list')
@@ -536,6 +537,7 @@ def admin_menu_edit_view(request, item_id):
         item.low_stock_threshold = int(request.POST.get('low_stock_threshold') or 3)
         item.is_available = request.POST.get('is_available') == 'on'
         item.display_order = int(request.POST.get('display_order') or 0)
+        item.customizations = json.loads(request.POST.get('customizations_json') or '[]')
         if request.FILES.get('photo'):
             item.photo = request.FILES['photo']
         item.save()
@@ -633,3 +635,427 @@ def admin_qr_logs_view(request):
     """QR scan audit log."""
     logs = QRScanLog.objects.all().select_related('order', 'scanned_by')[:200]
     return render(request, 'cafeteria/admin_qr_logs.html', {'logs': logs})
+
+
+# ─── TV Displays (polled via AJAX) ───────────────────────────────────────────
+
+def tv_kitchen_queue_view(request):
+    """43" TV: displays all kitchen orders (H + N + P prefix). No auth."""
+    return render(request, 'cafeteria/tv_kitchen_queue.html')
+
+
+def tv_cafe_bar_view(request):
+    """43" TV: displays Cafe Bar orders (C prefix). No auth."""
+    return render(request, 'cafeteria/tv_cafe_bar.html')
+
+
+def tv_queue_data_ajax(request):
+    """AJAX: current queue state for TV displays (polled every ~3s)."""
+    today_start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+    scope = request.GET.get('scope', 'kitchen')  # 'kitchen' or 'cafe_bar'
+
+    if scope == 'cafe_bar':
+        menu_filter = ['cafe_bar']
+    else:
+        menu_filter = ['halal', 'non_halal']
+
+    orders = Order.objects.filter(
+        menu_type__in=menu_filter,
+        status__in=['confirmed', 'preparing', 'ready'],
+        created_at__gte=today_start,
+    ).prefetch_related('items').order_by('created_at')
+
+    def ser(o):
+        return {
+            'id': o.id,
+            'order_number': o.order_number,
+            'status': o.status,
+            'is_public': o.is_public,
+            'menu_type': o.menu_type,
+            'menu_label': o.get_menu_type_display(),
+            'items': [{'name': i.name_snapshot, 'qty': i.quantity} for i in o.items.all()],
+            'collection_time_minutes': o.collection_time_minutes,
+        }
+
+    return JsonResponse({
+        'preparing': [ser(o) for o in orders if o.status in ('confirmed', 'preparing')],
+        'ready': [ser(o) for o in orders if o.status == 'ready'],
+    })
+
+
+# ─── Cafe Bar Counter View ───────────────────────────────────────────────────
+
+@login_required
+@user_passes_test(is_admin)
+def cafe_bar_counter_view(request):
+    """Split-layout Cafe Bar counter: incoming | ready."""
+    today_start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+    incoming = Order.objects.filter(
+        menu_type='cafe_bar', status__in=['confirmed', 'preparing'],
+        created_at__gte=today_start,
+    ).prefetch_related('items').order_by('created_at')
+    ready = Order.objects.filter(
+        menu_type='cafe_bar', status='ready',
+        created_at__gte=today_start,
+    ).prefetch_related('items').order_by('-ready_at')
+    return render(request, 'cafeteria/cafe_bar_counter.html', {
+        'incoming': incoming, 'ready': ready,
+    })
+
+
+# ─── Staff Portal (mobile PWA, 5 tabs) ───────────────────────────────────────
+
+@login_required
+def staff_portal_home_view(request):
+    """Staff Portal: Home tab with credit balance and recent orders."""
+    user = request.user
+    recent = Order.objects.filter(customer=user).order_by('-created_at')[:5]
+    active = Order.objects.filter(
+        customer=user,
+        status__in=['confirmed', 'preparing', 'ready'],
+    ).order_by('-created_at').first()
+    return render(request, 'cafeteria/staff_portal_home.html', {
+        'user': user,
+        'recent': recent,
+        'active': active,
+    })
+
+
+@login_required
+def staff_portal_order_view(request):
+    """Staff Portal: Order tab — browse menu, add to cart (mobile)."""
+    halal = MenuItem.objects.filter(menu_type='halal', is_available=True).order_by('display_order', 'name')
+    non_halal = MenuItem.objects.filter(menu_type='non_halal', is_available=True).order_by('display_order', 'name')
+    cafe = MenuItem.objects.filter(menu_type='cafe_bar', is_available=True).order_by('display_order', 'name')
+    return render(request, 'cafeteria/staff_portal_order.html', {
+        'user': request.user,
+        'halal_items': halal, 'non_halal_items': non_halal, 'cafe_items': cafe,
+        'tabs': {'halal': halal, 'non_halal': non_halal, 'cafe_bar': cafe},
+    })
+
+
+@login_required
+def staff_portal_qr_view(request):
+    """Staff Portal: active QR codes for collection."""
+    user = request.user
+    active_orders = Order.objects.filter(
+        customer=user,
+        status__in=['confirmed', 'preparing', 'ready'],
+        qr_used=False,
+    ).prefetch_related('items').order_by('-created_at')
+
+    # Pre-generate QR images.
+    qrs = []
+    for o in active_orders:
+        qrs.append({
+            'order': o,
+            'qr_image': _generate_qr_image_base64(o.qr_token, box_size=6),
+        })
+    return render(request, 'cafeteria/staff_portal_qr.html', {'qrs': qrs})
+
+
+@login_required
+def staff_portal_history_view(request):
+    """Staff Portal: order history."""
+    orders = Order.objects.filter(customer=request.user).prefetch_related('items').order_by('-created_at')[:50]
+    return render(request, 'cafeteria/staff_portal_history.html', {'orders': orders})
+
+
+@login_required
+def staff_portal_profile_view(request):
+    """Staff Portal: profile (credit, PIN, face ID toggle)."""
+    from django.db.models import Sum
+    if request.method == 'POST':
+        new_pin = (request.POST.get('kiosk_pin') or '').strip()
+        if new_pin:
+            request.user.kiosk_pin = new_pin
+            request.user.save(update_fields=['kiosk_pin'])
+            messages.success(request, 'PIN updated.')
+        return redirect('staff_portal_profile')
+
+    # Month's spend
+    month_start = timezone.localtime().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_spent = CreditTransaction.objects.filter(
+        user=request.user, type='order', created_at__gte=month_start,
+    ).aggregate(total=Sum('amount'))['total'] or 0
+    month_spent = abs(month_spent)
+
+    return render(request, 'cafeteria/staff_portal_profile.html', {
+        'user': request.user,
+        'month_spent': month_spent,
+    })
+
+
+# ─── Public Walk-In Ordering ────────────────────────────────────────────────
+
+def public_order_view(request, menu_type):
+    """
+    Public walk-in menu browsing. No login. Uses public_price.
+    Payment stub: records order as 'confirmed' with payment_method='cash'
+    (real Stripe/PayNow wiring in _attempt_payment).
+    """
+    if menu_type not in ('kitchen', 'cafe_bar'):
+        raise Http404()
+
+    if menu_type == 'kitchen':
+        items_by_type = {
+            'halal': MenuItem.objects.filter(menu_type='halal', is_available=True).order_by('display_order', 'name'),
+            'non_halal': MenuItem.objects.filter(menu_type='non_halal', is_available=True).order_by('display_order', 'name'),
+        }
+    else:
+        items_by_type = {
+            'cafe_bar': MenuItem.objects.filter(menu_type='cafe_bar', is_available=True).order_by('display_order', 'name'),
+        }
+
+    return render(request, 'cafeteria/public_order.html', {
+        'menu_type': menu_type,
+        'items_by_type': items_by_type,
+    })
+
+
+@require_POST
+def public_place_order_ajax(request):
+    """
+    Place a public order with a stub payment (cash default).
+    In production, wire Stripe or PayNow here and only create the
+    order on successful payment confirmation.
+    """
+    from .payments import attempt_payment
+
+    try:
+        data = json.loads(request.body)
+        menu_type = data.get('menu_type')
+        items_data = data.get('items', [])
+        customer_name = (data.get('public_name') or 'Walk-in').strip()
+        payment_method = data.get('payment_method', 'cash')
+
+        if menu_type not in ('halal', 'non_halal', 'cafe_bar'):
+            return JsonResponse({'success': False, 'message': 'Invalid menu type'})
+        if not items_data:
+            return JsonResponse({'success': False, 'message': 'Cart is empty'})
+
+        with transaction.atomic():
+            item_ids = [int(i.get('id')) for i in items_data]
+            menu_items = {mi.id: mi for mi in MenuItem.objects.select_for_update().filter(id__in=item_ids)}
+
+            subtotal = Decimal('0')
+            buf = []
+            for raw in items_data:
+                mid = int(raw.get('id'))
+                qty = int(raw.get('quantity', 1))
+                cust = raw.get('customizations', {})
+                mi = menu_items.get(mid)
+                if not mi or not mi.is_available:
+                    return JsonResponse({'success': False, 'message': 'Item unavailable'})
+                if mi.quantity_remaining < qty:
+                    return JsonResponse({'success': False, 'message': f'{mi.name}: only {mi.quantity_remaining} left'})
+                price = mi.public_price
+                subtotal += price * qty
+                mi.quantity_remaining -= qty
+                mi.save(update_fields=['quantity_remaining'])
+                buf.append({'menu_item': mi, 'name': mi.name, 'price': price, 'qty': qty, 'cust': cust})
+
+            # Attempt payment (stub in dev, Stripe/PayNow in production).
+            pay_result = attempt_payment(subtotal, payment_method, customer_name)
+            if not pay_result.get('success'):
+                # Roll back stock (atomic will handle this if we raise).
+                return JsonResponse({'success': False, 'message': pay_result.get('message', 'Payment failed')})
+
+            order = Order.objects.create(
+                order_number=Order.next_number(menu_type, is_public=True),
+                customer=None,
+                is_public=True,
+                public_name=customer_name,
+                menu_type=menu_type,
+                status='confirmed',
+                subtotal=subtotal,
+                credits_applied=Decimal('0'),
+                balance_due=Decimal('0'),
+                payment_method=payment_method,
+                confirmed_at=timezone.now(),
+            )
+            order.qr_token = sign_order_qr(order)
+            order.save(update_fields=['qr_token'])
+
+            for b in buf:
+                OrderItem.objects.create(
+                    order=order,
+                    menu_item=b['menu_item'],
+                    name_snapshot=b['name'],
+                    price_snapshot=b['price'],
+                    quantity=b['qty'],
+                    customizations=b['cust'],
+                    subtotal=b['price'] * b['qty'],
+                )
+
+        # Optional email receipt.
+        from .emails import send_order_receipt
+        if data.get('email'):
+            send_order_receipt(order, data['email'])
+
+        return JsonResponse({
+            'success': True,
+            'order_id': order.id,
+            'order_number': order.order_number,
+            'redirect': f'/cafeteria/public/ticket/{order.id}/',
+        })
+    except Exception as e:
+        import logging
+        logging.exception('public_place_order_ajax')
+        return JsonResponse({'success': False, 'message': str(e)})
+
+
+def public_ticket_view(request, order_id):
+    """Public order confirmation with QR code."""
+    order = get_object_or_404(Order, pk=order_id, is_public=True)
+    qr_image = _generate_qr_image_base64(order.qr_token, box_size=8)
+    return render(request, 'cafeteria/public_ticket.html', {
+        'order': order, 'qr_image': qr_image,
+    })
+
+
+# ─── Admin Dashboard + Reports ───────────────────────────────────────────────
+
+@login_required
+@user_passes_test(is_admin)
+def cafeteria_dashboard_view(request):
+    """Admin KPI dashboard for cafeteria."""
+    from django.db.models import Sum, Count
+    today_start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today_start - timezone.timedelta(days=6)
+
+    today_orders = Order.objects.filter(created_at__gte=today_start, status__in=['confirmed', 'preparing', 'ready', 'collected'])
+    today_revenue = today_orders.aggregate(s=Sum('subtotal'))['s'] or 0
+    today_credits = today_orders.aggregate(s=Sum('credits_applied'))['s'] or 0
+    today_count = today_orders.count()
+    today_refunds = Order.objects.filter(cancelled_at__gte=today_start).count()
+
+    # Revenue by day (last 7 days)
+    daily = []
+    for i in range(6, -1, -1):
+        d_start = today_start - timezone.timedelta(days=i)
+        d_end = d_start + timezone.timedelta(days=1)
+        rev = Order.objects.filter(
+            created_at__gte=d_start, created_at__lt=d_end,
+            status__in=['confirmed', 'preparing', 'ready', 'collected'],
+        ).aggregate(s=Sum('subtotal'))['s'] or 0
+        daily.append({'date': d_start, 'revenue': float(rev)})
+
+    # Top 5 items this week
+    top_items = (
+        OrderItem.objects.filter(order__created_at__gte=week_start)
+        .values('name_snapshot')
+        .annotate(total=Sum('quantity'))
+        .order_by('-total')[:5]
+    )
+
+    recent_orders = Order.objects.select_related('customer').order_by('-created_at')[:10]
+
+    return render(request, 'cafeteria/admin_dashboard.html', {
+        'today_revenue': today_revenue,
+        'today_credits': today_credits,
+        'today_count': today_count,
+        'today_refunds': today_refunds,
+        'daily': daily,
+        'daily_max': max([d['revenue'] for d in daily] + [1]),
+        'top_items': top_items,
+        'recent_orders': recent_orders,
+    })
+
+
+@login_required
+@user_passes_test(is_admin)
+def cafeteria_reports_view(request):
+    """Revenue reports (daily/weekly/monthly)."""
+    from django.db.models import Sum
+    period = request.GET.get('period', 'week')  # 'day', 'week', 'month'
+    now = timezone.localtime()
+    if period == 'day':
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == 'month':
+        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        start = now - timezone.timedelta(days=7)
+
+    orders = Order.objects.filter(
+        created_at__gte=start,
+        status__in=['confirmed', 'preparing', 'ready', 'collected'],
+    )
+    refunded = Order.objects.filter(cancelled_at__gte=start)
+
+    totals = {
+        'revenue': orders.aggregate(s=Sum('subtotal'))['s'] or 0,
+        'credits': orders.aggregate(s=Sum('credits_applied'))['s'] or 0,
+        'refunds': refunded.aggregate(s=Sum('subtotal'))['s'] or 0,
+    }
+    totals['net'] = totals['revenue'] - totals['refunds']
+
+    by_menu = {}
+    for mt in ['halal', 'non_halal', 'cafe_bar']:
+        by_menu[mt] = orders.filter(menu_type=mt).aggregate(
+            revenue=Sum('subtotal'), count=Count('id')
+        )
+
+    by_payment = {}
+    for p in ['credits', 'stripe', 'paynow', 'cash', 'mixed']:
+        by_payment[p] = orders.filter(payment_method=p).aggregate(
+            revenue=Sum('subtotal'), count=Count('id')
+        )
+
+    # Daily breakdown
+    daily_rows = []
+    days = 7 if period == 'week' else (30 if period == 'month' else 1)
+    for i in range(days - 1, -1, -1):
+        d_start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timezone.timedelta(days=i)
+        d_end = d_start + timezone.timedelta(days=1)
+        day_orders = Order.objects.filter(created_at__gte=d_start, created_at__lt=d_end)
+        daily_rows.append({
+            'date': d_start,
+            'orders': day_orders.count(),
+            'revenue': day_orders.aggregate(s=Sum('subtotal'))['s'] or 0,
+        })
+
+    return render(request, 'cafeteria/admin_reports.html', {
+        'period': period,
+        'totals': totals,
+        'by_menu': by_menu,
+        'by_payment': by_payment,
+        'daily_rows': daily_rows,
+    })
+
+
+@login_required
+@user_passes_test(is_admin)
+def cafeteria_refunds_view(request):
+    """Refund trail."""
+    cancelled = Order.objects.filter(cancelled_at__isnull=False).select_related('customer').order_by('-cancelled_at')[:100]
+    return render(request, 'cafeteria/admin_refunds.html', {'refunds': cancelled})
+
+
+@login_required
+@user_passes_test(is_admin)
+def cafeteria_staff_view(request):
+    """Staff management with card layout + credit progress."""
+    staff = StaffUser.objects.filter(is_active=True).order_by('staff_id')
+    return render(request, 'cafeteria/admin_staff.html', {'staff': staff})
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def cafeteria_staff_adjust_credit_ajax(request, user_id):
+    """Admin: adjust a staff member's credit balance."""
+    user = get_object_or_404(StaffUser, pk=user_id)
+    try:
+        amount = Decimal(request.POST.get('amount', '0'))
+        notes = request.POST.get('notes', 'Admin adjustment')
+        with transaction.atomic():
+            user.credit_balance += amount
+            user.save(update_fields=['credit_balance'])
+            CreditTransaction.objects.create(
+                user=user, type='admin_adjust', amount=amount,
+                balance_after=user.credit_balance, notes=notes,
+            )
+        return JsonResponse({'success': True, 'new_balance': str(user.credit_balance)})
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)})

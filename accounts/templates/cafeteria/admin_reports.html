@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block title %}Cafeteria Reports{% endblock %}
+{% block content %}
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="page-title">Revenue Reports</div>
+      <div class="page-subtitle">{{ period|title }} summary</div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <a href="?period=day" class="btn {% if period == 'day' %}btn-primary{% else %}btn-secondary{% endif %}">Today</a>
+      <a href="?period=week" class="btn {% if period == 'week' %}btn-primary{% else %}btn-secondary{% endif %}">Week</a>
+      <a href="?period=month" class="btn {% if period == 'month' %}btn-primary{% else %}btn-secondary{% endif %}">Month</a>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:24px">
+    <div class="card"><div style="font-size:11px;color:var(--text3);letter-spacing:2px;font-weight:700">TOTAL REVENUE</div><div class="mono" style="font-size:24px;color:var(--accent3);margin-top:6px">S${{ totals.revenue|floatformat:2 }}</div></div>
+    <div class="card"><div style="font-size:11px;color:var(--text3);letter-spacing:2px;font-weight:700">CREDITS USED</div><div class="mono" style="font-size:24px;color:var(--accent);margin-top:6px">S${{ totals.credits|floatformat:2 }}</div></div>
+    <div class="card"><div style="font-size:11px;color:var(--text3);letter-spacing:2px;font-weight:700">REFUNDS</div><div class="mono" style="font-size:24px;color:var(--danger);margin-top:6px">S${{ totals.refunds|floatformat:2 }}</div></div>
+    <div class="card"><div style="font-size:11px;color:var(--text3);letter-spacing:2px;font-weight:700">NET REVENUE</div><div class="mono" style="font-size:24px;color:var(--text);margin-top:6px">S${{ totals.net|floatformat:2 }}</div></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+    <div class="card">
+      <h2 class="mono" style="font-size:14px;color:var(--accent);margin-bottom:12px">BY MENU TYPE</h2>
+      <table style="width:100%"><tbody>
+        {% for k, v in by_menu.items %}
+        <tr><td>{{ k|capfirst }}</td><td class="mono" style="text-align:right">{{ v.count|default:0 }}</td><td class="mono" style="text-align:right">S${{ v.revenue|default:0|floatformat:2 }}</td></tr>
+        {% endfor %}
+      </tbody></table>
+    </div>
+    <div class="card">
+      <h2 class="mono" style="font-size:14px;color:var(--accent);margin-bottom:12px">BY PAYMENT METHOD</h2>
+      <table style="width:100%"><tbody>
+        {% for k, v in by_payment.items %}<tr><td>{{ k|capfirst }}</td><td class="mono" style="text-align:right">{{ v.count|default:0 }}</td><td class="mono" style="text-align:right">S${{ v.revenue|default:0|floatformat:2 }}</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+  </div>
+
+  <div class="card" style="padding:0">
+    <h2 class="mono" style="font-size:14px;color:var(--accent);padding:16px">DAILY BREAKDOWN</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Date</th><th>Orders</th><th>Revenue</th></tr></thead>
+      <tbody>
+        {% for r in daily_rows %}<tr><td>{{ r.date|date:"D · d M" }}</td><td class="mono">{{ r.orders }}</td><td class="mono">S${{ r.revenue|floatformat:2 }}</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+</div>
+{% endblock %}

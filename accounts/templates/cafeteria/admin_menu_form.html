@@ -68,9 +68,46 @@
       </div>
     </div>
 
-    <button type="submit" class="btn btn-primary btn-full">
+    <!-- Cafe Bar customization builder -->
+    <div id="customBuilder" style="display:none;border-top:1px solid var(--border);padding-top:16px;margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <h3 style="font-family:var(--mono);font-size:13px;color:var(--accent);letter-spacing:1px">CUSTOMIZATION OPTIONS (CAFE BAR)</h3>
+        <button type="button" onclick="addGroup()" class="btn btn-secondary btn-sm">+ Add Group</button>
+      </div>
+      <div id="groupsList"></div>
+      <input type="hidden" name="customizations_json" id="customizations_json">
+      <div class="hint">e.g. "Hot or Iced" with choices [Hot, Iced]. Customers will tap to select at the kiosk.</div>
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-full" style="margin-top:16px">
       {% if item %}Save Changes{% else %}Add Menu Item{% endif %}
     </button>
   </form>
+
+<script>
+// Show customization builder only when menu_type = cafe_bar.
+const typeSelect = document.querySelector('select[name="menu_type"]');
+const builder = document.getElementById('customBuilder');
+function updateBuilder() { builder.style.display = typeSelect.value === 'cafe_bar' ? '' : 'none'; }
+typeSelect.addEventListener('change', updateBuilder);
+updateBuilder();
+
+let groups = {{ item.customizations|default:"[]"|safe }};
+function render() {
+  document.getElementById('groupsList').innerHTML = groups.map((g, i) => `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <input type="text" value="${g.name || ''}" placeholder="Group name (e.g. Hot or Iced)" onchange="groups[${i}].name = this.value" style="flex:1;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)">
+        <button type="button" onclick="delGroup(${i})" class="btn btn-sm" style="color:var(--danger)">✕</button>
+      </div>
+      <input type="text" value="${(g.choices || []).join(', ')}" placeholder="Choices comma-separated (e.g. Hot, Iced)" onchange="groups[${i}].choices = this.value.split(',').map(s => s.trim()).filter(Boolean)" style="width:100%;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)">
+    </div>
+  `).join('');
+  document.getElementById('customizations_json').value = JSON.stringify(groups);
+}
+function addGroup() { groups.push({ name: '', choices: [] }); render(); }
+function delGroup(i) { groups.splice(i, 1); render(); }
+render();
+</script>
 </div>
 {% endblock %}

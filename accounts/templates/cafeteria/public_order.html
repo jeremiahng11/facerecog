@@ -1,0 +1,166 @@
+{% extends 'cafeteria/_base_cafeteria.html' %}
+{% block title %}Walk-in Order{% endblock %}
+{% block extra_head %}
+<style>
+  .wrap { max-width: 900px; margin: 0 auto; padding: 20px; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .header h1 { font-size: 24px; font-weight: 800; color: var(--cafe); }
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .tab-btn { flex: 1; padding: 10px; border-radius: 8px; background: #fff; border: 1px solid var(--border); font-weight: 600; cursor: pointer; }
+  .tab-btn.active { background: var(--cafe); color: #fff; border-color: var(--cafe); }
+  .items-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+  .item-card { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
+  .item-card .price { font-size: 18px; font-weight: 800; color: var(--cafe); }
+  .add-btn { width: 32px; height: 32px; border-radius: 8px; background: var(--cafe); color: #fff; border: none; font-size: 18px; font-weight: 700; cursor: pointer; }
+  .cart-card { position: sticky; top: 10px; }
+  .cart-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .cart-item .n { flex: 1; font-size: 13px; }
+  .pay-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+  .pay-opt { padding: 10px; border: 2px solid var(--border); border-radius: 8px; background: #fff; cursor: pointer; text-align: center; font-weight: 600; font-size: 13px; }
+  .pay-opt.active { border-color: var(--cafe); background: #fef3c7; color: var(--cafe); }
+  .main-grid { display: grid; grid-template-columns: 1fr 340px; gap: 20px; }
+  @media (max-width: 800px) { .main-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="wrap">
+  <div class="header">
+    <h1>🛒 Walk-in Order</h1>
+    <a href="/cafeteria/kiosk/" class="btn btn-secondary">← Back</a>
+  </div>
+
+  <div class="main-grid">
+    <div>
+      <div class="tabs">
+        {% if menu_type == 'kitchen' %}
+        <button class="tab-btn active" data-tab="halal" onclick="switchTab('halal')">🟢 Halal</button>
+        <button class="tab-btn" data-tab="non_halal" onclick="switchTab('non_halal')">🔵 Non-Halal</button>
+        {% else %}
+        <button class="tab-btn active" data-tab="cafe_bar">☕ Cafe Bar</button>
+        {% endif %}
+      </div>
+      {% for type_key, items in items_by_type.items %}
+      <div class="tab-pane" data-pane="{{ type_key }}" {% if menu_type == 'kitchen' and type_key != 'halal' %}style="display:none"{% endif %}>
+        <div class="items-grid">
+          {% for item in items %}
+          <div class="item-card {% if item.is_sold_out %}sold-out{% endif %}">
+            <div style="font-weight:700">{{ item.name }}</div>
+            <div class="text-sm text-muted">{{ item.description|truncatechars:50 }}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+              <div class="price">S${{ item.public_price }}</div>
+              <button class="add-btn" data-id="{{ item.id }}" data-name="{{ item.name }}" data-price="{{ item.public_price }}" data-menu="{{ item.menu_type }}" {% if item.is_sold_out %}disabled{% endif %}>+</button>
+            </div>
+          </div>
+          {% empty %}<div class="text-muted">No items</div>{% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="card cart-card">
+      <h3 style="font-weight:800;margin-bottom:8px">Your Order</h3>
+      <div class="form-group">
+        <label>Your Name</label>
+        <input type="text" id="customerName" placeholder="e.g. John">
+      </div>
+      <div class="form-group">
+        <label>Email (optional)</label>
+        <input type="email" id="customerEmail" placeholder="receipt@email.com">
+      </div>
+      <div id="cartItems" style="min-height:60px"><div class="text-muted text-sm" style="text-align:center;padding:20px 0">Cart is empty</div></div>
+
+      <div style="border-top:1.5px dashed var(--border);padding-top:10px;margin-top:10px;display:flex;justify-content:space-between;font-weight:800;font-size:16px">
+        <span>Total</span><span id="total" style="color:var(--cafe)">S$0.00</span>
+      </div>
+
+      <div style="font-size:12px;font-weight:700;color:var(--text3);margin-top:14px">PAYMENT METHOD</div>
+      <div class="pay-opts">
+        <div class="pay-opt active" data-method="cash" onclick="setPay('cash', this)">💵 Cash</div>
+        <div class="pay-opt" data-method="paynow" onclick="setPay('paynow', this)">📱 PayNow</div>
+        <div class="pay-opt" data-method="stripe" onclick="setPay('stripe', this)" style="grid-column:span 2">💳 Card (Stripe)</div>
+      </div>
+
+      <button class="btn btn-primary btn-full" id="checkoutBtn" disabled onclick="checkout()" style="background:var(--cafe)">Pay &amp; Get QR →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const CSRF = '{{ csrf_token }}';
+function getCSRF() { const m = document.cookie.match(/csrftoken=([^;]+)/); return m ? m[1] : CSRF; }
+
+let cart = {};
+let currentTab = '{% if menu_type == "kitchen" %}halal{% else %}cafe_bar{% endif %}';
+let payMethod = 'cash';
+
+function switchTab(t) {
+  currentTab = t;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  document.querySelectorAll('.tab-pane').forEach(p => p.style.display = (p.dataset.pane === t) ? '' : 'none');
+}
+
+function setPay(m, el) {
+  payMethod = m;
+  document.querySelectorAll('.pay-opt').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function renderCart() {
+  const keys = Object.keys(cart);
+  const el = document.getElementById('cartItems');
+  if (!keys.length) {
+    el.innerHTML = '<div class="text-muted text-sm" style="text-align:center;padding:20px 0">Cart is empty</div>';
+  } else {
+    el.innerHTML = keys.map(k => {
+      const i = cart[k];
+      return `<div class="cart-item">
+        <div class="n"><strong>${i.name}</strong><br><span class="text-xs text-dim">S$${i.price} × ${i.qty}</span></div>
+        <button onclick="changeQty(${k}, -1)" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:#fff">−</button>
+        <span>${i.qty}</span>
+        <button onclick="changeQty(${k}, 1)" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:#fff">+</button>
+      </div>`;
+    }).join('');
+  }
+  const total = keys.reduce((s, k) => s + cart[k].price * cart[k].qty, 0);
+  document.getElementById('total').textContent = 'S$' + total.toFixed(2);
+  document.getElementById('checkoutBtn').disabled = keys.length === 0;
+}
+
+function changeQty(id, d) {
+  if (!cart[id]) return;
+  cart[id].qty += d;
+  if (cart[id].qty <= 0) delete cart[id];
+  renderCart();
+}
+
+document.querySelectorAll('.add-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const id = btn.dataset.id;
+    if (!cart[id]) cart[id] = { id, name: btn.dataset.name, price: parseFloat(btn.dataset.price), menu: btn.dataset.menu, qty: 1 };
+    else cart[id].qty += 1;
+    renderCart();
+  });
+});
+
+async function checkout() {
+  const name = document.getElementById('customerName').value.trim() || 'Walk-in';
+  const email = document.getElementById('customerEmail').value.trim();
+  const items = Object.values(cart).map(i => ({ id: parseInt(i.id), quantity: i.qty, customizations: {} }));
+  // Determine menu_type — use tab if kitchen, else cafe_bar.
+  const menus = [...new Set(Object.values(cart).map(i => i.menu))];
+  if (menus.length > 1) { alert('Please order one menu type at a time.'); return; }
+  const menu_type = menus[0];
+
+  const btn = document.getElementById('checkoutBtn');
+  btn.disabled = true; btn.textContent = 'Processing…';
+
+  const resp = await fetch('/cafeteria/api/public-place-order/', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+    body: JSON.stringify({ menu_type, items, public_name: name, payment_method: payMethod, email }),
+  });
+  const data = await resp.json();
+  if (data.success) window.location = data.redirect;
+  else { alert(data.message); btn.disabled = false; btn.textContent = 'Pay & Get QR →'; }
+}
+</script>
+{% endblock %}

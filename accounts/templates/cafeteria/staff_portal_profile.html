@@ -1,0 +1,49 @@
+{% extends 'cafeteria/_staff_portal_base.html' %}
+{% block title %}Profile{% endblock %}
+{% block header_title %}Profile{% endblock %}
+{% block content %}
+<div class="credit-card">
+  <div class="label">CAFETERIA CREDIT</div>
+  <div class="amount">S${{ user.credit_balance|floatformat:2 }}</div>
+  <div class="sub">Monthly allowance: S${{ user.monthly_credit|floatformat:2 }}</div>
+  <div class="sub">Spent this month: S${{ month_spent|floatformat:2 }}</div>
+</div>
+
+<div class="card">
+  <h3 style="font-size:15px;margin-bottom:12px">👤 Account</h3>
+  <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px">
+    <span style="color:var(--text3)">Name</span><strong>{{ user.display_name }}</strong>
+  </div>
+  <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px">
+    <span style="color:var(--text3)">Staff ID</span><strong>{{ user.staff_id }}</strong>
+  </div>
+  <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px">
+    <span style="color:var(--text3)">Email</span><strong>{{ user.email }}</strong>
+  </div>
+  <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px">
+    <span style="color:var(--text3)">Face ID</span>
+    {% if user.face_registered %}<span class="badge badge-ready">✓ Enrolled</span>{% else %}<span class="badge badge-cancelled">Not Enrolled</span>{% endif %}
+  </div>
+</div>
+
+<form method="post" class="card">
+  {% csrf_token %}
+  <h3 style="font-size:15px;margin-bottom:12px">🔑 Change Kiosk PIN</h3>
+  <div style="margin-bottom:10px">
+    <input type="password" name="kiosk_pin" placeholder="4-digit PIN" maxlength="6" pattern="[0-9]{4,6}" inputmode="numeric"
+      style="width:100%;padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:15px;font-family:inherit;outline:none" required>
+  </div>
+  <button type="submit" class="btn btn-primary btn-full">Update PIN</button>
+</form>
+
+<div class="card" style="text-align:center">
+  <a href="{% url 'profile' %}" style="font-size:13px;color:var(--primary);font-weight:600">Manage Face ID →</a>
+</div>
+
+<div style="margin-top:16px;text-align:center">
+  <form method="post" action="{% url 'logout' %}" style="display:inline">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-secondary" style="color:var(--danger)">Logout</button>
+  </form>
+</div>
+{% endblock %}

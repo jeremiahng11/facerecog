@@ -1,0 +1,121 @@
+{% extends 'cafeteria/_staff_portal_base.html' %}
+{% block title %}Order{% endblock %}
+{% block header_title %}Order{% endblock %}
+{% block extra_head %}
+<style>
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .tab-btn { flex: 1; padding: 10px; border-radius: 8px; background: #fff; border: 1px solid var(--border); font-weight: 600; font-size: 13px; cursor: pointer; }
+  .tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .item {
+    background: #fff; border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .item.sold-out { opacity: 0.45; }
+  .item .img { width: 56px; height: 56px; border-radius: 8px; background: var(--bg); display:flex; align-items:center; justify-content:center; font-size: 24px; background-size: cover; flex-shrink: 0; }
+  .item .body { flex: 1; }
+  .item .name { font-weight: 700; font-size: 14px; }
+  .item .desc { font-size: 11px; color: var(--text3); }
+  .item .price { font-weight: 800; color: var(--primary); font-size: 15px; margin-top: 2px; }
+  .add-btn { width: 34px; height: 34px; border-radius: 8px; background: var(--success); color: #fff; border: none; font-size: 20px; font-weight: 700; cursor: pointer; }
+  .qty-ctl { display: flex; align-items: center; gap: 6px; }
+  .qty-ctl button { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border); background: #fff; font-weight: 700; }
+  .cart-bar {
+    position: fixed; bottom: 72px; left: 0; right: 0;
+    background: var(--primary); color: #fff; padding: 14px 20px;
+    display: flex; justify-content: space-between; align-items: center;
+    display: none;
+  }
+  .cart-bar.active { display: flex; }
+  .cart-bar .amt { font-weight: 800; font-size: 16px; }
+  .cart-bar button { background: #fff; color: var(--primary); padding: 8px 14px; border-radius: 8px; border: none; font-weight: 700; font-size: 13px; cursor: pointer; }
+  .empty { text-align: center; padding: 40px 20px; color: var(--text3); font-size: 13px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="tabs">
+  <button class="tab-btn active" data-tab="halal" onclick="switchTab('halal')">🟢 Halal</button>
+  <button class="tab-btn" data-tab="non_halal" onclick="switchTab('non_halal')">🔵 Non-Halal</button>
+  <button class="tab-btn" data-tab="cafe_bar" onclick="switchTab('cafe_bar')">☕ Cafe</button>
+</div>
+
+{% for type_key, items in tabs.items %}
+<div class="tab-pane" data-pane="{{ type_key }}" {% if type_key != 'halal' %}style="display:none"{% endif %}>
+  {% for item in items %}
+  <div class="item {% if item.is_sold_out %}sold-out{% endif %}">
+    <div class="img" {% if item.photo %}style="background-image:url('{{ item.photo.url }}')"{% endif %}>{% if not item.photo %}🍲{% endif %}</div>
+    <div class="body">
+      <div class="name">{{ item.name }}</div>
+      <div class="desc">{{ item.description|truncatechars:50 }}</div>
+      <div class="price">S${{ item.staff_price }}</div>
+    </div>
+    <button class="add-btn" data-id="{{ item.id }}" data-name="{{ item.name }}" data-price="{{ item.staff_price }}" data-menu="{{ item.menu_type }}" {% if item.is_sold_out %}disabled{% endif %}>+</button>
+  </div>
+  {% empty %}<div class="empty">No items</div>{% endfor %}
+</div>
+{% endfor %}
+
+<div class="cart-bar" id="cartBar">
+  <div><span id="cartCount">0</span> items · <span class="amt" id="cartTotal">S$0.00</span></div>
+  <button onclick="checkout()">Checkout →</button>
+</div>
+
+<script>
+const CSRF = '{{ csrf_token }}';
+function getCSRF() { const m = document.cookie.match(/csrftoken=([^;]+)/); return m ? m[1] : CSRF; }
+
+const tabs = {
+  'halal': [{% for i in halal_items %}{id:{{ i.id }},name:"{{ i.name|escapejs }}",price:{{ i.staff_price }},menu:"halal",stock:{{ i.quantity_remaining }}}{% if not forloop.last %},{% endif %}{% endfor %}],
+  'non_halal': [{% for i in non_halal_items %}{id:{{ i.id }},name:"{{ i.name|escapejs }}",price:{{ i.staff_price }},menu:"non_halal",stock:{{ i.quantity_remaining }}}{% if not forloop.last %},{% endif %}{% endfor %}],
+  'cafe_bar': [{% for i in cafe_items %}{id:{{ i.id }},name:"{{ i.name|escapejs }}",price:{{ i.staff_price }},menu:"cafe_bar",stock:{{ i.quantity_remaining }}}{% if not forloop.last %},{% endif %}{% endfor %}],
+};
+
+let cart = {};  // id → {id, name, price, menu, qty}
+let currentTab = 'halal';
+
+function switchTab(t) {
+  currentTab = t;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  document.querySelectorAll('.tab-pane').forEach(p => p.style.display = (p.dataset.pane === t) ? '' : 'none');
+}
+
+function renderCart() {
+  const keys = Object.keys(cart);
+  const bar = document.getElementById('cartBar');
+  const total = keys.reduce((s, k) => s + cart[k].price * cart[k].qty, 0);
+  const count = keys.reduce((s, k) => s + cart[k].qty, 0);
+  document.getElementById('cartCount').textContent = count;
+  document.getElementById('cartTotal').textContent = 'S$' + total.toFixed(2);
+  bar.classList.toggle('active', keys.length > 0);
+}
+
+document.querySelectorAll('.add-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const id = btn.dataset.id, name = btn.dataset.name, price = parseFloat(btn.dataset.price), menu = btn.dataset.menu;
+    if (!cart[id]) cart[id] = { id, name, price, menu, qty: 1 };
+    else cart[id].qty += 1;
+    renderCart();
+  });
+});
+
+async function checkout() {
+  // Group items by menu (server requires one menu_type per order).
+  const menus = {};
+  Object.values(cart).forEach(it => {
+    menus[it.menu] = menus[it.menu] || [];
+    menus[it.menu].push({ id: parseInt(it.id), quantity: it.qty, customizations: {} });
+  });
+  const menuKeys = Object.keys(menus);
+  if (menuKeys.length > 1) { alert('Please order from one menu at a time.'); return; }
+  const menu_type = menuKeys[0];
+
+  const resp = await fetch('/cafeteria/api/place-order/', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+    body: JSON.stringify({ menu_type, items: menus[menu_type], collection_time_minutes: 0 }),
+  });
+  const data = await resp.json();
+  if (data.success) window.location = data.redirect;
+  else alert(data.message);
+}
+</script>
+{% endblock %}

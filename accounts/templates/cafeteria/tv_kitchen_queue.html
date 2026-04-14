@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Kitchen Queue</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f7fb; --primary: #1e56b8; --accent: #00a3d9;
+    --success: #10b981; --warn: #f59e0b;
+    --text: #0f2746; --text2: #3b5a82; --text3: #8aa5c4;
+    --border: #d6e2f0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'Inter', sans-serif; min-height: 100vh;
+    padding: 30px 40px;
+  }
+  .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+  .top h1 { font-size: 42px; font-weight: 800; color: var(--primary); letter-spacing: 2px; }
+  .top .clock { font-size: 28px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; height: calc(100vh - 120px); }
+  .col { background: #fff; border-radius: 20px; padding: 24px; display: flex; flex-direction: column; box-shadow: 0 2px 12px rgba(15,39,70,0.06); }
+  .col-title { font-size: 24px; font-weight: 800; padding-bottom: 16px; border-bottom: 3px solid; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+  .col.preparing .col-title { color: var(--warn); border-bottom-color: var(--warn); }
+  .col.ready .col-title { color: var(--success); border-bottom-color: var(--success); }
+  .count-badge { font-size: 18px; background: currentColor; color: #fff; padding: 2px 14px; border-radius: 100px; }
+  .col.preparing .count-badge { color: #fff; background: var(--warn); }
+  .col.ready .count-badge { color: #fff; background: var(--success); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; overflow-y: auto; }
+  .tile {
+    padding: 18px; border-radius: 14px; text-align: center;
+    animation: fadeIn 0.3s ease;
+    border: 2px solid;
+  }
+  .tile.halal { background: #d5f5e8; border-color: var(--success); }
+  .tile.non-halal { background: #dbeafe; border-color: #2563eb; }
+  .tile.public { background: #fef3c7; border-color: #c2410c; }
+  .tile.cafe { background: #fef3c7; border-color: #c2410c; }
+  .tile .num { font-size: 48px; font-weight: 800; letter-spacing: 3px; color: var(--text); }
+  .tile .label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: var(--text2); margin-top: 4px; }
+  .tile .items { font-size: 12px; color: var(--text2); margin-top: 6px; }
+  .empty { color: var(--text3); text-align: center; padding: 60px 20px; font-size: 18px; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body>
+  <div class="top">
+    <h1>🍚 KITCHEN QUEUE</h1>
+    <div class="clock" id="clock"></div>
+  </div>
+  <div class="columns">
+    <div class="col preparing">
+      <div class="col-title">⏳ Preparing <span class="count-badge" id="prepCount">0</span></div>
+      <div class="grid" id="prepGrid"><div class="empty">No orders</div></div>
+    </div>
+    <div class="col ready">
+      <div class="col-title">✅ Ready to Collect <span class="count-badge" id="readyCount">0</span></div>
+      <div class="grid" id="readyGrid"><div class="empty">No orders</div></div>
+    </div>
+  </div>
+
+<script>
+function fmt(order) {
+  let cls = 'halal';
+  if (order.is_public) cls = 'public';
+  else if (order.menu_type === 'non_halal') cls = 'non-halal';
+  const itemsText = order.items.slice(0, 2).map(i => i.qty + '× ' + i.name).join(' · ');
+  return `<div class="tile ${cls}">
+    <div class="num">${order.order_number}</div>
+    <div class="label">${order.menu_label}</div>
+    <div class="items">${itemsText}${order.items.length > 2 ? ' ...' : ''}</div>
+  </div>`;
+}
+async function refresh() {
+  try {
+    const resp = await fetch('/cafeteria/api/tv-queue/?scope=kitchen');
+    const data = await resp.json();
+    document.getElementById('prepCount').textContent = data.preparing.length;
+    document.getElementById('readyCount').textContent = data.ready.length;
+    document.getElementById('prepGrid').innerHTML = data.preparing.length
+      ? data.preparing.map(fmt).join('')
+      : '<div class="empty">No orders in preparation</div>';
+    document.getElementById('readyGrid').innerHTML = data.ready.length
+      ? data.ready.map(fmt).join('')
+      : '<div class="empty">Nothing ready yet</div>';
+  } catch (e) {}
+}
+function tickClock() {
+  const d = new Date();
+  document.getElementById('clock').textContent = d.toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+refresh(); setInterval(refresh, 3000);
+tickClock(); setInterval(tickClock, 1000);
+</script>
+</body>
+</html>

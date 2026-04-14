@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% block title %}Cafeteria Dashboard{% endblock %}
+{% block extra_head %}
+<style>
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .kpi { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+  .kpi .label { font-size: 11px; letter-spacing: 1.5px; color: var(--text3); font-weight: 700; text-transform: uppercase; }
+  .kpi .value { font-family: var(--mono); font-size: 28px; color: var(--accent); margin-top: 6px; }
+  .kpi .value.green { color: var(--accent3); }
+  .kpi .value.red { color: var(--danger); }
+  .chart-bar { display: flex; align-items: flex-end; gap: 6px; height: 140px; margin-top: 10px; }
+  .chart-bar .bar { flex: 1; background: linear-gradient(to top, var(--accent), var(--accent2)); border-radius: 4px 4px 0 0; position: relative; min-height: 2px; }
+  .chart-bar .bar .val { position: absolute; top: -18px; left: 0; right: 0; text-align: center; font-size: 10px; color: var(--text3); }
+  .chart-bar .bar .lbl { position: absolute; bottom: -22px; left: 0; right: 0; text-align: center; font-size: 10px; color: var(--text3); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="page-title">Cafeteria Dashboard</div>
+      <div class="page-subtitle">Today's overview and weekly trends</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <a href="{% url 'cafeteria_admin_menu_list' %}" class="btn btn-secondary">Menu</a>
+      <a href="{% url 'cafeteria_admin_stock' %}" class="btn btn-secondary">Stock</a>
+      <a href="{% url 'cafeteria_admin_orders' %}" class="btn btn-secondary">Orders</a>
+      <a href="{% url 'cafeteria_admin_reports' %}" class="btn btn-secondary">Reports</a>
+      <a href="{% url 'cafeteria_admin_staff' %}" class="btn btn-secondary">Staff</a>
+      <a href="{% url 'cafeteria_admin_refunds' %}" class="btn btn-secondary">Refunds</a>
+    </div>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi"><div class="label">Revenue Today</div><div class="value green">S${{ today_revenue|floatformat:2 }}</div></div>
+    <div class="kpi"><div class="label">Orders Today</div><div class="value">{{ today_count }}</div></div>
+    <div class="kpi"><div class="label">Credits Used</div><div class="value" style="color:var(--accent2)">S${{ today_credits|floatformat:2 }}</div></div>
+    <div class="kpi"><div class="label">Refunds Today</div><div class="value red">{{ today_refunds }}</div></div>
+  </div>
+
+  <div class="card">
+    <h2 style="font-family:var(--mono);font-size:14px;color:var(--accent);letter-spacing:1px;margin-bottom:6px">REVENUE — LAST 7 DAYS</h2>
+    <div class="chart-bar">
+      {% for d in daily %}
+      <div class="bar" style="height: {% widthratio d.revenue daily_max 100 %}%">
+        <div class="val">S${{ d.revenue|floatformat:0 }}</div>
+        <div class="lbl">{{ d.date|date:"D" }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="margin-top:32px"></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px">
+    <div class="card">
+      <h2 style="font-family:var(--mono);font-size:14px;color:var(--accent);letter-spacing:1px;margin-bottom:10px">TOP 5 THIS WEEK</h2>
+      {% for t in top_items %}
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(30,48,80,0.3);font-size:13px">
+        <span>{{ t.name_snapshot }}</span>
+        <strong class="mono">{{ t.total }} sold</strong>
+      </div>
+      {% empty %}<p class="text-dim">No data</p>{% endfor %}
+    </div>
+    <div class="card">
+      <h2 style="font-family:var(--mono);font-size:14px;color:var(--accent);letter-spacing:1px;margin-bottom:10px">RECENT ORDERS</h2>
+      {% for o in recent_orders %}
+      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px">
+        <span class="mono">{{ o.order_number }}</span>
+        <span>{{ o.customer.display_name|default:o.public_name|default:"—" }}</span>
+        <span class="badge badge-{{ o.status }}" style="font-size:10px">{{ o.get_status_display }}</span>
+      </div>
+      {% empty %}<p class="text-dim">No orders yet</p>{% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,131 @@
+{% extends 'cafeteria/_base_cafeteria.html' %}
+{% block title %}Cafe Bar Counter{% endblock %}
+{% block extra_head %}
+<style>
+  body { background: var(--bg); }
+  .top { padding: 16px 24px; background: #fff; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .top h1 { font-size: 22px; font-weight: 800; }
+  .scan-hint { background: var(--primary-light); color: var(--primary); padding: 10px 16px; font-size: 13px; text-align: center; font-weight: 600; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 0; min-height: calc(100vh - 120px); }
+  @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+  .pane { padding: 20px; overflow-y: auto; }
+  .pane.left { background: #fff; border-right: 1px solid var(--border); }
+  .pane-title { font-size: 13px; font-weight: 700; letter-spacing: 2px; color: var(--text3); text-transform: uppercase; margin-bottom: 16px; }
+  .order-card { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 12px; box-shadow: var(--shadow); }
+  .order-card.ready { background: var(--success-soft); border-color: var(--success); }
+  .oc-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .oc-num { font-size: 26px; font-weight: 800; color: var(--primary); letter-spacing: 1px; }
+  .oc-num.ready { color: var(--success); font-size: 38px; }
+  .oc-time { font-size: 11px; color: var(--text3); }
+  .oc-items { border-top: 1px dashed var(--border); padding-top: 8px; }
+  .oc-items li { list-style: none; padding: 3px 0; font-size: 13px; }
+  .oc-items .cust { color: var(--text3); font-size: 11px; margin-left: 14px; }
+  .oc-actions { margin-top: 10px; }
+  .oc-actions button { width: 100%; padding: 10px; border-radius: 8px; border: none; font-weight: 700; cursor: pointer; font-size: 14px; }
+  .empty { text-align: center; padding: 40px; color: var(--text3); font-size: 14px; }
+  .scan-popup { position: fixed; inset: 0; background: rgba(15,39,70,0.55); display: none; align-items: center; justify-content: center; z-index: 100; }
+  .scan-popup.active { display: flex; }
+  .scan-modal { background: #fff; border-radius: 16px; padding: 28px; max-width: 420px; width: 90%; text-align: center; }
+  .scan-modal .emoji { font-size: 54px; }
+  .scan-modal h2 { font-size: 20px; font-weight: 800; margin: 10px 0; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="top">
+  <h1>☕ Cafe Bar Counter</h1>
+  <div class="text-sm text-muted">{{ incoming|length }} incoming · {{ ready|length }} ready</div>
+</div>
+<div class="scan-hint">📷 Scanner ready — scan a customer's QR to validate
+  <input type="text" id="scanInput" style="position:absolute;left:-9999px" autofocus>
+</div>
+
+<div class="split">
+  <div class="pane left">
+    <div class="pane-title">⏳ Incoming Orders ({{ incoming|length }})</div>
+    {% for order in incoming %}
+    <div class="order-card">
+      <div class="oc-head">
+        <div class="oc-num">{{ order.order_number }}</div>
+        <div class="oc-time">
+          {% if order.collection_time_minutes > 0 %}+{{ order.collection_time_minutes }} min{% else %}NOW{% endif %}
+          · {{ order.created_at|time:"H:i" }}
+        </div>
+      </div>
+      <div class="text-sm text-muted">{{ order.customer.display_name|default:order.public_name }}</div>
+      <ul class="oc-items">
+        {% for item in order.items.all %}
+        <li><strong>{{ item.quantity }}×</strong> {{ item.name_snapshot }}
+          {% if item.customizations %}<div class="cust">{% for k, v in item.customizations.items %}{{ k }}: {{ v }}{% if not forloop.last %} · {% endif %}{% endfor %}</div>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      <div class="oc-actions">
+        <button style="background:var(--success);color:#fff" onclick="markReady({{ order.id }})">Ready →</button>
+      </div>
+    </div>
+    {% empty %}<div class="empty">No orders</div>{% endfor %}
+  </div>
+
+  <div class="pane right">
+    <div class="pane-title">✅ Ready for Collection ({{ ready|length }})</div>
+    {% for order in ready %}
+    <div class="order-card ready">
+      <div class="oc-head">
+        <div class="oc-num ready">{{ order.order_number }}</div>
+        <div class="oc-time">Ready {{ order.ready_at|time:"H:i" }}</div>
+      </div>
+      <div class="text-sm text-muted">{{ order.customer.display_name|default:order.public_name }}</div>
+    </div>
+    {% empty %}<div class="empty">Nothing ready</div>{% endfor %}
+  </div>
+</div>
+
+<!-- Scan popup -->
+<div class="scan-popup" id="scanPopup"><div class="scan-modal" id="scanModal"><div id="scanBody"></div></div></div>
+
+<script>
+const CSRF = '{{ csrf_token }}';
+function getCSRF() { const m = document.cookie.match(/csrftoken=([^;]+)/); return m ? m[1] : CSRF; }
+
+async function markReady(id) {
+  await fetch(`/cafeteria/api/kitchen/mark-ready/${id}/`, { method: 'POST', headers: { 'X-CSRFToken': getCSRF() } });
+  location.reload();
+}
+async function markCollected(id) {
+  await fetch(`/cafeteria/api/kitchen/mark-collected/${id}/`, { method: 'POST', headers: { 'X-CSRFToken': getCSRF() } });
+  closePopup(); location.reload();
+}
+function closePopup() { document.getElementById('scanPopup').classList.remove('active'); document.getElementById('scanInput').focus(); }
+
+let scanBuffer = '', scanTimer = null;
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { if (scanBuffer.length > 10) processScan(scanBuffer); scanBuffer = ''; return; }
+  if (e.key.length === 1) scanBuffer += e.key;
+  clearTimeout(scanTimer); scanTimer = setTimeout(() => { scanBuffer = ''; }, 200);
+});
+
+async function processScan(token) {
+  const resp = await fetch('/cafeteria/api/scan-qr/', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+    body: JSON.stringify({ token, scanner_counter: 'cafe_bar' }),
+  });
+  const data = await resp.json();
+  let html = '';
+  if (data.result === 'valid') {
+    html = `<div class="emoji">✅</div><h2 style="color:var(--success)">Valid</h2>
+      <div style="font-size:32px;font-weight:800;color:var(--primary);margin:10px 0">${data.order_number}</div>
+      <div>${data.customer_name || ''}</div>
+      <ul style="text-align:left;margin:10px 0">${data.items.map(i => '<li>' + i.quantity + '× ' + i.name + '</li>').join('')}</ul>
+      <button class="btn btn-success" style="width:100%" onclick="markCollected(${data.order_id})">Mark Collected</button>`;
+  } else {
+    html = `<div class="emoji">${data.result === 'wrong_counter' ? '⚠️' : data.result === 'duplicate' ? '🚫' : data.result === 'not_ready' ? '⏳' : '❌'}</div>
+      <h2>${data.message || 'Invalid'}</h2>
+      <button class="btn btn-secondary" style="width:100%" onclick="closePopup()">Close</button>`;
+  }
+  document.getElementById('scanBody').innerHTML = html;
+  document.getElementById('scanPopup').classList.add('active');
+}
+setInterval(() => { if (!document.getElementById('scanPopup').classList.contains('active')) document.getElementById('scanInput').focus(); }, 1000);
+setInterval(() => location.reload(), 30000);
+</script>
+{% endblock %}

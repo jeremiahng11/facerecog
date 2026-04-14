@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}Refund Trail{% endblock %}
+{% block content %}
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <div>
+      <div class="page-title">Refund Trail</div>
+      <div class="page-subtitle">Cancelled and refunded orders</div>
+    </div>
+    <a href="{% url 'cafeteria_dashboard' %}" class="btn btn-secondary">← Dashboard</a>
+  </div>
+
+  <div class="card" style="padding:0">
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th>Order</th><th>Customer</th><th>Amount</th><th>Credits Reinstated</th>
+        <th>Reason</th><th>Cancelled At</th>
+      </tr></thead>
+      <tbody>
+        {% for o in refunds %}
+        <tr>
+          <td class="mono text-accent">{{ o.order_number }}</td>
+          <td>{{ o.customer.display_name|default:o.public_name }}</td>
+          <td class="mono">S${{ o.subtotal|floatformat:2 }}</td>
+          <td class="mono">{% if o.credits_applied %}S${{ o.credits_applied|floatformat:2 }}{% else %}—{% endif %}</td>
+          <td class="text-sm text-dim">{{ o.cancel_reason|default:"—" }}</td>
+          <td class="text-sm text-dim">{{ o.cancelled_at|date:"d M H:i" }}</td>
+        </tr>
+        {% empty %}<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3)">No refunds yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+</div>
+{% endblock %}

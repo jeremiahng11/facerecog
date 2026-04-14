@@ -1,0 +1,30 @@
+{% extends 'cafeteria/_base_cafeteria.html' %}
+{% block title %}{{ order.order_number }}{% endblock %}
+{% block content %}
+<div style="max-width:460px;margin:40px auto;padding:20px;text-align:center">
+  <div style="font-size:60px;margin-bottom:10px">✅</div>
+  <h1 style="font-size:28px;font-weight:800;margin-bottom:6px">Order Confirmed</h1>
+  <p style="color:var(--text2);margin-bottom:20px">Show this QR at the counter</p>
+
+  <div class="card" style="background:linear-gradient(135deg,#fef3c7,#fff);box-shadow:var(--shadow-lg)">
+    <div style="font-size:11px;letter-spacing:2px;color:var(--text3);font-weight:700">ORDER NUMBER</div>
+    <div style="font-size:56px;font-weight:800;color:var(--cafe);letter-spacing:4px;margin:6px 0">{{ order.order_number }}</div>
+    <span class="badge badge-cafe">{{ order.get_menu_type_display|upper }}</span>
+    <div style="background:#fff;border-radius:14px;padding:12px;margin:14px 0;display:inline-block">
+      <img src="{{ qr_image }}" style="width:220px;height:220px;display:block">
+    </div>
+    <div style="text-align:left;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px">
+      {% for item in order.items.all %}<div>{{ item.quantity }}× {{ item.name_snapshot }} — S${{ item.subtotal|floatformat:2 }}</div>{% endfor %}
+      <div style="border-top:1px dashed var(--border);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;font-weight:700">
+        <span>Total</span><span>S${{ order.subtotal|floatformat:2 }}</span>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-top:12px">{{ order.public_name }} · {{ order.created_at|date:"d M H:i" }}</div>
+  </div>
+
+  <div style="display:flex;gap:10px;margin-top:20px">
+    <button class="btn btn-secondary" onclick="window.print()">🖨 Print</button>
+    <button class="btn btn-primary" onclick="window.location='/cafeteria/kiosk/'">Done</button>
+  </div>
+</div>
+{% endblock %}

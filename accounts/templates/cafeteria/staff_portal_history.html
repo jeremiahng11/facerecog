@@ -1,0 +1,25 @@
+{% extends 'cafeteria/_staff_portal_base.html' %}
+{% block title %}History{% endblock %}
+{% block header_title %}Order History{% endblock %}
+{% block content %}
+{% for order in orders %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <strong style="font-size:18px;color:var(--primary)">{{ order.order_number }}</strong>
+      <div style="font-size:12px;color:var(--text3)">{{ order.created_at|date:"d M Y · H:i" }}</div>
+    </div>
+    <span class="badge badge-{{ order.status }}">{{ order.get_status_display }}</span>
+  </div>
+  <div style="margin-top:8px;font-size:13px;color:var(--text2)">
+    {% for item in order.items.all %}{{ item.quantity }}× {{ item.name_snapshot }}{% if not forloop.last %}, {% endif %}{% endfor %}
+  </div>
+  <div style="display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:13px">
+    <span>{% if order.credits_applied %}Credits: S${{ order.credits_applied }}{% else %}—{% endif %}</span>
+    <strong>S${{ order.subtotal|floatformat:2 }}</strong>
+  </div>
+</div>
+{% empty %}
+<div class="card" style="text-align:center;padding:40px;color:var(--text3)">No order history</div>
+{% endfor %}
+{% endblock %}

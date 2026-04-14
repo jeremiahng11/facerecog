@@ -1,0 +1,46 @@
+{% extends 'cafeteria/_staff_portal_base.html' %}
+{% block title %}Home{% endblock %}
+{% block header_title %}Hi, {{ user.full_name|cut:" "|slice:":8" }}{% endblock %}
+{% block content %}
+<div class="credit-card">
+  <div class="label">CAFETERIA CREDIT</div>
+  <div class="amount">S${{ user.credit_balance|floatformat:2 }}</div>
+  <div class="sub">Monthly allowance: S${{ user.monthly_credit|floatformat:2 }}</div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+  <a href="{% url 'staff_portal_order' %}" class="btn btn-primary">🍽 Order Now</a>
+  <a href="{% url 'staff_portal_qr' %}" class="btn btn-secondary">🎟️ My QR</a>
+</div>
+
+{% if active %}
+<div class="card" style="border-color:var(--success);background:var(--success-soft)">
+  <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--success)">ACTIVE ORDER</div>
+  <div style="font-size:32px;font-weight:800;color:var(--primary);margin:4px 0">{{ active.order_number }}</div>
+  <div style="font-size:13px">
+    <span class="badge badge-{% if active.status == 'ready' %}ready{% else %}confirmed{% endif %}">
+      {{ active.get_status_display }}
+    </span>
+  </div>
+  <a href="{% url 'staff_portal_qr' %}" class="btn btn-primary btn-full" style="margin-top:12px">Show QR →</a>
+</div>
+{% endif %}
+
+<div style="font-size:11px;font-weight:700;letter-spacing:2px;color:var(--text3);margin:16px 0 8px">RECENT ORDERS</div>
+{% for order in recent %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between">
+    <div>
+      <strong style="color:var(--primary)">{{ order.order_number }}</strong>
+      <div style="font-size:12px;color:var(--text3)">{{ order.created_at|date:"d M · H:i" }}</div>
+    </div>
+    <div style="text-align:right">
+      <span class="badge badge-{{ order.status }}">{{ order.get_status_display }}</span>
+      <div style="font-size:13px;margin-top:4px"><strong>S${{ order.subtotal|floatformat:2 }}</strong></div>
+    </div>
+  </div>
+</div>
+{% empty %}
+<div class="card" style="text-align:center;color:var(--text3)">No orders yet</div>
+{% endfor %}
+{% endblock %}

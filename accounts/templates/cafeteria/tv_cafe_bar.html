@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Cafe Bar Queue</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f7fb; --primary: #c2410c; --accent: #ea580c;
+    --success: #10b981; --warn: #f59e0b;
+    --text: #0f2746; --text2: #3b5a82; --text3: #8aa5c4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif;
+    min-height: 100vh; padding: 30px 40px;
+  }
+  .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+  .top h1 { font-size: 42px; font-weight: 800; color: var(--primary); letter-spacing: 2px; }
+  .clock { font-size: 28px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; height: calc(100vh - 120px); }
+  .col { background: #fff; border-radius: 20px; padding: 24px; box-shadow: 0 2px 12px rgba(15,39,70,0.06); display: flex; flex-direction: column; }
+  .col-title { font-size: 24px; font-weight: 800; padding-bottom: 16px; border-bottom: 3px solid; margin-bottom: 20px; }
+  .col.preparing .col-title { color: var(--warn); border-bottom-color: var(--warn); }
+  .col.ready .col-title { color: var(--success); border-bottom-color: var(--success); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; overflow-y: auto; }
+  .tile { padding: 20px; border-radius: 14px; text-align: center; border: 2px solid; background: #fef3c7; border-color: var(--primary); }
+  .tile .num { font-size: 52px; font-weight: 800; letter-spacing: 3px; color: var(--text); }
+  .tile .items { font-size: 13px; color: var(--text2); margin-top: 8px; }
+  .tile .time { font-size: 11px; color: var(--text3); margin-top: 4px; font-weight: 600; }
+  .empty { color: var(--text3); text-align: center; padding: 60px 20px; font-size: 18px; }
+</style>
+</head>
+<body>
+  <div class="top">
+    <h1>☕ CAFE BAR</h1>
+    <div class="clock" id="clock"></div>
+  </div>
+  <div class="columns">
+    <div class="col preparing">
+      <div class="col-title">⏳ In Progress</div>
+      <div class="grid" id="prepGrid"></div>
+    </div>
+    <div class="col ready">
+      <div class="col-title">✅ Ready to Collect</div>
+      <div class="grid" id="readyGrid"></div>
+    </div>
+  </div>
+<script>
+function fmt(order) {
+  const itemsText = order.items.slice(0, 3).map(i => i.qty + '× ' + i.name).join('<br>');
+  const timeText = order.collection_time_minutes > 0 ? `Scheduled +${order.collection_time_minutes} min` : '';
+  return `<div class="tile">
+    <div class="num">${order.order_number}</div>
+    <div class="items">${itemsText}</div>
+    ${timeText ? '<div class="time">' + timeText + '</div>' : ''}
+  </div>`;
+}
+async function refresh() {
+  try {
+    const r = await fetch('/cafeteria/api/tv-queue/?scope=cafe_bar');
+    const d = await r.json();
+    document.getElementById('prepGrid').innerHTML = d.preparing.length ? d.preparing.map(fmt).join('') : '<div class="empty">No orders</div>';
+    document.getElementById('readyGrid').innerHTML = d.ready.length ? d.ready.map(fmt).join('') : '<div class="empty">Nothing ready</div>';
+  } catch (e) {}
+}
+function tickClock() {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+refresh(); setInterval(refresh, 3000);
+tickClock(); setInterval(tickClock, 1000);
+</script>
+</body>
+</html>
