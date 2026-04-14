@@ -1008,7 +1008,7 @@ def cafeteria_dashboard_view(request):
 @user_passes_test(is_admin)
 def cafeteria_reports_view(request):
     """Revenue reports (daily/weekly/monthly)."""
-    from django.db.models import Sum
+    from django.db.models import Sum, Count
     period = request.GET.get('period', 'week')  # 'day', 'week', 'month'
     now = timezone.localtime()
     if period == 'day':
