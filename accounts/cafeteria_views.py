@@ -152,33 +152,22 @@ def _generate_qr_image_base64(data: str, box_size: int = 6) -> str:
 
 def _escpos_receipt_b64(order) -> str:
     """
-    Build an ESC/POS thermal-printer receipt for the given order and return
-    it as URL-safe base64. Consumed via the `rawbt:<base64>` URL scheme
-    (RawBT app on Android) so the receipt prints silently — no browser
-    print dialog.
+    Build a plain-text thermal-printer receipt and return it as base64.
 
-    Uses only the most compatible ESC/POS commands (init, alignment,
-    double-size text, line feed, partial cut) — no native QR tag, which
-    many cheap thermal printers render as random characters. Customers
-    still see the QR on screen for collection.
+    We intentionally send PLAIN TEXT ONLY (no ESC @, no alignment commands,
+    no cut) because many cheap USB/BT printers don't honour ESC/POS and
+    print the control bytes as literal glyphs. This is the most compatible
+    format — the receipt is just a series of ASCII lines separated by LF.
+
+    Consumed via the `rawbt:<base64>` URL scheme (RawBT app on Android) so
+    the receipt prints silently — no browser print dialog.
     """
-    ESC = b'\x1b'
-    GS = b'\x1d'
-    INIT = ESC + b'@'
-    CENTER = ESC + b'a\x01'
-    LEFT = ESC + b'a\x00'
-    DBL = ESC + b'!\x30'     # double width + height
-    NORMAL = ESC + b'!\x00'
-    CUT = GS + b'V\x01'      # partial cut
-
     def line(s):
         return s.encode('ascii', 'ignore') + b'\n'
 
     buf = bytearray()
-    buf += INIT
-    buf += CENTER
-    buf += DBL + line('CAFETERIA') + NORMAL
-    buf += line('-' * 32)
+    buf += line('        CAFETERIA')
+    buf += line('================================')
 
     name = ''
     if order.customer_id:
@@ -186,32 +175,23 @@ def _escpos_receipt_b64(order) -> str:
     if not name:
         name = getattr(order, 'public_name', '') or 'Guest'
     buf += line(name[:32])
-
-    buf += line('ORDER NUMBER')
-    buf += DBL + line(order.order_number) + NORMAL
     buf += b'\n'
-
-    buf += LEFT
-    buf += line('-' * 32)
+    buf += line('ORDER NUMBER:')
+    buf += line('  ' + order.order_number)
+    buf += b'\n'
+    buf += line('--------------------------------')
     for it in order.items.all():
         buf += line(f'{it.quantity}x {it.name_snapshot}'[:32])
-    buf += line('-' * 32)
+    buf += line('--------------------------------')
     buf += line(f'Total    S${order.subtotal:.2f}')
     if order.credits_applied and order.credits_applied > 0:
         buf += line(f'Credits -S${order.credits_applied:.2f}')
     buf += b'\n'
-
-    buf += CENTER
     buf += line(order.created_at.strftime('%d %b %Y  %H:%M'))
-    buf += b'\n'
     buf += line('Show QR on screen to collect')
     buf += line('Thank you!')
-    buf += b'\n\n\n\n'
-    buf += CUT
+    buf += b'\n\n\n\n\n'  # feed for tear-off
 
-    # Standard base64 (not URL-safe) — goes inside a data: URL, where + and /
-    # are not URL-reserved; the browser URL-encodes them on the way out to
-    # RawBT which decodes them correctly.
     return base64.b64encode(bytes(buf)).decode('ascii')
 
 

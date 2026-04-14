@@ -82,11 +82,10 @@
   function printReceipt() {
     const payload = "{{ escpos_b64|default:'' }}";
     if (payload) {
-      // Explicit MIME-typed data: URL so RawBT treats the payload as raw
-      // ESC/POS bytes rather than forwarding the base64 string as text.
-      const url = 'rawbt:data:application/vnd.rawbt;base64,' + payload;
+      // RawBT URL scheme: rawbt:<standard-base64>. Payload is plain-text
+      // bytes (no ESC/POS) for maximum printer compatibility.
       const a = document.createElement('a');
-      a.href = url;
+      a.href = 'rawbt:' + payload;
       a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
