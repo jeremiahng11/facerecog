@@ -24,7 +24,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db import transaction
-from django.db.models import Sum, Q
+from django.db.models import Sum, Q, Exists, OuterRef
 from django.http import JsonResponse, Http404
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
@@ -466,19 +466,32 @@ def kitchen_view(request, kitchen_type):
         }, status=403)
 
     today_start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
-    # Include mixed orders that contain items for this counter.
+    # Only show orders that still have UNCOLLECTED items for this counter.
+    # Mixed orders drop off a counter once its items are collected, even if
+    # other counters still have items pending.
+    uncollected_here = OrderItem.objects.filter(
+        order=OuterRef('pk'),
+        collected_at__isnull=True,
+    ).filter(
+        Q(menu_type_snapshot=kitchen_type)
+        | Q(menu_type_snapshot='', menu_item__menu_type=kitchen_type)
+    )
     active_orders = Order.objects.filter(
         status__in=['confirmed', 'preparing', 'ready'],
         created_at__gte=today_start,
+    ).annotate(
+        _has_uncollected_here=Exists(uncollected_here),
     ).filter(
-        Q(menu_type=kitchen_type) | Q(items__menu_type_snapshot=kitchen_type)
-    ).distinct().prefetch_related('items', 'items__menu_item').order_by('created_at')
+        _has_uncollected_here=True,
+    ).prefetch_related('items', 'items__menu_item').order_by('created_at')
 
-    # For each order, attach the filtered item list for this counter.
+    # For each order, attach the filtered item list for this counter
+    # (excluding items already collected at this counter).
     for order in active_orders:
         order.counter_items = [
             i for i in order.items.all()
             if (i.menu_type_snapshot or (i.menu_item.menu_type if i.menu_item else '')) == kitchen_type
+               and i.collected_at is None
         ]
 
     return render(request, 'cafeteria/kitchen_view.html', {
@@ -983,18 +996,30 @@ def cafe_bar_counter_view(request):
         created_at__gte=today_start,
     ).prefetch_related('items').order_by('created_at')
 
-    # All active cafe bar orders (ready for collection) — no mark-ready step.
+    # All active cafe bar orders with at least one UNCOLLECTED cafe_bar item.
+    # Mixed orders whose cafe_bar items are already collected must drop off
+    # this counter even if kitchen items remain uncollected.
+    uncollected_cafe_items = OrderItem.objects.filter(
+        order=OuterRef('pk'),
+        collected_at__isnull=True,
+    ).filter(
+        Q(menu_type_snapshot='cafe_bar')
+        | Q(menu_type_snapshot='', menu_item__menu_type='cafe_bar')
+    )
     ready = Order.objects.filter(
         status__in=['confirmed', 'preparing', 'ready'],
         created_at__gte=today_start,
+    ).annotate(
+        _has_uncollected_cafe=Exists(uncollected_cafe_items),
     ).filter(
-        Q(menu_type='cafe_bar') | Q(items__menu_type_snapshot='cafe_bar')
-    ).distinct().prefetch_related('items', 'items__menu_item').order_by('created_at')
+        _has_uncollected_cafe=True,
+    ).prefetch_related('items', 'items__menu_item').order_by('created_at')
 
     for order in ready:
         order.counter_items = [
             i for i in order.items.all()
             if (i.menu_type_snapshot or (i.menu_item.menu_type if i.menu_item else '')) == 'cafe_bar'
+               and i.collected_at is None
         ]
 
     return render(request, 'cafeteria/cafe_bar_counter.html', {
