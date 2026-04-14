@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% block title %}My Orders — Admin{% endblock %}
+{% block extra_head %}
+<style>
+  .mo-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px; }
+  .credit-card {
+    background: linear-gradient(135deg, var(--accent), #7c3aed);
+    color: #fff; border-radius: var(--radius); padding: 20px 24px;
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 20px;
+  }
+  .credit-card .label { font-size: 11px; letter-spacing: 2px; opacity: 0.85; text-transform: uppercase; font-weight: 700; }
+  .credit-card .amount { font-size: 32px; font-weight: 800; line-height: 1; margin-top: 6px; }
+  .credit-card .sub { font-size: 12px; opacity: 0.85; margin-top: 4px; }
+
+  .qr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .qr-card {
+    background: #fff; border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px; text-align: center; box-shadow: var(--shadow);
+  }
+  .qr-card.ready { border-color: var(--accent3); background: #ecfdf5; }
+  .qr-card .num { font-family: var(--mono); font-size: 28px; font-weight: 800; color: var(--accent); letter-spacing: 2px; margin: 6px 0 10px; }
+  .qr-card img { width: 180px; height: 180px; border-radius: 8px; }
+  .qr-card .items { font-size: 12px; color: var(--text2); text-align:left; margin-top:10px; border-top:1px dashed var(--border); padding-top:8px; }
+
+  .section-title { font-family: var(--mono); font-size: 12px; letter-spacing: 2px; color: var(--text3); font-weight: 700; text-transform: uppercase; margin: 16px 0 10px; }
+  .empty { text-align:center; padding:30px; color: var(--text3); background:#fff; border:1px dashed var(--border); border-radius:var(--radius); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page">
+  <div class="mo-head">
+    <div>
+      <div class="page-title">My Orders</div>
+      <div class="page-subtitle">Your active QRs, history, and new orders</div>
+    </div>
+    <a href="{% url 'cafeteria_admin_new_order' %}" class="btn btn-primary">🍽 Place New Order</a>
+  </div>
+
+  <div class="credit-card">
+    <div>
+      <div class="label">CAFETERIA CREDIT</div>
+      <div class="amount">S${{ user.credit_balance|floatformat:2 }}</div>
+      <div class="sub">Monthly allowance: S${{ user.monthly_credit|floatformat:2 }}</div>
+    </div>
+    <div style="text-align:right;font-size:11px;letter-spacing:1px;opacity:0.85">{{ user.staff_id }}</div>
+  </div>
+
+  <div class="section-title">Active QR Codes</div>
+  {% if qrs %}
+  <div class="qr-grid">
+    {% for q in qrs %}
+    <div class="qr-card {% if q.order.status == 'ready' %}ready{% endif %}">
+      <div style="font-size:10px;letter-spacing:2px;color:var(--text3);font-weight:700">ORDER NUMBER</div>
+      <div class="num">{{ q.order.order_number }}</div>
+      {% if q.order.status == 'ready' %}
+        <span class="badge badge-green">✅ Ready to Collect</span>
+      {% else %}
+        <span class="badge badge-blue">{{ q.order.get_status_display }}</span>
+      {% endif %}
+      <div style="margin:12px 0"><img src="{{ q.qr_image }}" alt="QR"></div>
+      <div class="items">
+        {% for item in q.order.items.all %}<div>{{ item.quantity }}× {{ item.name_snapshot }}</div>{% endfor %}
+        <div style="margin-top:6px;color:var(--text3)">{{ q.order.created_at|date:"d M · H:i" }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">No active orders — place one to get started.</div>
+  {% endif %}
+
+  <div class="section-title">Recent Orders</div>
+  <div class="card" style="padding:0">
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Order</th><th>Items</th><th>Amount</th><th>Status</th><th>When</th>
+        </tr></thead>
+        <tbody>
+          {% for o in recent %}
+          <tr>
+            <td class="td-main mono">{{ o.order_number }}</td>
+            <td style="font-size:13px">
+              {% for item in o.items.all %}{{ item.quantity }}× {{ item.name_snapshot }}{% if not forloop.last %}, {% endif %}{% endfor %}
+            </td>
+            <td class="mono">S${{ o.subtotal|floatformat:2 }}</td>
+            <td>
+              {% if o.status == 'ready' %}<span class="badge badge-green">Ready</span>
+              {% elif o.status == 'collected' %}<span class="badge badge-gray">Collected</span>
+              {% elif o.status == 'cancelled' %}<span class="badge badge-red">Cancelled</span>
+              {% else %}<span class="badge badge-blue">{{ o.get_status_display }}</span>{% endif %}
+            </td>
+            <td class="text-dim text-sm">{{ o.created_at|date:"d M · H:i" }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text3)">No orders yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -281,8 +281,8 @@ def kiosk_place_order_ajax(request):
         items_data = data.get('items', [])
         collection_time_minutes = int(data.get('collection_time_minutes', 0))
         pay_method = data.get('pay_method', 'credits')  # 'credits', 'stripe', 'paynow'
-        source = (data.get('source') or 'kiosk').strip().lower()  # 'kiosk' or 'portal'
-        source_suffix = f'?source={source}' if source in ('kiosk', 'portal') else ''
+        source = (data.get('source') or 'kiosk').strip().lower()  # 'kiosk', 'portal', or 'admin'
+        source_suffix = f'?source={source}' if source in ('kiosk', 'portal', 'admin') else ''
 
         if not items_data:
             return JsonResponse({'success': False, 'message': 'Cart is empty'})
@@ -431,13 +431,12 @@ def kiosk_ticket_view(request, order_id):
     qr_image = _generate_qr_image_base64(order.qr_token, box_size=8)
 
     source = (request.GET.get('source') or '').strip().lower()
-    if source == 'portal':
-        if request.user.is_admin_role:
-            done_url = '/cafeteria/admin/dashboard/'
-            done_label = 'Back to Dashboard'
-        else:
-            done_url = '/cafeteria/portal/'
-            done_label = 'Back to Home'
+    if source == 'admin':
+        done_url = '/cafeteria/admin/my-orders/'
+        done_label = 'Back to My Orders'
+    elif source == 'portal':
+        done_url = '/cafeteria/portal/'
+        done_label = 'Back to Home'
     else:
         done_url = '/cafeteria/kiosk/'
         done_label = 'Done'
@@ -1289,6 +1288,48 @@ def public_ticket_view(request, order_id):
 
 
 # ─── Admin Dashboard + Reports ───────────────────────────────────────────────
+
+
+@login_required
+@user_passes_test(is_admin)
+def admin_my_orders_view(request):
+    """Admin's own 'My Orders' — standalone admin UI (not the staff PWA)."""
+    user = request.user
+    active_orders = Order.objects.filter(
+        customer=user,
+        status__in=['confirmed', 'preparing', 'ready'],
+        qr_used=False,
+    ).prefetch_related('items').order_by('-created_at')
+
+    qrs = []
+    for o in active_orders:
+        qrs.append({
+            'order': o,
+            'qr_image': _generate_qr_image_base64(o.qr_token, box_size=6),
+        })
+
+    recent = Order.objects.filter(customer=user).prefetch_related('items').order_by('-created_at')[:20]
+
+    return render(request, 'cafeteria/admin_my_orders.html', {
+        'qrs': qrs,
+        'recent': recent,
+    })
+
+
+@login_required
+@user_passes_test(is_admin)
+def admin_new_order_view(request):
+    """Admin order placement — uses admin base layout so nav stays accessible."""
+    halal = MenuItem.objects.filter(menu_type='halal', is_available=True).order_by('display_order', 'name')
+    non_halal = MenuItem.objects.filter(menu_type='non_halal', is_available=True).order_by('display_order', 'name')
+    cafe = MenuItem.objects.filter(menu_type='cafe_bar', is_available=True).order_by('display_order', 'name')
+    return render(request, 'cafeteria/admin_new_order.html', {
+        'halal_items': halal,
+        'non_halal_items': non_halal,
+        'cafe_items': cafe,
+        'tabs': {'halal': halal, 'non_halal': non_halal, 'cafe_bar': cafe},
+    })
+
 
 @login_required
 @user_passes_test(is_admin)

@@ -358,12 +358,14 @@
   <div class="nav-links" id="navLinks">
     <a href="{% url 'dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}class="active"{% endif %}>Dashboard</a>
     <a href="{% url 'profile' %}" {% if request.resolver_match.url_name == 'profile' %}class="active"{% endif %}>Profile &amp; Face ID</a>
-    <a href="{% url 'staff_portal_home' %}" {% if 'staff_portal' in request.resolver_match.url_name %}class="active"{% endif %}>My Orders</a>
     {% if user.is_admin_role %}
-    <a href="{% url 'cafeteria_dashboard' %}" {% if 'cafeteria' in request.resolver_match.url_name %}class="active"{% endif %}>Cafeteria</a>
-    <a href="{% url 'admin_users' %}" {% if 'admin' in request.resolver_match.url_name %}class="active"{% endif %}>Manage Users</a>
+    <a href="{% url 'cafeteria_admin_my_orders' %}" {% if 'admin_my_orders' in request.resolver_match.url_name or 'admin_new_order' in request.resolver_match.url_name %}class="active"{% endif %}>My Orders</a>
+    <a href="{% url 'cafeteria_dashboard' %}" {% if 'cafeteria' in request.resolver_match.url_name and 'admin_my_orders' not in request.resolver_match.url_name and 'admin_new_order' not in request.resolver_match.url_name %}class="active"{% endif %}>Cafeteria</a>
+    <a href="{% url 'admin_users' %}" {% if 'admin' in request.resolver_match.url_name and 'cafeteria' not in request.resolver_match.url_name %}class="active"{% endif %}>Manage Users</a>
     {% elif user.role == 'kitchen' or user.role == 'cafe_bar' %}
     <a href="{% url 'cafeteria_displays_hub' %}" {% if 'displays' in request.resolver_match.url_name %}class="active"{% endif %}>Counter Displays</a>
+    {% else %}
+    <a href="{% url 'staff_portal_home' %}" {% if 'staff_portal' in request.resolver_match.url_name %}class="active"{% endif %}>My Orders</a>
     {% endif %}
     <form method="post" action="{% url 'logout' %}" style="display:inline">
       {% csrf_token %}
