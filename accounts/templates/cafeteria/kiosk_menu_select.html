@@ -92,8 +92,8 @@
       <h2>Kitchen Menu</h2>
       <p>Full meals, rice, noodles, proteins<br>and vegetarian options</p>
       <div class="tags">
-        <span class="badge badge-halal">Halal</span>
-        <span class="badge badge-nonhalal">Non-Halal</span>
+        <span class="badge badge-halal">Local</span>
+        <span class="badge badge-nonhalal">International</span>
       </div>
       <div class="hours {% if not kitchen_open %}closed{% endif %}">
         {% if kitchen_open %}● Open now{% if kitchen_hours %} · Closes {{ kitchen_hours.first.closes_at|time:"H:i" }}{% endif %}{% else %}● Closed{% endif %}

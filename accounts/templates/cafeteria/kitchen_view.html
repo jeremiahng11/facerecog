@@ -118,15 +118,15 @@
 <div class="top">
   <div>
     <h1>
-      {% if kitchen_type == 'halal' %}🟢 Halal Kitchen
-      {% elif kitchen_type == 'non_halal' %}🔵 Non-Halal Kitchen
+      {% if kitchen_type == 'halal' %}🟢 Local Kitchen
+      {% elif kitchen_type == 'non_halal' %}🔵 International Kitchen
       {% elif kitchen_type == 'cafe_bar' %}☕ Cafe Bar{% endif %}
     </h1>
     <div class="text-sm text-muted">{{ orders|length }} active orders</div>
   </div>
   <span class="kitchen-badge {{ kitchen_type }}">
-    {% if kitchen_type == 'halal' %}HALAL CERTIFIED
-    {% elif kitchen_type == 'non_halal' %}NON-HALAL
+    {% if kitchen_type == 'halal' %}LOCAL KITCHEN
+    {% elif kitchen_type == 'non_halal' %}INTERNATIONAL
     {% else %}CAFE BAR{% endif %}
   </span>
 </div>

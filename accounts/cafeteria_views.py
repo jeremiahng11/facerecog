@@ -780,7 +780,7 @@ def kitchen_scan_qr_ajax(request):
             # Tell the user which counter(s) the order IS for.
             other_types = sorted({(i.menu_type_snapshot or (i.menu_item.menu_type if i.menu_item else 'unknown')) for i in all_items})
             human = ', '.join({
-                'halal': 'Halal Kitchen', 'non_halal': 'Non-Halal Kitchen', 'cafe_bar': 'Cafe Bar',
+                'halal': 'Local Kitchen', 'non_halal': 'International Kitchen', 'cafe_bar': 'Cafe Bar',
             }.get(t, t) for t in other_types)
             QRScanLog.objects.create(
                 order=order, scanner_device=scanner_counter, scanned_by=request.user,

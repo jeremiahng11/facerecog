@@ -94,8 +94,8 @@
     <div style="font-size:11px;letter-spacing:2px;color:var(--text3);font-weight:700">YOUR ORDER NUMBER</div>
     <div class="order-num">{{ order.order_number }}</div>
     <div class="menu-badge">
-      {% if order.menu_type == 'halal' %}<span class="badge badge-halal">HALAL KITCHEN</span>
-      {% elif order.menu_type == 'non_halal' %}<span class="badge badge-nonhalal">NON-HALAL KITCHEN</span>
+      {% if order.menu_type == 'halal' %}<span class="badge badge-halal">LOCAL KITCHEN</span>
+      {% elif order.menu_type == 'non_halal' %}<span class="badge badge-nonhalal">INTERNATIONAL KITCHEN</span>
       {% elif order.menu_type == 'cafe_bar' %}<span class="badge badge-cafe">CAFE BAR</span>{% endif %}
     </div>
 

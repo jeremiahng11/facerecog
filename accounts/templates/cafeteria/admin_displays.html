@@ -61,8 +61,8 @@
     {% if can_kitchen %}
     <div class="display-card" style="border-color:rgba(16,185,129,0.3)">
       <div class="icon">🟢</div>
-      <h3>Halal Kitchen</h3>
-      <div class="device">10" TABLET · HALAL</div>
+      <h3>Local Kitchen</h3>
+      <div class="device">10" TABLET · LOCAL</div>
       <p>Kitchen staff view — shows H-prefix orders, Mark Ready button, QR scanner active.</p>
       <div class="url" id="url-halal">{{ request.scheme }}://{{ request.get_host }}/cafeteria/kitchen/halal/</div>
       <a href="{% url 'cafeteria_kitchen' 'halal' %}" target="_blank" class="open-btn">Open in new tab →</a>

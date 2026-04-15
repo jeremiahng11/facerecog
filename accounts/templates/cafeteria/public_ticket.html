@@ -42,9 +42,9 @@
     {% if order.is_mixed %}
       <span class="badge" style="background:#a78bfa;color:#fff">🔀 MIXED</span>
     {% elif order.menu_type == 'halal' %}
-      <span class="badge badge-halal">HALAL KITCHEN</span>
+      <span class="badge badge-halal">LOCAL KITCHEN</span>
     {% elif order.menu_type == 'non_halal' %}
-      <span class="badge badge-nonhalal">NON-HALAL KITCHEN</span>
+      <span class="badge badge-nonhalal">INTERNATIONAL KITCHEN</span>
     {% elif order.menu_type == 'cafe_bar' %}
       <span class="badge badge-cafe">CAFE BAR</span>
     {% endif %}
@@ -59,8 +59,8 @@
       {% for item in order.items.all %}
       <div style="display:flex;justify-content:space-between">
         <span>{{ item.quantity }}× {{ item.name_snapshot }}
-          {% if item.menu_type_snapshot == 'halal' %} <span style="color:var(--success);font-size:10px">HALAL</span>
-          {% elif item.menu_type_snapshot == 'non_halal' %} <span style="color:var(--non-halal);font-size:10px">NON-HALAL</span>
+          {% if item.menu_type_snapshot == 'halal' %} <span style="color:var(--success);font-size:10px">LOCAL</span>
+          {% elif item.menu_type_snapshot == 'non_halal' %} <span style="color:var(--non-halal);font-size:10px">INTERNATIONAL</span>
           {% elif item.menu_type_snapshot == 'cafe_bar' %} <span style="color:var(--cafe);font-size:10px">CAFE</span>{% endif %}
         </span>
         <span>S${{ item.subtotal|floatformat:2 }}</span>

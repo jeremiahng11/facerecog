@@ -56,8 +56,8 @@
   <div class="layout">
     <div>
       <div class="tabs">
-        <button class="tab-btn active" data-tab="halal" onclick="switchTab('halal')">🟢 Halal</button>
-        <button class="tab-btn" data-tab="non_halal" onclick="switchTab('non_halal')">🔵 Non-Halal</button>
+        <button class="tab-btn active" data-tab="halal" onclick="switchTab('halal')">🟢 Local Kitchen</button>
+        <button class="tab-btn" data-tab="non_halal" onclick="switchTab('non_halal')">🔵 International Kitchen</button>
         <button class="tab-btn" data-tab="cafe_bar" onclick="switchTab('cafe_bar')">☕ Cafe Bar</button>
       </div>
 
@@ -70,7 +70,7 @@
               {% if not item.photo %}🍲{% endif %}
             </div>
             <div class="body">
-              <div class="name">{{ item.name }}</div>
+              <div class="name">{{ item.name }}{% if item.is_vegetarian %}<span class="badge" style="background:#d1fae5;color:#047857;margin-left:6px;font-size:10px;padding:2px 6px">🌱 VEG</span>{% endif %}</div>
               <div class="desc">{{ item.description|truncatechars:60 }}</div>
               <div class="price-row">
                 <div>

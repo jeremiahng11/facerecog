@@ -25,8 +25,8 @@
             <td>
               <div style="display:flex;gap:4px;flex-wrap:wrap">
                 {% for t in order.counter_types %}
-                  {% if t == 'halal' %}<span class="badge badge-green">Halal</span>
-                  {% elif t == 'non_halal' %}<span class="badge" style="background:#dbeafe;color:#1e40af">Non-Halal</span>
+                  {% if t == 'halal' %}<span class="badge badge-green">Local</span>
+                  {% elif t == 'non_halal' %}<span class="badge" style="background:#dbeafe;color:#1e40af">International</span>
                   {% elif t == 'cafe_bar' %}<span class="badge" style="background:#fef3c7;color:#c2410c">Cafe</span>
                   {% else %}<span class="badge badge-gray">{{ t }}</span>{% endif %}
                 {% endfor %}

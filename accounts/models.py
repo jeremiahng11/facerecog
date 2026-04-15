@@ -215,10 +215,10 @@ class QueueTicket(models.Model):
 # ════════════════════════════════════════════════════════════════════════════
 
 class MenuItem(models.Model):
-    """Menu item for Kitchen (Halal/Non-Halal) or Cafe Bar."""
+    """Menu item for Kitchen (Local/International) or Cafe Bar."""
     MENU_CHOICES = [
-        ('halal', 'Halal Kitchen'),
-        ('non_halal', 'Non-Halal Kitchen'),
+        ('halal', 'Local'),
+        ('non_halal', 'International'),
         ('cafe_bar', 'Cafe Bar'),
     ]
     menu_type = models.CharField(max_length=16, choices=MENU_CHOICES)
@@ -231,6 +231,7 @@ class MenuItem(models.Model):
     quantity_remaining = models.PositiveIntegerField(default=0)
     low_stock_threshold = models.PositiveIntegerField(default=3)
     is_available = models.BooleanField(default=True, help_text='Admin on/off toggle — overrides stock')
+    is_vegetarian = models.BooleanField(default=False, help_text='Mark this dish as vegetarian')
     photo = models.ImageField(upload_to='menu/', blank=True, null=True)
     display_order = models.PositiveIntegerField(default=0)
     # Cafe Bar customizations: JSON list of {name, choices: [...]}
@@ -256,7 +257,7 @@ class MenuItem(models.Model):
 class OrderingHours(models.Model):
     """Service windows for each menu type. Multiple windows per menu_type allowed."""
     MENU_CHOICES = [
-        ('kitchen', 'Kitchen (Halal + Non-Halal)'),
+        ('kitchen', 'Kitchen (Local + International)'),
         ('cafe_bar', 'Cafe Bar'),
     ]
     menu_type = models.CharField(max_length=16, choices=MENU_CHOICES)
@@ -329,8 +330,8 @@ class Order(models.Model):
         ('refunded', 'Refunded'),
     ]
     MENU_CHOICES = [
-        ('halal', 'Halal Kitchen'),
-        ('non_halal', 'Non-Halal Kitchen'),
+        ('halal', 'Local'),
+        ('non_halal', 'International'),
         ('cafe_bar', 'Cafe Bar'),
         ('mixed', 'Mixed'),
     ]
@@ -401,8 +402,8 @@ class Order(models.Model):
         Prefix rules:
           M — mixed (items from multiple menus)
           P — public walk-in (single menu)
-          H — Halal Kitchen
-          N — Non-Halal Kitchen
+          H — Local (Halal) Kitchen
+          N — International (Non-Halal) Kitchen
           C — Cafe Bar
         """
         from django.utils import timezone as tz
