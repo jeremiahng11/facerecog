@@ -1781,7 +1781,6 @@ def cafeteria_staff_view(request):
         qs = qs.filter(
             Q(staff_id__icontains=q)
             | Q(full_name__icontains=q)
-            | Q(display_name__icontains=q)
             | Q(email__icontains=q)
             | Q(department__icontains=q)
         )
