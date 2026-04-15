@@ -968,6 +968,7 @@ def admin_menu_add_view(request):
                 quantity_remaining=int(request.POST.get('daily_quantity') or 0),
                 low_stock_threshold=int(request.POST.get('low_stock_threshold') or 3),
                 is_available=request.POST.get('is_available') == 'on',
+                is_vegetarian=request.POST.get('is_vegetarian') == 'on',
                 display_order=int(request.POST.get('display_order') or 0),
                 photo=request.FILES.get('photo'),
                 customizations=json.loads(request.POST.get('customizations_json') or '[]'),
@@ -994,6 +995,7 @@ def admin_menu_edit_view(request, item_id):
         item.daily_quantity = int(request.POST.get('daily_quantity') or 0)
         item.low_stock_threshold = int(request.POST.get('low_stock_threshold') or 3)
         item.is_available = request.POST.get('is_available') == 'on'
+        item.is_vegetarian = request.POST.get('is_vegetarian') == 'on'
         item.display_order = int(request.POST.get('display_order') or 0)
         item.customizations = json.loads(request.POST.get('customizations_json') or '[]')
         if request.FILES.get('photo'):

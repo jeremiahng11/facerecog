@@ -22,8 +22,8 @@
       <div class="form-group">
         <label>Menu Type</label>
         <select name="menu_type">
-          <option value="halal" {% if item.menu_type == 'halal' %}selected{% endif %}>Halal Kitchen</option>
-          <option value="non_halal" {% if item.menu_type == 'non_halal' %}selected{% endif %}>Non-Halal Kitchen</option>
+          <option value="halal" {% if item.menu_type == 'halal' %}selected{% endif %}>Local Kitchen</option>
+          <option value="non_halal" {% if item.menu_type == 'non_halal' %}selected{% endif %}>International Kitchen</option>
           <option value="cafe_bar" {% if item.menu_type == 'cafe_bar' %}selected{% endif %}>Cafe Bar</option>
         </select>
       </div>
@@ -65,6 +65,10 @@
       <div class="form-check">
         <input type="checkbox" name="is_available" id="is_avail" {% if item.is_available or not item %}checked{% endif %}>
         <label for="is_avail">Available (visible on kiosk)</label>
+      </div>
+      <div class="form-check">
+        <input type="checkbox" id="is_vegetarian" name="is_vegetarian" {% if item.is_vegetarian %}checked{% endif %}>
+        <label for="is_vegetarian">🌱 Vegetarian dish</label>
       </div>
     </div>
 

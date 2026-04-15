@@ -168,13 +168,13 @@
        data-tab="halal"
        onclick="{% if kitchen_open %}switchTab('halal'){% endif %}"
        title="{% if not kitchen_open %}Kitchen is closed{% endif %}">
-    🟢 Halal Kitchen{% if not kitchen_open %} · Closed{% endif %}
+    🟢 Local Kitchen{% if not kitchen_open %} · Closed{% endif %}
   </div>
   <div class="tab non-halal{% if initial_tab == 'non_halal' %} active{% endif %}{% if not kitchen_open %} closed{% endif %}"
        data-tab="non_halal"
        onclick="{% if kitchen_open %}switchTab('non_halal'){% endif %}"
        title="{% if not kitchen_open %}Kitchen is closed{% endif %}">
-    🔵 Non-Halal Kitchen{% if not kitchen_open %} · Closed{% endif %}
+    🔵 International Kitchen{% if not kitchen_open %} · Closed{% endif %}
   </div>
   <div class="tab cafe-bar{% if initial_tab == 'cafe_bar' %} active{% endif %}{% if not cafe_bar_open %} closed{% endif %}"
        data-tab="cafe_bar"
@@ -189,8 +189,8 @@
     {% for type_key, items in items_by_type.items %}
     <div class="tab-pane" data-pane="{{ type_key }}" {% if type_key != initial_tab %}style="display:none"{% endif %}>
       <div class="section-title">
-        {% if type_key == 'halal' %}Halal Items
-        {% elif type_key == 'non_halal' %}Non-Halal Items
+        {% if type_key == 'halal' %}Local Items
+        {% elif type_key == 'non_halal' %}International Items
         {% else %}Cafe Bar{% endif %}
       </div>
       <div class="items-grid">
@@ -200,9 +200,10 @@
             {% if not item.photo %}🍲{% endif %}
           </div>
           <div class="badges">
-            {% if item.menu_type == 'halal' %}<span class="badge badge-halal">HALAL</span>{% endif %}
-            {% if item.menu_type == 'non_halal' %}<span class="badge badge-nonhalal">NON-HALAL</span>{% endif %}
+            {% if item.menu_type == 'halal' %}<span class="badge badge-halal">LOCAL</span>{% endif %}
+            {% if item.menu_type == 'non_halal' %}<span class="badge badge-nonhalal">INTERNATIONAL</span>{% endif %}
             {% if item.menu_type == 'cafe_bar' %}<span class="badge badge-cafe">CAFE</span>{% endif %}
+            {% if item.is_vegetarian %}<span class="badge" style="background:#d1fae5;color:#047857">🌱 VEG</span>{% endif %}
           </div>
           <div class="stock-badge">
             {% if item.is_sold_out %}SOLD OUT

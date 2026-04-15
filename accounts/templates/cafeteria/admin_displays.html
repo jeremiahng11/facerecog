@@ -71,8 +71,8 @@
 
     <div class="display-card" style="border-color:rgba(37,99,235,0.3)">
       <div class="icon">🔵</div>
-      <h3>Non-Halal Kitchen</h3>
-      <div class="device">10" TABLET · NON-HALAL</div>
+      <h3>International Kitchen</h3>
+      <div class="device">10" TABLET · INTERNATIONAL</div>
       <p>Kitchen staff view — shows N-prefix orders, Mark Ready button, QR scanner active.</p>
       <div class="url" id="url-nonhalal">{{ request.scheme }}://{{ request.get_host }}/cafeteria/kitchen/non_halal/</div>
       <a href="{% url 'cafeteria_kitchen' 'non_halal' %}" target="_blank" class="open-btn">Open in new tab →</a>
@@ -151,7 +151,7 @@
     <div class="display-card">
       <div class="icon">🍽</div>
       <h3>Menu Management</h3>
-      <p>Add, edit, toggle menu items for Halal, Non-Halal and Cafe Bar.</p>
+      <p>Add, edit, toggle menu items for Local, International and Cafe Bar.</p>
       <a href="{% url 'cafeteria_admin_menu_list' %}" class="open-btn">Open →</a>
     </div>
 
