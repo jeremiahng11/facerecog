@@ -1881,10 +1881,17 @@ def stripe_webhook_view(request):
 
 # ─── Internal cron endpoint (for GitHub Actions scheduled tasks) ─────────────
 
+from django.views.decorators.csrf import csrf_exempt as _csrf_exempt_cron
+
+
+@_csrf_exempt_cron
 def cron_reset_credits_view(request):
     """
     Triggers monthly credit reset. Protected by CRON_SECRET bearer token.
     Called by a GitHub Actions scheduled workflow on CREDIT_RESET_DAY.
+
+    @csrf_exempt is required because the caller (GitHub Actions) can't
+    supply a CSRF cookie. Auth is enforced via the Bearer token.
     """
     auth = request.META.get('HTTP_AUTHORIZATION', '')
     expected = getattr(settings, 'CRON_SECRET', '')
