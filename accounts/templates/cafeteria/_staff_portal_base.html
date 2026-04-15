@@ -28,7 +28,7 @@
   .bottom-nav {
     position: fixed; bottom: 0; left: 0; right: 0;
     background: #fff; border-top: 1px solid var(--border);
-    display: grid; grid-template-columns: repeat(5, 1fr);
+    display: grid; grid-template-columns: repeat(6, 1fr);
     padding: 6px 0; z-index: 10;
   }
   .bottom-nav a {
@@ -80,6 +80,9 @@
   </a>
   <a href="{% url 'staff_portal_order' %}" {% if request.resolver_match.url_name == 'staff_portal_order' %}class="active"{% endif %}>
     <span class="ico">🍽</span>Order
+  </a>
+  <a href="{% url 'staff_portal_events' %}" {% if 'staff_portal_event' in request.resolver_match.url_name %}class="active"{% endif %}>
+    <span class="ico">🎉</span>Events
   </a>
   <a href="{% url 'staff_portal_qr' %}" {% if request.resolver_match.url_name == 'staff_portal_qr' %}class="active"{% endif %}>
     <span class="ico">🎟️</span>QR

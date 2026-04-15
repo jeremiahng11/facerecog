@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+{% block title %}Event · {{ booking.title|default:booking.get_event_type_display }}{% endblock %}
+{% block extra_head %}
+<style>
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 700px) { .detail-grid { grid-template-columns: 1fr; } }
+  .field {
+    display: flex; justify-content: space-between;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .field .k {
+    color: var(--text3); font-family: var(--mono);
+    font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+  }
+  .field .v { color: var(--text); font-weight: 500; text-align: right; }
+  .component-cat { margin-bottom: 14px; }
+  .component-cat .cat-header {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 4px;
+  }
+  .component-cat .cat-item {
+    padding: 6px 0; font-size: 14px; color: var(--text);
+    border-bottom: 1px dashed var(--border);
+  }
+  .component-cat .cat-item:last-child { border-bottom: none; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="page-title">{{ booking.title|default:booking.get_event_type_display }}</div>
+      <div class="page-subtitle">
+        Approved event · {{ booking.event_date|date:"D, d M Y" }} at {{ booking.event_time|time:"H:i" }}
+      </div>
+    </div>
+    <a href="{% url 'cafeteria_kitchen_events' %}" class="btn btn-secondary">← Back to Schedule</a>
+  </div>
+
+  <div class="card">
+    <div class="detail-grid">
+      <div>
+        <div class="field"><span class="k">Event Type</span><span class="v">{{ booking.get_event_type_display }}</span></div>
+        <div class="field"><span class="k">Date</span><span class="v">{{ booking.event_date|date:"D, d M Y" }}</span></div>
+        <div class="field"><span class="k">Time</span><span class="v">{{ booking.event_time|time:"H:i" }}</span></div>
+        <div class="field"><span class="k">Venue</span><span class="v">{{ booking.venue }}</span></div>
+        <div class="field"><span class="k">Pax</span><span class="v">{{ booking.pax }}</span></div>
+      </div>
+      <div>
+        <div class="field"><span class="k">Menu</span><span class="v">{{ booking.event_menu.name|default:"—" }}</span></div>
+        <div class="field"><span class="k">Price / pax</span><span class="v mono">S${{ booking.event_menu.price_per_pax|default:0|floatformat:2 }}</span></div>
+        <div class="field"><span class="k">Total</span><span class="v mono">S${{ booking.total_cost|floatformat:2 }}</span></div>
+        {% if can_see_booker %}
+        <div class="field"><span class="k">Booker</span><span class="v">{{ booking.user.display_name|default:booking.user.full_name }}</span></div>
+        <div class="field"><span class="k">Staff ID</span><span class="v mono">{{ booking.user.staff_id }}</span></div>
+        <div class="field"><span class="k">Email</span><span class="v">{{ booking.user.email }}</span></div>
+        <div class="field"><span class="k">Submitted</span><span class="v">{{ booking.created_at|date:"d M Y, H:i" }}</span></div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if booking.notes %}
+    <div style="margin-top:16px;padding:12px;background:var(--bg2);border-radius:8px;font-size:13px;color:var(--text2)">
+      <strong style="color:var(--text3);font-size:11px;letter-spacing:1px">NOTES:</strong><br>
+      {{ booking.notes|linebreaksbr }}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if booking.event_menu %}
+  <div class="card" style="margin-top:16px">
+    <div class="card-header"><h2>Menu Components</h2></div>
+    {% regroup booking.event_menu.components.all by get_category_display as cat_groups %}
+    {% for g in cat_groups %}
+    <div class="component-cat">
+      <div class="cat-header">{{ g.grouper }}</div>
+      {% for c in g.list %}
+      <div class="cat-item">
+        <strong>{{ c.name }}</strong>{% if c.is_vegetarian %} <span class="badge badge-green">🌱 VEG</span>{% endif %}
+        {% if c.description %}<div style="font-size:12px;color:var(--text3);margin-top:2px">{{ c.description }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% empty %}
+    <div style="color:var(--text3)">No components listed.</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

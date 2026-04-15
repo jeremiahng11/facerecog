@@ -1,0 +1,72 @@
+{% extends 'cafeteria/_staff_portal_base.html' %}
+{% block title %}My Events{% endblock %}
+{% block header_title %}My Events{% endblock %}
+{% block extra_head %}
+<style>
+  .booking-card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 10px;
+    display: block;
+    color: inherit;
+    text-decoration: none;
+  }
+  .booking-card:hover { text-decoration: none; border-color: var(--primary); }
+  .booking-title {
+    font-size: 15px; font-weight: 700; color: var(--text);
+  }
+  .booking-meta {
+    font-size: 12px; color: var(--text3); margin-top: 4px;
+    display: flex; gap: 12px; flex-wrap: wrap;
+  }
+  .booking-meta .row { display: flex; align-items: center; gap: 4px; }
+  .booking-menu {
+    font-size: 12px; color: var(--text2);
+    margin-top: 6px; font-style: italic;
+  }
+  .booking-footer {
+    margin-top: 10px; display: flex; justify-content: space-between; align-items: center;
+  }
+  .status-pending { background: #fef3c7; color: #c2410c; }
+  .status-approved { background: var(--success-soft); color: var(--success); }
+  .status-rejected { background: var(--danger-soft); color: var(--danger); }
+  .status-cancelled { background: #e5e7eb; color: #6b7280; }
+  .status-completed { background: #e5e7eb; color: #6b7280; }
+  .empty-state {
+    text-align: center; padding: 40px 20px;
+    color: var(--text3);
+  }
+  .empty-state .emoji { font-size: 48px; margin-bottom: 12px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="card" style="background:linear-gradient(135deg,var(--primary),var(--accent));color:#fff;border:none">
+  <div style="font-size:12px;letter-spacing:2px;font-weight:600;opacity:0.9;margin-bottom:6px">CATERING</div>
+  <div style="font-size:18px;font-weight:800;margin-bottom:12px">Plan an event for your team</div>
+  <a href="{% url 'staff_portal_event_new' %}" class="btn btn-full" style="background:#fff;color:var(--primary)">+ Book a New Event</a>
+</div>
+
+{% for booking in bookings %}
+<a href="{% url 'staff_portal_event_detail' booking.id %}" class="booking-card">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+    <div class="booking-title">{{ booking.title|default:booking.get_event_type_display }}</div>
+    <span class="badge status-{{ booking.status }}">{{ booking.get_status_display }}</span>
+  </div>
+  <div class="booking-meta">
+    <div class="row">📅 {{ booking.event_date|date:"D, d M Y" }}</div>
+    <div class="row">🕐 {{ booking.event_time|time:"H:i" }}</div>
+    <div class="row">👥 {{ booking.pax }} pax</div>
+  </div>
+  {% if booking.event_menu %}
+  <div class="booking-menu">🍽 {{ booking.event_menu.name }}</div>
+  {% endif %}
+</a>
+{% empty %}
+<div class="card empty-state">
+  <div class="emoji">🎉</div>
+  <div style="font-size:14px">You haven't booked any events yet.</div>
+</div>
+{% endfor %}
+{% endblock %}

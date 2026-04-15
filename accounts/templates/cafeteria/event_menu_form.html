@@ -1,0 +1,205 @@
+{% extends 'base.html' %}
+{% block title %}{% if is_new %}New Event Menu{% else %}Edit Event Menu{% endif %}{% endblock %}
+{% block extra_head %}
+<style>
+  .components-section {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+  .components-section h3 {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--accent);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .component-row {
+    display: grid;
+    grid-template-columns: 140px 1fr 1fr auto auto;
+    gap: 8px;
+    align-items: center;
+    padding: 10px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 8px;
+  }
+  .component-row select,
+  .component-row input[type=text] {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    background: #fff;
+    font-family: var(--sans);
+  }
+  .component-row .veg-wrap {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 12px; color: var(--text2);
+  }
+  .component-row .veg-wrap input {
+    width: 16px; height: 16px; accent-color: var(--accent);
+  }
+  .remove-row-btn {
+    padding: 6px 10px;
+    background: var(--danger);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .remove-row-btn:hover { background: #dc2626; }
+  .current-photo {
+    max-width: 120px; max-height: 120px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    margin-top: 6px;
+  }
+  @media (max-width: 700px) {
+    .component-row { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="page-title">{% if is_new %}New Event Menu{% else %}Edit Event Menu{% endif %}</div>
+      <div class="page-subtitle">Catering package with menu components.</div>
+    </div>
+    <a href="{% url 'cafeteria_event_menus' %}" class="btn btn-secondary">← Back</a>
+  </div>
+
+  <div class="card">
+    <form method="post" enctype="multipart/form-data" id="menu-form">
+      {% csrf_token %}
+
+      <div class="form-group">
+        <label for="name">Name</label>
+        <input type="text" id="name" name="name" value="{{ menu.name|default:'' }}" required>
+      </div>
+
+      <div class="form-group">
+        <label for="description">Description</label>
+        <textarea id="description" name="description" rows="3">{{ menu.description|default:'' }}</textarea>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="price_per_pax">Price per pax (SGD)</label>
+          <input type="number" step="0.01" min="0" id="price_per_pax" name="price_per_pax"
+                 value="{{ menu.price_per_pax|default:'' }}" required>
+        </div>
+        <div class="form-group">
+          <label for="display_order">Display order</label>
+          <input type="number" id="display_order" name="display_order"
+                 value="{{ menu.display_order|default:0 }}">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="min_pax">Min pax</label>
+          <input type="number" min="1" id="min_pax" name="min_pax"
+                 value="{{ menu.min_pax|default:10 }}" required>
+        </div>
+        <div class="form-group">
+          <label for="max_pax">Max pax</label>
+          <input type="number" min="1" id="max_pax" name="max_pax"
+                 value="{{ menu.max_pax|default:100 }}" required>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="photo">Photo</label>
+        <input type="file" id="photo" name="photo" accept="image/*">
+        {% if menu and menu.photo %}
+          <img src="{{ menu.photo.url }}" class="current-photo" alt="Current photo">
+        {% endif %}
+      </div>
+
+      <div class="form-row">
+        <div class="form-check">
+          <input type="checkbox" id="is_available" name="is_available"
+                 {% if menu is None or menu.is_available %}checked{% endif %}>
+          <label for="is_available">Available for booking</label>
+        </div>
+        <div class="form-check">
+          <input type="checkbox" id="is_vegetarian" name="is_vegetarian"
+                 {% if menu and menu.is_vegetarian %}checked{% endif %}>
+          <label for="is_vegetarian">Vegetarian menu</label>
+        </div>
+      </div>
+
+      <div class="components-section">
+        <h3>Components</h3>
+        <div id="components-list">
+          {% if menu %}
+            {% for c in menu.components.all %}
+            <div class="component-row" data-index="{{ forloop.counter0 }}">
+              <select name="component_category[]">
+                {% for val, label in categories %}
+                <option value="{{ val }}" {% if c.category == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+              <input type="text" name="component_name[]" value="{{ c.name }}" placeholder="Component name" required>
+              <input type="text" name="component_description[]" value="{{ c.description|default:'' }}" placeholder="Description (optional)">
+              <label class="veg-wrap">
+                <input type="checkbox" name="component_veg_{{ forloop.counter0 }}" {% if c.is_vegetarian %}checked{% endif %}>
+                Veg
+              </label>
+              <button type="button" class="remove-row-btn" onclick="removeRow(this)">Remove</button>
+            </div>
+            {% endfor %}
+          {% endif %}
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addRow()">+ Add component</button>
+      </div>
+
+      <div style="margin-top:24px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <a href="{% url 'cafeteria_event_menus' %}" class="btn btn-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary">💾 Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<template id="row-template">
+  <div class="component-row">
+    <select name="component_category[]">
+      {% for val, label in categories %}
+      <option value="{{ val }}">{{ label }}</option>
+      {% endfor %}
+    </select>
+    <input type="text" name="component_name[]" placeholder="Component name" required>
+    <input type="text" name="component_description[]" placeholder="Description (optional)">
+    <label class="veg-wrap">
+      <input type="checkbox" data-veg-check>
+      Veg
+    </label>
+    <button type="button" class="remove-row-btn" onclick="removeRow(this)">Remove</button>
+  </div>
+</template>
+
+<script>
+  let rowIndex = {% if menu %}{{ menu.components.all|length }}{% else %}0{% endif %};
+
+  function addRow() {
+    const tpl = document.getElementById('row-template');
+    const clone = tpl.content.firstElementChild.cloneNode(true);
+    clone.dataset.index = rowIndex;
+    const vegCheck = clone.querySelector('[data-veg-check]');
+    vegCheck.name = 'component_veg_' + rowIndex;
+    vegCheck.removeAttribute('data-veg-check');
+    document.getElementById('components-list').appendChild(clone);
+    rowIndex++;
+  }
+
+  function removeRow(btn) {
+    btn.closest('.component-row').remove();
+  }
+</script>
+{% endblock %}

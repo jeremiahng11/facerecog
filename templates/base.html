@@ -361,8 +361,15 @@
     {% if user.is_admin_role %}
     <a href="{% url 'cafeteria_admin_my_orders' %}" {% if 'admin_my_orders' in request.resolver_match.url_name or 'admin_new_order' in request.resolver_match.url_name %}class="active"{% endif %}>My Orders</a>
     <a href="{% url 'cafeteria_dashboard' %}" {% if 'cafeteria' in request.resolver_match.url_name and 'admin_my_orders' not in request.resolver_match.url_name and 'admin_new_order' not in request.resolver_match.url_name %}class="active"{% endif %}>Cafeteria</a>
-    <a href="{% url 'admin_users' %}" {% if 'admin' in request.resolver_match.url_name and 'cafeteria' not in request.resolver_match.url_name %}class="active"{% endif %}>Manage Users</a>
+    <a href="{% url 'cafeteria_admin_events' %}" {% if 'event' in request.resolver_match.url_name %}class="active"{% endif %}>Events</a>
+    <a href="{% url 'admin_users' %}" {% if 'admin' in request.resolver_match.url_name and 'cafeteria' not in request.resolver_match.url_name and 'event' not in request.resolver_match.url_name %}class="active"{% endif %}>Manage Users</a>
+    {% elif user.role == 'kitchen_admin' %}
+    <a href="{% url 'cafeteria_admin_menu_list' %}" {% if 'admin_menu' in request.resolver_match.url_name %}class="active"{% endif %}>Menus</a>
+    <a href="{% url 'cafeteria_event_menus' %}" {% if 'event_menu' in request.resolver_match.url_name %}class="active"{% endif %}>Event Menus</a>
+    <a href="{% url 'cafeteria_kitchen_events' %}" {% if 'kitchen_event' in request.resolver_match.url_name %}class="active"{% endif %}>Events</a>
+    <a href="{% url 'cafeteria_displays_hub' %}" {% if 'displays' in request.resolver_match.url_name %}class="active"{% endif %}>Counter</a>
     {% elif user.role == 'kitchen' or user.role == 'cafe_bar' %}
+    <a href="{% url 'cafeteria_kitchen_events' %}" {% if 'kitchen_event' in request.resolver_match.url_name %}class="active"{% endif %}>Events</a>
     <a href="{% url 'cafeteria_displays_hub' %}" {% if 'displays' in request.resolver_match.url_name %}class="active"{% endif %}>Counter Displays</a>
     {% else %}
     <a href="{% url 'staff_portal_home' %}" {% if 'staff_portal' in request.resolver_match.url_name %}class="active"{% endif %}>My Orders</a>

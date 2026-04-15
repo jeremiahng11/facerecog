@@ -98,6 +98,22 @@ urlpatterns = [
     path('cafeteria/portal/qr/', cafeteria_views.staff_portal_qr_view, name='staff_portal_qr'),
     path('cafeteria/portal/history/', cafeteria_views.staff_portal_history_view, name='staff_portal_history'),
     path('cafeteria/portal/profile/', cafeteria_views.staff_portal_profile_view, name='staff_portal_profile'),
+    path('cafeteria/portal/events/', cafeteria_views.staff_portal_events_view, name='staff_portal_events'),
+    path('cafeteria/portal/events/new/', cafeteria_views.staff_portal_event_new_view, name='staff_portal_event_new'),
+    path('cafeteria/portal/events/<int:booking_id>/', cafeteria_views.staff_portal_event_detail_view, name='staff_portal_event_detail'),
+    path('cafeteria/portal/events/<int:booking_id>/cancel/', cafeteria_views.staff_portal_event_cancel_view, name='staff_portal_event_cancel'),
+
+    # Events (admin approval + kitchen view + menu CRUD)
+    path('cafeteria/admin/events/', cafeteria_views.admin_events_view, name='cafeteria_admin_events'),
+    path('cafeteria/admin/events/<int:booking_id>/', cafeteria_views.admin_event_detail_view, name='cafeteria_admin_event_detail'),
+    path('cafeteria/admin/events/<int:booking_id>/approve/', cafeteria_views.admin_event_approve_view, name='cafeteria_admin_event_approve'),
+    path('cafeteria/admin/events/<int:booking_id>/reject/', cafeteria_views.admin_event_reject_view, name='cafeteria_admin_event_reject'),
+    path('cafeteria/admin/event-menus/', cafeteria_views.event_menus_list_view, name='cafeteria_event_menus'),
+    path('cafeteria/admin/event-menus/add/', cafeteria_views.event_menu_add_view, name='cafeteria_event_menu_add'),
+    path('cafeteria/admin/event-menus/<int:menu_id>/edit/', cafeteria_views.event_menu_edit_view, name='cafeteria_event_menu_edit'),
+    path('cafeteria/admin/event-menus/<int:menu_id>/delete/', cafeteria_views.event_menu_delete_view, name='cafeteria_event_menu_delete'),
+    path('cafeteria/kitchen-events/', cafeteria_views.kitchen_events_view, name='cafeteria_kitchen_events'),
+    path('cafeteria/kitchen-events/<int:booking_id>/', cafeteria_views.kitchen_event_detail_view, name='cafeteria_kitchen_event_detail'),
 
     # Admin dashboard/reports/staff/refunds
     path('cafeteria/admin/my-orders/', cafeteria_views.admin_my_orders_view, name='cafeteria_admin_my_orders'),

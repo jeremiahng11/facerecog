@@ -33,6 +33,7 @@ from django.views.decorators.http import require_POST
 from .models import (
     StaffUser, MenuItem, Order, OrderItem, CreditTransaction,
     QRScanLog, OrderingHours, KioskConfig, Holiday,
+    EventMenu, EventMenuItem, EventBooking,
 )
 from .consumers import push_order_event
 
@@ -86,7 +87,12 @@ def is_cafe_bar_user(user):
 
 def is_kitchen_or_cafe_bar_user(user):
     """Can access any counter (kitchen, cafe_bar, or admin)."""
-    return user.is_authenticated and (is_admin(user) or getattr(user, 'role', '') in ('kitchen', 'cafe_bar'))
+    return user.is_authenticated and (is_admin(user) or getattr(user, 'role', '') in ('kitchen', 'cafe_bar', 'kitchen_admin'))
+
+
+def is_kitchen_admin(user):
+    """True for full admins OR users with role='kitchen_admin' (menu/event-menu editing)."""
+    return user.is_authenticated and (is_admin(user) or getattr(user, 'role', '') == 'kitchen_admin')
 
 
 def _user_can_scan_counter(user, counter: str) -> bool:
@@ -2046,7 +2052,7 @@ def cafeteria_staff_role_ajax(request, user_id):
     if user.is_root and not getattr(request.user, 'is_root', False):
         raise Http404()
     new_role = request.POST.get('role', '')
-    if new_role not in ('', 'kitchen', 'cafe_bar', 'admin'):
+    if new_role not in ('', 'kitchen', 'cafe_bar', 'kitchen_admin', 'admin'):
         return JsonResponse({'success': False, 'message': 'Invalid role'})
     user.role = new_role
     # If role is 'admin', also set is_staff so they can access Django admin.
@@ -2056,3 +2062,289 @@ def cafeteria_staff_role_ajax(request, user_id):
     else:
         user.save(update_fields=['role'])
     return JsonResponse({'success': True, 'role': new_role or 'staff'})
+
+
+# ═══ Events: Event Menus (admin + kitchen_admin CRUD) ═══════════════════════
+
+@login_required
+@user_passes_test(is_kitchen_admin)
+def event_menus_list_view(request):
+    """List all event menus. Editable by admin + kitchen_admin."""
+    menus = EventMenu.objects.all().prefetch_related('components').order_by('display_order', 'name')
+    return render(request, 'cafeteria/event_menus_list.html', {
+        'menus': menus,
+    })
+
+
+@login_required
+@user_passes_test(is_kitchen_admin)
+def event_menu_add_view(request):
+    return _event_menu_save(request, None)
+
+
+@login_required
+@user_passes_test(is_kitchen_admin)
+def event_menu_edit_view(request, menu_id):
+    menu = get_object_or_404(EventMenu, pk=menu_id)
+    return _event_menu_save(request, menu)
+
+
+def _event_menu_save(request, menu):
+    """Shared add+edit view for EventMenu."""
+    is_new = menu is None
+    if request.method == 'POST':
+        try:
+            if is_new:
+                menu = EventMenu()
+                menu.created_by = request.user
+            menu.name = (request.POST.get('name') or '').strip()[:120]
+            menu.description = (request.POST.get('description') or '').strip()
+            menu.price_per_pax = Decimal(request.POST.get('price_per_pax') or '0')
+            menu.min_pax = int(request.POST.get('min_pax') or 10)
+            menu.max_pax = int(request.POST.get('max_pax') or 200)
+            menu.is_available = request.POST.get('is_available') == 'on'
+            menu.is_vegetarian = request.POST.get('is_vegetarian') == 'on'
+            menu.display_order = int(request.POST.get('display_order') or 0)
+            if request.FILES.get('photo'):
+                menu.photo = request.FILES['photo']
+            if not menu.name:
+                messages.error(request, 'Menu name is required.')
+                raise ValueError('missing name')
+            menu.save()
+
+            # Rebuild components from POST.
+            # Expected arrays: component_category[], component_name[],
+            # component_description[], component_is_vegetarian_<i>
+            if not is_new:
+                menu.components.all().delete()
+            cats = request.POST.getlist('component_category')
+            names = request.POST.getlist('component_name')
+            descs = request.POST.getlist('component_description')
+            for idx, (cat, nm, desc) in enumerate(zip(cats, names, descs)):
+                if not (cat and nm.strip()):
+                    continue
+                EventMenuItem.objects.create(
+                    event_menu=menu,
+                    category=cat,
+                    name=nm.strip()[:120],
+                    description=desc.strip()[:240],
+                    is_vegetarian=request.POST.get(f'component_veg_{idx}') == 'on',
+                    display_order=idx,
+                )
+            messages.success(request, f'Event menu "{menu.name}" saved.')
+            return redirect('cafeteria_event_menus')
+        except (ValueError, TypeError) as e:
+            messages.error(request, f'Could not save: {e}')
+
+    return render(request, 'cafeteria/event_menu_form.html', {
+        'menu': menu,
+        'is_new': is_new,
+        'categories': EventMenuItem.CATEGORY_CHOICES,
+    })
+
+
+@login_required
+@user_passes_test(is_kitchen_admin)
+@require_POST
+def event_menu_delete_view(request, menu_id):
+    menu = get_object_or_404(EventMenu, pk=menu_id)
+    if menu.bookings.exists():
+        messages.error(request, 'Cannot delete — this menu has bookings. Mark it unavailable instead.')
+        return redirect('cafeteria_event_menus')
+    menu.delete()
+    messages.success(request, 'Event menu deleted.')
+    return redirect('cafeteria_event_menus')
+
+
+# ═══ Events: Staff PWA booking flow ═══════════════════════════════════════════
+
+@login_required
+def staff_portal_events_view(request):
+    """Staff PWA 'Events' tab — lists the staff member's own bookings."""
+    bookings = EventBooking.objects.filter(booked_by=request.user).select_related('event_menu').order_by('-event_date')
+    return render(request, 'cafeteria/staff_portal_events.html', {
+        'bookings': bookings,
+    })
+
+
+@login_required
+def staff_portal_event_new_view(request):
+    """Create a new event booking. Date must be >= today + 14 days."""
+    min_date = (timezone.localdate() + timezone.timedelta(days=14)).isoformat()
+    menus = EventMenu.objects.filter(is_available=True).prefetch_related('components').order_by('display_order', 'name')
+
+    if request.method == 'POST':
+        try:
+            menu_id = int(request.POST.get('event_menu'))
+            menu = EventMenu.objects.get(pk=menu_id, is_available=True)
+            event_type = request.POST.get('event_type', 'meeting')
+            if event_type not in dict(EventBooking.EVENT_TYPE_CHOICES):
+                raise ValueError('invalid event type')
+
+            pax = int(request.POST.get('pax') or 0)
+            if pax < menu.min_pax:
+                messages.error(request, f'{menu.name} requires at least {menu.min_pax} pax.')
+                raise ValueError('below min_pax')
+            if pax > menu.max_pax:
+                messages.error(request, f'{menu.name} allows up to {menu.max_pax} pax.')
+                raise ValueError('above max_pax')
+
+            event_date = request.POST.get('event_date')
+            event_time = request.POST.get('event_time')
+            if not (event_date and event_time):
+                messages.error(request, 'Date and time are required.')
+                raise ValueError('missing date/time')
+
+            from datetime import date as _date
+            parsed_date = _date.fromisoformat(event_date)
+            earliest = timezone.localdate() + timezone.timedelta(days=14)
+            if parsed_date < earliest:
+                messages.error(request, f'Event date must be on or after {earliest:%d %b %Y} (min 14 days ahead).')
+                raise ValueError('too soon')
+
+            booking = EventBooking.objects.create(
+                booked_by=request.user,
+                event_type=event_type,
+                event_menu=menu,
+                pax=pax,
+                event_date=parsed_date,
+                event_time=event_time,
+                venue=(request.POST.get('venue') or '').strip()[:200],
+                notes=(request.POST.get('notes') or '').strip(),
+                title=(request.POST.get('title') or '').strip()[:160],
+                status='pending',
+            )
+            messages.success(request, f'Event booking submitted — pending admin approval. Reference #{booking.id}.')
+            return redirect('staff_portal_events')
+        except (EventMenu.DoesNotExist, ValueError, TypeError):
+            pass
+
+    return render(request, 'cafeteria/staff_portal_event_new.html', {
+        'menus': menus,
+        'min_date': min_date,
+        'event_type_choices': EventBooking.EVENT_TYPE_CHOICES,
+    })
+
+
+@login_required
+def staff_portal_event_detail_view(request, booking_id):
+    """Staff can view their own booking detail."""
+    booking = get_object_or_404(EventBooking, pk=booking_id, booked_by=request.user)
+    return render(request, 'cafeteria/staff_portal_event_detail.html', {
+        'booking': booking,
+    })
+
+
+@login_required
+@require_POST
+def staff_portal_event_cancel_view(request, booking_id):
+    """Staff can cancel their own pending booking."""
+    booking = get_object_or_404(EventBooking, pk=booking_id, booked_by=request.user)
+    if booking.status not in ('pending', 'approved'):
+        messages.error(request, 'This booking cannot be cancelled.')
+    else:
+        booking.status = 'cancelled'
+        booking.save(update_fields=['status'])
+        messages.success(request, 'Booking cancelled.')
+    return redirect('staff_portal_events')
+
+
+# ═══ Events: Admin approval dashboard ════════════════════════════════════════
+
+@login_required
+@user_passes_test(is_admin)
+def admin_events_view(request):
+    """Admin: approval queue for event bookings."""
+    status_filter = request.GET.get('status', '')
+    qs = EventBooking.objects.all().select_related('event_menu', 'booked_by', 'approved_by')
+    if status_filter:
+        qs = qs.filter(status=status_filter)
+    else:
+        # Default: show pending + approved upcoming
+        qs = qs.exclude(status__in=['rejected', 'cancelled', 'completed'])
+    bookings = qs.order_by('status', 'event_date')
+    return render(request, 'cafeteria/admin_events.html', {
+        'bookings': bookings,
+        'status_filter': status_filter,
+    })
+
+
+@login_required
+@user_passes_test(is_admin)
+def admin_event_detail_view(request, booking_id):
+    booking = get_object_or_404(EventBooking, pk=booking_id)
+    return render(request, 'cafeteria/admin_event_detail.html', {
+        'booking': booking,
+    })
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def admin_event_approve_view(request, booking_id):
+    booking = get_object_or_404(EventBooking, pk=booking_id)
+    if booking.status != 'pending':
+        messages.error(request, 'Only pending bookings can be approved.')
+    else:
+        booking.status = 'approved'
+        booking.approved_by = request.user
+        booking.approved_at = timezone.now()
+        booking.save(update_fields=['status', 'approved_by', 'approved_at'])
+        messages.success(request, f'Event booking #{booking.id} approved.')
+    return redirect('cafeteria_admin_events')
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def admin_event_reject_view(request, booking_id):
+    booking = get_object_or_404(EventBooking, pk=booking_id)
+    if booking.status != 'pending':
+        messages.error(request, 'Only pending bookings can be rejected.')
+    else:
+        booking.status = 'rejected'
+        booking.rejection_reason = (request.POST.get('reason') or '').strip()[:500]
+        booking.approved_by = request.user
+        booking.approved_at = timezone.now()
+        booking.save(update_fields=['status', 'rejection_reason', 'approved_by', 'approved_at'])
+        messages.success(request, f'Event booking #{booking.id} rejected.')
+    return redirect('cafeteria_admin_events')
+
+
+# ═══ Events: Kitchen + Cafe Bar view of approved events ═════════════════════
+
+@login_required
+@user_passes_test(is_kitchen_or_cafe_bar_user)
+def kitchen_events_view(request):
+    """
+    Kitchen / Cafe Bar / Kitchen Admin view of APPROVED event bookings.
+    Booker staff details are only visible to admin + kitchen_admin.
+    Regular kitchen / cafe bar users see the event requirements (menu, pax,
+    date, venue) but NOT the booker's details.
+    """
+    today = timezone.localdate()
+    bookings = EventBooking.objects.filter(
+        status='approved',
+        event_date__gte=today,
+    ).select_related('event_menu', 'booked_by').prefetch_related('event_menu__components').order_by('event_date', 'event_time')
+
+    can_see_booker = is_kitchen_admin(request.user)
+    return render(request, 'cafeteria/kitchen_events.html', {
+        'bookings': bookings,
+        'can_see_booker': can_see_booker,
+    })
+
+
+@login_required
+@user_passes_test(is_kitchen_or_cafe_bar_user)
+def kitchen_event_detail_view(request, booking_id):
+    """Detail view for a single approved event booking."""
+    booking = get_object_or_404(
+        EventBooking.objects.select_related('event_menu', 'booked_by').prefetch_related('event_menu__components'),
+        pk=booking_id, status='approved',
+    )
+    can_see_booker = is_kitchen_admin(request.user)
+    return render(request, 'cafeteria/kitchen_event_detail.html', {
+        'booking': booking,
+        'can_see_booker': can_see_booker,
+    })

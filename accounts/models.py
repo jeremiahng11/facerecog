@@ -68,6 +68,7 @@ class StaffUser(AbstractBaseUser, PermissionsMixin):
         ('', 'Staff (ordering only)'),
         ('kitchen', 'Kitchen Counter'),
         ('cafe_bar', 'Cafe Bar Counter'),
+        ('kitchen_admin', 'Kitchen Admin (menus + events)'),
         ('admin', 'Administrator'),
     ]
     role = models.CharField(
@@ -116,9 +117,14 @@ class StaffUser(AbstractBaseUser, PermissionsMixin):
         return self.is_staff or self.is_superuser or self.role == 'admin'
 
     @property
+    def is_kitchen_admin(self):
+        """True if user is a Kitchen Admin (menu + event-menu management, counter access)."""
+        return self.is_admin_role or self.role == 'kitchen_admin'
+
+    @property
     def is_kitchen_user(self):
         """True if user can access kitchen counter views."""
-        return self.is_admin_role or self.role == 'kitchen'
+        return self.is_admin_role or self.role in ('kitchen', 'kitchen_admin')
 
     @property
     def is_cafe_bar_user(self):
@@ -542,3 +548,134 @@ class KioskConfig(models.Model):
     def get(cls):
         obj, _ = cls.objects.get_or_create(pk=1)
         return obj
+
+
+# ═══ Events / Catering ═══════════════════════════════════════════════════════
+
+class EventMenu(models.Model):
+    """
+    A catering-style event menu 'package' that staff can pick for team
+    bonding, meetings, discussions, VIP events, etc. Composed of multiple
+    EventMenuItem components (mains + sides + drinks + desserts).
+
+    Created/edited by Admin or Kitchen Admin; refreshed monthly like the
+    regular menu.
+    """
+    name = models.CharField(max_length=120, help_text='e.g. Executive Lunch Package, Asian Buffet')
+    description = models.TextField(blank=True)
+    price_per_pax = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    min_pax = models.PositiveIntegerField(default=10)
+    max_pax = models.PositiveIntegerField(default=200)
+    photo = models.ImageField(upload_to='event_menus/', blank=True, null=True)
+    is_available = models.BooleanField(default=True)
+    is_vegetarian = models.BooleanField(default=False, help_text='Entire package is vegetarian')
+    display_order = models.PositiveIntegerField(default=0)
+    created_by = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='created_event_menus',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['display_order', 'name']
+
+    def __str__(self):
+        return self.name
+
+
+class EventMenuItem(models.Model):
+    """
+    A component of an EventMenu: main course, side, drink, dessert, etc.
+    Each EventMenu can have many items across multiple categories.
+    """
+    CATEGORY_CHOICES = [
+        ('appetizer', 'Appetizer'),
+        ('main',      'Main Course'),
+        ('side',      'Side Dish'),
+        ('drink',     'Drink'),
+        ('dessert',   'Dessert'),
+        ('other',     'Other'),
+    ]
+    event_menu = models.ForeignKey(EventMenu, on_delete=models.CASCADE, related_name='components')
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    name = models.CharField(max_length=120)
+    description = models.CharField(max_length=240, blank=True)
+    is_vegetarian = models.BooleanField(default=False)
+    display_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['event_menu', 'category', 'display_order']
+
+    def __str__(self):
+        return f'{self.event_menu.name} / {self.get_category_display()}: {self.name}'
+
+
+class EventBooking(models.Model):
+    """
+    Staff-submitted event booking awaiting admin approval.
+
+    Flow:
+      Staff creates via PWA (date must be >= today + 14 days) → 'pending'
+      Admin approves on /cafeteria/admin/events/ → 'approved'
+      Kitchen / Cafe Bar staff see it on their events list so they know
+      what to prepare. Kitchen Admin sees the booker's staff details ONLY
+      after the booking is approved.
+    """
+    EVENT_TYPE_CHOICES = [
+        ('team_bonding', 'Team Bonding'),
+        ('meeting',      'Meeting'),
+        ('discussion',   'Discussion'),
+        ('vip',          'VIP Event'),
+        ('other',        'Other'),
+    ]
+    STATUS_CHOICES = [
+        ('pending',   'Pending Approval'),
+        ('approved',  'Approved'),
+        ('rejected',  'Rejected'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+    ]
+    # Who + what
+    booked_by = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True,
+        related_name='event_bookings',
+    )
+    event_type = models.CharField(max_length=20, choices=EVENT_TYPE_CHOICES)
+    event_menu = models.ForeignKey(
+        EventMenu, on_delete=models.PROTECT, related_name='bookings',
+    )
+    pax = models.PositiveIntegerField()
+    event_date = models.DateField()
+    event_time = models.TimeField()
+    venue = models.CharField(max_length=200)
+    notes = models.TextField(blank=True)
+    title = models.CharField(max_length=160, blank=True, help_text='Optional event title (e.g. Q3 Offsite)')
+
+    # Approval workflow
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='approved_event_bookings',
+    )
+    rejection_reason = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-event_date', '-event_time']
+
+    def __str__(self):
+        return f'{self.get_event_type_display()} · {self.event_date} · {self.pax} pax'
+
+    @property
+    def total_cost(self):
+        return (self.event_menu.price_per_pax or 0) * self.pax
+
+    @property
+    def is_approved(self):
+        return self.status == 'approved'
+
+    @property
+    def is_pending(self):
+        return self.status == 'pending'

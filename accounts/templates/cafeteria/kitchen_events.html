@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+{% block title %}Approved Events{% endblock %}
+{% block extra_head %}
+<style>
+  .date-group {
+    margin-bottom: 24px;
+  }
+  .date-header {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--accent);
+    padding: 10px 14px;
+    background: var(--bg2);
+    border-radius: 8px 8px 0 0;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    font-weight: 700;
+  }
+  .event-item {
+    display: grid;
+    grid-template-columns: 100px 1fr 1fr 1fr auto;
+    gap: 14px;
+    align-items: center;
+    padding: 14px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-top: none;
+    font-size: 13px;
+  }
+  .event-item:last-child { border-radius: 0 0 8px 8px; }
+  .event-item + .event-item { border-top: 1px solid var(--border); }
+  .event-item .time {
+    font-family: var(--mono);
+    font-size: 15px;
+    color: var(--text);
+    font-weight: 700;
+  }
+  .event-item .type { color: var(--text2); font-size: 11px; }
+  .event-item .pax { font-weight: 700; color: var(--accent); }
+  .event-item .menu { font-weight: 600; color: var(--text); }
+  .event-item .venue { color: var(--text2); font-size: 12px; }
+  .event-item .booker {
+    font-size: 11px; color: var(--text3); margin-top: 2px;
+  }
+  @media (max-width: 800px) {
+    .event-item { grid-template-columns: 1fr; gap: 4px; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="page-title">Approved Events — Prep Schedule</div>
+      <div class="page-subtitle">Upcoming events by date.</div>
+    </div>
+  </div>
+
+  {% regroup bookings by event_date as date_groups %}
+  {% for g in date_groups %}
+  <div class="date-group">
+    <div class="date-header">{{ g.grouper|date:"D, d M Y" }}</div>
+    {% for b in g.list %}
+    <div class="event-item">
+      <div>
+        <div class="time">{{ b.event_time|time:"H:i" }}</div>
+        <div class="type">{{ b.get_event_type_display }}</div>
+      </div>
+      <div>
+        <div class="menu">{{ b.event_menu.name|default:"—" }}</div>
+        <div class="type">{{ b.title|default:"" }}</div>
+      </div>
+      <div>
+        <span class="pax">{{ b.pax }} pax</span>
+        <div class="venue">📍 {{ b.venue }}</div>
+      </div>
+      <div>
+        {% if can_see_booker %}
+        <div style="font-weight:600;color:var(--text)">{{ b.user.display_name|default:b.user.full_name }}</div>
+        <div class="booker mono">{{ b.user.staff_id }} · {{ b.user.email }}</div>
+        {% endif %}
+      </div>
+      <div>
+        <a href="{% url 'cafeteria_kitchen_event_detail' b.id %}" class="btn btn-secondary btn-sm">Details →</a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% empty %}
+  <div class="card" style="text-align:center;padding:50px 20px;color:var(--text3)">
+    <div style="font-size:42px;margin-bottom:10px">🍽</div>
+    <div>No approved events scheduled.</div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

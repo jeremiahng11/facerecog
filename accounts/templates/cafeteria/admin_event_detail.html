@@ -1,0 +1,152 @@
+{% extends 'base.html' %}
+{% block title %}Event · {{ booking.title|default:booking.get_event_type_display }}{% endblock %}
+{% block extra_head %}
+<style>
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 700px) { .detail-grid { grid-template-columns: 1fr; } }
+  .detail-grid .dl {
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .detail-grid .field {
+    display: flex; justify-content: space-between;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .detail-grid .field .k {
+    color: var(--text3); font-family: var(--mono);
+    font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+  }
+  .detail-grid .field .v { color: var(--text); font-weight: 500; text-align: right; }
+  .status-pending { background: #fef3c7; color: #c2410c; }
+  .status-approved { background: #d1fae5; color: #047857; }
+  .status-rejected { background: #fee2e2; color: #b91c1c; }
+  .status-cancelled { background: #e5e7eb; color: #6b7280; }
+  .status-completed { background: #e5e7eb; color: #6b7280; }
+  .status-big {
+    display: inline-block; padding: 6px 14px; border-radius: 100px;
+    font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  }
+  .component-cat {
+    margin-bottom: 14px;
+  }
+  .component-cat .cat-header {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 4px;
+  }
+  .component-cat .cat-item {
+    padding: 6px 0; font-size: 14px; color: var(--text);
+    border-bottom: 1px dashed var(--border);
+  }
+  .component-cat .cat-item:last-child { border-bottom: none; }
+  .reject-box {
+    background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c;
+    padding: 12px 14px; border-radius: 8px; font-size: 13px; margin-top: 10px;
+  }
+  details.reject-details summary {
+    cursor: pointer; color: var(--danger); font-weight: 600;
+    padding: 8px 0;
+  }
+  details.reject-details textarea {
+    width: 100%; padding: 10px; border: 1px solid var(--border);
+    border-radius: 8px; font-family: inherit; font-size: 14px;
+    margin: 8px 0;
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="page-title">{{ booking.title|default:booking.get_event_type_display }}</div>
+      <div class="page-subtitle">
+        Booking #{{ booking.id }} ·
+        <span class="status-big status-{{ booking.status }}">{{ booking.get_status_display }}</span>
+      </div>
+    </div>
+    <a href="{% url 'cafeteria_admin_events' %}" class="btn btn-secondary">← Back to Bookings</a>
+  </div>
+
+  <div class="card">
+    <div class="detail-grid">
+      <div class="dl">
+        <div class="field"><span class="k">Event Type</span><span class="v">{{ booking.get_event_type_display }}</span></div>
+        <div class="field"><span class="k">Date</span><span class="v">{{ booking.event_date|date:"D, d M Y" }}</span></div>
+        <div class="field"><span class="k">Time</span><span class="v">{{ booking.event_time|time:"H:i" }}</span></div>
+        <div class="field"><span class="k">Venue</span><span class="v">{{ booking.venue }}</span></div>
+        <div class="field"><span class="k">Pax</span><span class="v">{{ booking.pax }}</span></div>
+      </div>
+      <div class="dl">
+        <div class="field"><span class="k">Booker</span><span class="v">{{ booking.user.display_name|default:booking.user.full_name }}</span></div>
+        <div class="field"><span class="k">Staff ID</span><span class="v mono">{{ booking.user.staff_id }}</span></div>
+        <div class="field"><span class="k">Email</span><span class="v">{{ booking.user.email }}</span></div>
+        <div class="field"><span class="k">Menu</span><span class="v">{{ booking.event_menu.name|default:"—" }}</span></div>
+        <div class="field"><span class="k">Total Cost</span><span class="v" style="color:var(--accent);font-weight:700">S${{ booking.total_cost|floatformat:2 }}</span></div>
+        <div class="field"><span class="k">Submitted</span><span class="v">{{ booking.created_at|date:"d M Y, H:i" }}</span></div>
+        {% if booking.approved_at %}
+        <div class="field"><span class="k">Approved</span><span class="v">{{ booking.approved_at|date:"d M Y, H:i" }}</span></div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if booking.notes %}
+    <div style="margin-top:16px;padding:12px;background:var(--bg2);border-radius:8px;font-size:13px;color:var(--text2)">
+      <strong style="color:var(--text3);font-size:11px;letter-spacing:1px">NOTES:</strong><br>
+      {{ booking.notes|linebreaksbr }}
+    </div>
+    {% endif %}
+
+    {% if booking.rejection_reason %}
+    <div class="reject-box">
+      <strong>Rejection reason:</strong> {{ booking.rejection_reason }}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if booking.event_menu %}
+  <div class="card" style="margin-top:16px">
+    <div class="card-header"><h2>Menu Components</h2></div>
+    {% regroup booking.event_menu.components.all by get_category_display as cat_groups %}
+    {% for g in cat_groups %}
+    <div class="component-cat">
+      <div class="cat-header">{{ g.grouper }}</div>
+      {% for c in g.list %}
+      <div class="cat-item">
+        <strong>{{ c.name }}</strong>{% if c.is_vegetarian %} <span class="badge badge-green">🌱 VEG</span>{% endif %}
+        {% if c.description %}<div style="font-size:12px;color:var(--text3);margin-top:2px">{{ c.description }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% empty %}
+    <div style="color:var(--text3)">No components listed.</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if booking.status == 'pending' %}
+  <div class="card" style="margin-top:16px">
+    <div class="card-header"><h2>Approval Actions</h2></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <form method="post" action="{% url 'cafeteria_admin_event_approve' booking.id %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-success"
+                onclick="return confirm('Approve this booking? The booker will be notified.')">
+          ✓ Approve
+        </button>
+      </form>
+    </div>
+    <details class="reject-details" style="margin-top:16px">
+      <summary>✗ Reject with reason…</summary>
+      <form method="post" action="{% url 'cafeteria_admin_event_reject' booking.id %}">
+        {% csrf_token %}
+        <textarea name="rejection_reason" rows="3" placeholder="Reason (shown to the booker)" required></textarea>
+        <button type="submit" class="btn btn-danger">Confirm Reject</button>
+      </form>
+    </details>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
