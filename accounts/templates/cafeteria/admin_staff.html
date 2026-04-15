@@ -2,26 +2,66 @@
 {% block title %}Staff Credits{% endblock %}
 {% block extra_head %}
 <style>
-  .staff-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
-  .staff-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
-  .staff-card .top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
-  .staff-card .name { font-weight: 700; font-size: 16px; }
-  .staff-card .sid { font-size: 11px; color: var(--text3); }
-  .role-badge { font-size: 10px; padding: 3px 8px; border-radius: 100px; font-weight: 700; letter-spacing: 0.5px; }
-  .role-admin { background: #fef3c7; color: #c2410c; }
-  .role-kitchen { background: rgba(16,185,129,0.15); color: var(--accent3); }
+  .staff-table { font-size: 13px; }
+  .staff-table th { font-size: 10px; }
+  .staff-table td { padding: 10px 10px; vertical-align: middle; }
+  .staff-table .name { color: var(--text); font-weight: 600; }
+  .staff-table .sid { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+  .role-badge { font-size: 10px; padding: 3px 8px; border-radius: 100px; font-weight: 700; letter-spacing: 0.5px; white-space: nowrap; }
+  .role-admin    { background: #fef3c7; color: #c2410c; }
+  .role-kitchen  { background: #d1fae5; color: #047857; }
   .role-cafe_bar { background: #ddd6fe; color: #6b21a8; }
-  .role-none { background: #e5e7eb; color: var(--text3); }
-  .progress { height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; margin-top: 8px; }
-  .progress .fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 4px; transition: width 0.3s; }
-  .adjust-form { display: none; margin-top: 10px; gap: 6px; flex-wrap: wrap; }
-  .adjust-form.active { display: flex; }
-  .row-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .role-none     { background: #e5e7eb; color: #6b7280; }
+  .balance { font-family: var(--mono); color: var(--accent); font-weight: 700; }
+  .progress { height: 4px; width: 60px; background: var(--bg2); border-radius: 2px; overflow: hidden; display: inline-block; vertical-align: middle; margin-left: 8px; }
+  .progress .fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
   .role-select {
-    padding: 4px 8px; background: var(--bg); border: 1px solid var(--border);
+    padding: 4px 6px; background: #fff; border: 1px solid var(--border);
     border-radius: 6px; color: var(--text); font-size: 11px; font-family: var(--sans);
-    cursor: pointer;
+    cursor: pointer; min-width: 120px;
   }
+  .actions-cell { white-space: nowrap; }
+  .actions-cell .btn { margin-right: 4px; }
+
+  /* Inline adjust row */
+  .adjust-row td { background: var(--bg2); padding: 12px; }
+  .adjust-row { display: none; }
+  .adjust-row.active { display: table-row; }
+  .adjust-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .adjust-form input {
+    padding: 6px 10px; background: #fff; border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text); font-size: 13px;
+  }
+
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+  .toolbar .search-wrap {
+    flex: 1; min-width: 260px;
+    position: relative;
+  }
+  .toolbar .search-wrap input {
+    width: 100%; padding: 10px 14px 10px 36px; font-size: 14px;
+    border: 1px solid var(--border); border-radius: 8px; background: #fff;
+    outline: none; font-family: var(--sans);
+  }
+  .toolbar .search-wrap input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(30, 86, 184, 0.12); }
+  .toolbar .search-wrap::before {
+    content: '🔍'; position: absolute; left: 12px; top: 50%;
+    transform: translateY(-50%); pointer-events: none; font-size: 13px; opacity: 0.6;
+  }
+  .toolbar select {
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+    background: #fff; color: var(--text); font-size: 14px; font-family: var(--sans);
+  }
+
+  .page-nav { display: flex; gap: 4px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
+  .page-nav a, .page-nav span {
+    padding: 6px 12px; border-radius: 6px; font-size: 13px;
+    background: #fff; border: 1px solid var(--border); color: var(--text2);
+    font-family: var(--mono);
+  }
+  .page-nav a:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+  .page-nav .current { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .page-nav .disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
 {% endblock %}
 {% block content %}
@@ -29,7 +69,7 @@
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
     <div>
       <div class="page-title">Staff Credits &amp; Roles</div>
-      <div class="page-subtitle">Balances, roles, and credit adjustments</div>
+      <div class="page-subtitle">{{ total_count }} staff · balances, roles, and credit adjustments</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <a href="{% url 'cafeteria_credits_bulk' %}" class="btn btn-primary">💰 Monthly Settings</a>
@@ -38,59 +78,137 @@
     </div>
   </div>
 
-  <div class="staff-grid">
-    {% for s in staff %}
-    <div class="staff-card" id="staff-{{ s.id }}">
-      <div class="top">
-        <div>
-          <div class="name">{{ s.display_name }}</div>
-          <div class="sid">{{ s.staff_id }} · {{ s.department|default:"—" }}</div>
-        </div>
-        <span class="role-badge role-{{ s.role|default:'none' }}" id="role-badge-{{ s.id }}">
-          {% if s.role == 'admin' %}Admin
-          {% elif s.role == 'kitchen' %}Kitchen
-          {% elif s.role == 'cafe_bar' %}Cafe Bar
-          {% else %}Staff{% endif %}
-        </span>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:baseline">
-        <div>
-          <div class="mono" style="font-size:22px;color:var(--accent);font-weight:700">S${{ s.credit_balance|floatformat:2 }}</div>
-          <div style="font-size:11px;color:var(--text3)">of S${{ s.monthly_credit|floatformat:2 }} monthly</div>
-        </div>
-      </div>
-      <div class="progress">
-        {% if s.monthly_credit %}<div class="fill" style="width:{% widthratio s.credit_balance s.monthly_credit 100 %}%"></div>{% endif %}
-      </div>
-
-      <div class="row-actions">
-        <select class="role-select" id="role-{{ s.id }}" onchange="changeRole({{ s.id }}, this.value)">
-          <option value="" {% if not s.role %}selected{% endif %}>Staff (ordering only)</option>
-          <option value="kitchen" {% if s.role == 'kitchen' %}selected{% endif %}>Kitchen Counter</option>
-          <option value="cafe_bar" {% if s.role == 'cafe_bar' %}selected{% endif %}>Cafe Bar Counter</option>
-          <option value="admin" {% if s.role == 'admin' %}selected{% endif %}>Administrator</option>
-        </select>
-        <button class="btn btn-secondary btn-sm" onclick="toggleAdjust({{ s.id }})">± Credit</button>
-        <a href="{% url 'cafeteria_credit_history_user' s.id %}" class="btn btn-secondary btn-sm">History</a>
-      </div>
-
-      <form class="adjust-form" id="adjust-{{ s.id }}" onsubmit="return adjust(event, {{ s.id }})">
-        <input type="number" step="0.01" placeholder="±Amount SGD" name="amount" required style="flex:1;min-width:100px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)">
-        <input type="text" placeholder="Reason / note" name="notes" style="flex:2;min-width:150px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)">
-        <button type="submit" class="btn btn-primary btn-sm">Save</button>
-      </form>
+  <form method="get" class="toolbar" role="search">
+    <div class="search-wrap">
+      <input type="search" name="q" value="{{ q }}"
+             placeholder="Search by name, staff ID, email or department…"
+             autocomplete="off">
     </div>
-    {% empty %}<div class="text-dim">No active staff</div>{% endfor %}
+    <select name="role" onchange="this.form.submit()">
+      <option value=""         {% if not role_filter %}selected{% endif %}>All roles</option>
+      <option value="admin"    {% if role_filter == 'admin' %}selected{% endif %}>Admin</option>
+      <option value="kitchen"  {% if role_filter == 'kitchen' %}selected{% endif %}>Kitchen</option>
+      <option value="cafe_bar" {% if role_filter == 'cafe_bar' %}selected{% endif %}>Cafe Bar</option>
+      <option value="staff"    {% if role_filter == 'staff' %}selected{% endif %}>Staff (ordering only)</option>
+    </select>
+    <button type="submit" class="btn btn-secondary">Search</button>
+    {% if q or role_filter %}
+    <a href="{% url 'cafeteria_admin_staff' %}" class="btn btn-secondary">Clear</a>
+    {% endif %}
+  </form>
+
+  <div class="card" style="padding:0">
+    <div class="table-wrap">
+      <table class="staff-table">
+        <thead>
+          <tr>
+            <th>Staff</th>
+            <th>Dept.</th>
+            <th>Role</th>
+            <th>Balance</th>
+            <th>Monthly</th>
+            <th style="text-align:right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in staff %}
+          <tr id="row-{{ s.id }}">
+            <td>
+              <div class="name">{{ s.display_name|default:s.full_name }}</div>
+              <div class="sid">{{ s.staff_id }}</div>
+            </td>
+            <td class="text-sm text-dim">{{ s.department|default:"—" }}</td>
+            <td>
+              <select class="role-select" id="role-{{ s.id }}" onchange="changeRole({{ s.id }}, this.value)">
+                <option value=""         {% if not s.role %}selected{% endif %}>Staff</option>
+                <option value="kitchen"  {% if s.role == 'kitchen' %}selected{% endif %}>Kitchen</option>
+                <option value="cafe_bar" {% if s.role == 'cafe_bar' %}selected{% endif %}>Cafe Bar</option>
+                <option value="admin"    {% if s.role == 'admin' %}selected{% endif %}>Admin</option>
+              </select>
+              <div style="margin-top:4px">
+                <span class="role-badge role-{{ s.role|default:'none' }}" id="role-badge-{{ s.id }}">
+                  {% if s.role == 'admin' %}Admin
+                  {% elif s.role == 'kitchen' %}Kitchen
+                  {% elif s.role == 'cafe_bar' %}Cafe Bar
+                  {% else %}Staff{% endif %}
+                </span>
+              </div>
+            </td>
+            <td>
+              <span class="balance">S${{ s.credit_balance|floatformat:2 }}</span>
+              {% if s.monthly_credit %}
+              <div class="progress" title="{% widthratio s.credit_balance s.monthly_credit 100 %}% of monthly">
+                <div class="fill" style="width:{% widthratio s.credit_balance s.monthly_credit 100 %}%"></div>
+              </div>
+              {% endif %}
+            </td>
+            <td class="mono text-sm text-dim">S${{ s.monthly_credit|floatformat:2 }}</td>
+            <td class="actions-cell" style="text-align:right">
+              <button class="btn btn-secondary btn-sm" onclick="toggleAdjust({{ s.id }})">± Credit</button>
+              <a href="{% url 'cafeteria_credit_history_user' s.id %}" class="btn btn-secondary btn-sm">History</a>
+            </td>
+          </tr>
+          <tr class="adjust-row" id="adjust-row-{{ s.id }}">
+            <td colspan="6">
+              <form class="adjust-form" onsubmit="return adjust(event, {{ s.id }})">
+                <strong style="color:var(--text2);font-size:12px;letter-spacing:1px">ADJUST CREDIT:</strong>
+                <input type="number" step="0.01" placeholder="±Amount SGD" name="amount" required style="width:140px">
+                <input type="text" placeholder="Reason / note" name="notes" style="flex:1;min-width:200px">
+                <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleAdjust({{ s.id }})">Cancel</button>
+              </form>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3)">
+            {% if q or role_filter %}No matches for the current filter.{% else %}No active staff.{% endif %}
+          </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+  <nav class="page-nav">
+    {% if page_obj.has_previous %}
+      <a href="?q={{ q|urlencode }}&role={{ role_filter|urlencode }}&page={{ page_obj.previous_page_number }}">← Prev</a>
+    {% else %}
+      <span class="disabled">← Prev</span>
+    {% endif %}
+    {% for n in page_obj.paginator.page_range %}
+      {% if n == page_obj.number %}
+        <span class="current">{{ n }}</span>
+      {% elif n == 1 or n == page_obj.paginator.num_pages or n >= page_obj.number|add:-2 and n <= page_obj.number|add:2 %}
+        <a href="?q={{ q|urlencode }}&role={{ role_filter|urlencode }}&page={{ n }}">{{ n }}</a>
+      {% elif n == page_obj.number|add:-3 or n == page_obj.number|add:3 %}
+        <span>…</span>
+      {% endif %}
+    {% endfor %}
+    {% if page_obj.has_next %}
+      <a href="?q={{ q|urlencode }}&role={{ role_filter|urlencode }}&page={{ page_obj.next_page_number }}">Next →</a>
+    {% else %}
+      <span class="disabled">Next →</span>
+    {% endif %}
+  </nav>
+  {% endif %}
 </div>
+
 <script>
 const CSRF = '{{ csrf_token }}';
-function toggleAdjust(id) { document.getElementById('adjust-' + id).classList.toggle('active'); }
+
+function toggleAdjust(id) {
+  const row = document.getElementById('adjust-row-' + id);
+  document.querySelectorAll('.adjust-row.active').forEach(r => { if (r !== row) r.classList.remove('active'); });
+  row.classList.toggle('active');
+}
 
 async function adjust(e, id) {
   e.preventDefault();
   const f = new FormData(e.target);
-  const r = await fetch(`/cafeteria/admin/staff/${id}/adjust/`, { method: 'POST', headers: { 'X-CSRFToken': CSRF }, body: f });
+  const r = await fetch(`/cafeteria/admin/staff/${id}/adjust/`, {
+    method: 'POST', headers: { 'X-CSRFToken': CSRF }, body: f,
+  });
   const d = await r.json();
   if (d.success) location.reload();
   else alert(d.message);
@@ -100,10 +218,11 @@ async function adjust(e, id) {
 async function changeRole(id, role) {
   const f = new FormData();
   f.append('role', role);
-  const r = await fetch(`/cafeteria/admin/staff/${id}/role/`, { method: 'POST', headers: { 'X-CSRFToken': CSRF }, body: f });
+  const r = await fetch(`/cafeteria/admin/staff/${id}/role/`, {
+    method: 'POST', headers: { 'X-CSRFToken': CSRF }, body: f,
+  });
   const d = await r.json();
   if (d.success) {
-    // Update the badge inline.
     const badge = document.getElementById('role-badge-' + id);
     badge.className = 'role-badge role-' + (d.role === 'staff' ? 'none' : d.role);
     badge.textContent = { admin: 'Admin', kitchen: 'Kitchen', cafe_bar: 'Cafe Bar', staff: 'Staff' }[d.role];
@@ -111,5 +230,16 @@ async function changeRole(id, role) {
     alert(d.message);
   }
 }
+
+// Auto-submit search after 400ms of inactivity (client-side debounce).
+(function(){
+  const input = document.querySelector('input[name="q"]');
+  if (!input) return;
+  let t;
+  input.addEventListener('input', () => {
+    clearTimeout(t);
+    t = setTimeout(() => input.form.submit(), 400);
+  });
+})();
 </script>
 {% endblock %}

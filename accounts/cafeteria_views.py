@@ -1770,9 +1770,38 @@ def cafeteria_refunds_view(request):
 @login_required
 @user_passes_test(is_admin)
 def cafeteria_staff_view(request):
-    """Staff management with card layout + credit progress."""
-    staff = visible_staff_qs(request.user).filter(is_active=True).order_by('staff_id')
-    return render(request, 'cafeteria/admin_staff.html', {'staff': staff})
+    """Compact list view of staff with search, role filter and pagination."""
+    from django.core.paginator import Paginator
+    qs = visible_staff_qs(request.user).filter(is_active=True)
+
+    q = (request.GET.get('q') or '').strip()
+    role_f = (request.GET.get('role') or '').strip()
+
+    if q:
+        qs = qs.filter(
+            Q(staff_id__icontains=q)
+            | Q(full_name__icontains=q)
+            | Q(display_name__icontains=q)
+            | Q(email__icontains=q)
+            | Q(department__icontains=q)
+        )
+    if role_f in ('admin', 'kitchen', 'cafe_bar'):
+        qs = qs.filter(role=role_f)
+    elif role_f == 'staff':
+        qs = qs.filter(Q(role='') | Q(role__isnull=True))
+
+    qs = qs.order_by('staff_id')
+    paginator = Paginator(qs, 50)
+    page = paginator.get_page(request.GET.get('page'))
+
+    return render(request, 'cafeteria/admin_staff.html', {
+        'staff': page.object_list,
+        'page_obj': page,
+        'paginator': paginator,
+        'q': q,
+        'role_filter': role_f,
+        'total_count': paginator.count,
+    })
 
 
 @login_required
