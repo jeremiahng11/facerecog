@@ -251,24 +251,38 @@
 const CSRF = '{{ csrf_token }}';
 function getCSRF() { const m = document.cookie.match(/csrftoken=([^;]+)/); return m ? m[1] : CSRF; }
 
-// ─── Hardware HID QR scanner support (Tera HW0002 etc.) ────────────────────
-// BT/USB HID scanners type the QR payload into the focused input and send
-// Enter. Keep #hidScanner focused so every scanner keystroke lands there.
+// ─── Hardware HID QR scanner support ────────────────────────────────────────
+// BT/USB HID scanners type the QR payload into the focused field then
+// (usually) press Enter. Fire processScan() on Enter/Tab OR after 120ms
+// of keystroke inactivity (handles scanners with no terminator suffix).
 (function(){
   const el = document.getElementById('hidScanner');
   if (!el) return;
   let last = 0;
-  el.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter') return;
-    e.preventDefault();
+  let idleTimer = null;
+
+  function fire() {
+    if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
     const payload = el.value.trim();
     el.value = '';
     if (!payload) return;
     const now = Date.now();
-    if (now - last < 1500) return;   // debounce duplicate scans
+    if (now - last < 1500) return;
     last = now;
     processScan(payload);
+  }
+
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      fire();
+    }
   });
+  el.addEventListener('input', () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(fire, 120);
+  });
+
   setInterval(() => {
     if (document.activeElement !== el && !document.querySelector('.popup-open')) {
       el.focus({ preventScroll: true });

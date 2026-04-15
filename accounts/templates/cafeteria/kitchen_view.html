@@ -216,24 +216,39 @@ const KITCHEN = '{{ kitchen_type }}';
 
 // ─── Hardware HID QR scanner support ────────────────────────────────────────
 // Bluetooth/USB HID scanners act as keyboards: they type the QR payload into
-// the focused field then press Enter. Keep #hidScanner focused so every
-// keystroke goes there, then fire processScan() when Enter is pressed.
+// the focused field then (usually) press Enter. Keep #hidScanner focused so
+// scanner keystrokes always land there, then fire processScan() when:
+//   • Enter / Tab is pressed (most scanners), OR
+//   • the keystroke stream goes idle for >120ms (scanners without a
+//     terminator suffix — human typing is much slower so won't misfire).
 (function(){
   const el = document.getElementById('hidScanner');
   if (!el) return;
   let last = 0;
-  el.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter') return;
-    e.preventDefault();
+  let idleTimer = null;
+
+  function fire() {
+    if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
     const payload = el.value.trim();
     el.value = '';
     if (!payload) return;
-    // Debounce: ignore identical scan within 1.5 s to avoid duplicates.
     const now = Date.now();
-    if (now - last < 1500) return;
+    if (now - last < 1500) return;   // debounce duplicate scans
     last = now;
     processScan(payload);
+  }
+
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      fire();
+    }
   });
+  el.addEventListener('input', () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(fire, 120);
+  });
+
   // Re-focus the hidden input whenever focus drifts (e.g. after a dialog).
   setInterval(() => {
     if (document.activeElement !== el && !document.querySelector('.popup-open')) {
