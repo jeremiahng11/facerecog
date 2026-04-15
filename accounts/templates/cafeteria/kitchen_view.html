@@ -168,9 +168,12 @@
     </div>
   </div>
 
-  <!-- Right: Live camera scanner -->
+  <!-- Right: Live camera scanner (works alongside any paired HID scanner) -->
   <div class="scanner-pane">
-    <div class="scanner-title">📷 QR SCANNER</div>
+    <div class="scanner-title">📷 / 📱 QR SCANNER</div>
+    <div style="font-size:11px;color:var(--text3);text-align:center;margin-bottom:8px">
+      Point camera OR use paired handheld scanner
+    </div>
     <div class="camera-frame">
       <video id="cam" autoplay playsinline muted></video>
       <canvas id="camCanvas"></canvas>
@@ -197,12 +200,53 @@
   <div class="scan-modal" id="scanModal"><div id="scanBody"></div></div>
 </div>
 
+<!-- Invisible input that captures Bluetooth/USB HID scanner keystrokes.
+     External scanners (e.g. Tera HW0002) type the QR payload into the
+     focused input and send Enter. We re-focus this field every second
+     so scanner input always lands here, alongside the camera scanner. -->
+<input type="text" id="hidScanner" autocomplete="off" autofocus
+       style="position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;border:0;padding:0">
+
 <!-- jsQR library for camera QR decoding -->
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script>
 const CSRF = '{{ csrf_token }}';
 function getCSRF() { const m = document.cookie.match(/csrftoken=([^;]+)/); return m ? m[1] : CSRF; }
 const KITCHEN = '{{ kitchen_type }}';
+
+// ─── Hardware HID QR scanner support ────────────────────────────────────────
+// Bluetooth/USB HID scanners act as keyboards: they type the QR payload into
+// the focused field then press Enter. Keep #hidScanner focused so every
+// keystroke goes there, then fire processScan() when Enter is pressed.
+(function(){
+  const el = document.getElementById('hidScanner');
+  if (!el) return;
+  let last = 0;
+  el.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const payload = el.value.trim();
+    el.value = '';
+    if (!payload) return;
+    // Debounce: ignore identical scan within 1.5 s to avoid duplicates.
+    const now = Date.now();
+    if (now - last < 1500) return;
+    last = now;
+    processScan(payload);
+  });
+  // Re-focus the hidden input whenever focus drifts (e.g. after a dialog).
+  setInterval(() => {
+    if (document.activeElement !== el && !document.querySelector('.popup-open')) {
+      el.focus({ preventScroll: true });
+    }
+  }, 800);
+  // On any click outside an interactive control, snap focus back.
+  document.addEventListener('click', (ev) => {
+    if (!ev.target.closest('button, a, input, select, textarea')) {
+      el.focus({ preventScroll: true });
+    }
+  });
+})();
 
 async function markCollected(orderId) {
   try {

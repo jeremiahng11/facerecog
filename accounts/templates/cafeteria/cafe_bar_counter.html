@@ -241,11 +241,45 @@
 <!-- Scan popup -->
 <div class="scan-popup" id="scanPopup"><div class="scan-modal" id="scanModal"><div id="scanBody"></div></div></div>
 
+<!-- Invisible HID scanner input — see kitchen_view.html for rationale. -->
+<input type="text" id="hidScanner" autocomplete="off" autofocus
+       style="position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;border:0;padding:0">
+
 <!-- jsQR library for camera decoding -->
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script>
 const CSRF = '{{ csrf_token }}';
 function getCSRF() { const m = document.cookie.match(/csrftoken=([^;]+)/); return m ? m[1] : CSRF; }
+
+// ─── Hardware HID QR scanner support (Tera HW0002 etc.) ────────────────────
+// BT/USB HID scanners type the QR payload into the focused input and send
+// Enter. Keep #hidScanner focused so every scanner keystroke lands there.
+(function(){
+  const el = document.getElementById('hidScanner');
+  if (!el) return;
+  let last = 0;
+  el.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const payload = el.value.trim();
+    el.value = '';
+    if (!payload) return;
+    const now = Date.now();
+    if (now - last < 1500) return;   // debounce duplicate scans
+    last = now;
+    processScan(payload);
+  });
+  setInterval(() => {
+    if (document.activeElement !== el && !document.querySelector('.popup-open')) {
+      el.focus({ preventScroll: true });
+    }
+  }, 800);
+  document.addEventListener('click', (ev) => {
+    if (!ev.target.closest('button, a, input, select, textarea')) {
+      el.focus({ preventScroll: true });
+    }
+  });
+})();
 
 async function markCollected(id) {
   await fetch(`/cafeteria/api/kitchen/mark-collected/${id}/`, {
