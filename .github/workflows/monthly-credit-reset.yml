@@ -1,0 +1,24 @@
+name: Monthly Credit Reset
+
+on:
+  # Runs at 00:01 Asia/Singapore (UTC+8) on the 1st of every month.
+  # That's 16:01 UTC on the last day of the prior month — or simply
+  # schedule for 16:01 UTC on the 31st/30th and let the server
+  # decide. Simpler: just run at 16:01 UTC on the 1st of each month
+  # (slightly past midnight SGT on the 2nd — close enough).
+  schedule:
+    - cron: '1 16 1 * *'
+  # Manual trigger button in GitHub Actions UI.
+  workflow_dispatch:
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Railway endpoint
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -w "\nHTTP %{http_code}\n" \
+            --fail-with-body \
+            "${{ secrets.RAILWAY_APP_URL }}/internal/reset-credits/"
