@@ -1888,21 +1888,42 @@ from django.views.decorators.csrf import csrf_exempt as _csrf_exempt_cron
 def cron_reset_credits_view(request):
     """
     Triggers monthly credit reset. Protected by CRON_SECRET bearer token.
-    Called by a GitHub Actions scheduled workflow on CREDIT_RESET_DAY.
 
-    @csrf_exempt is required because the caller (GitHub Actions) can't
-    supply a CSRF cookie. Auth is enforced via the Bearer token.
+    Called DAILY by a GitHub Actions schedule at 00:01 SGT; only actually
+    runs the reset when today's date in Asia/Singapore is the 1st (or
+    CREDIT_RESET_DAY). Override the date check with ?force=1 for manual
+    testing via workflow_dispatch.
+
+    @csrf_exempt because the caller (GitHub Actions) can't supply a CSRF
+    cookie. Auth is enforced via the Bearer token.
     """
     auth = request.META.get('HTTP_AUTHORIZATION', '')
     expected = getattr(settings, 'CRON_SECRET', '')
     if not expected or not auth.startswith('Bearer ') or auth[7:] != expected:
         return JsonResponse({'error': 'unauthorized'}, status=403)
 
+    today = timezone.localdate()  # uses TIME_ZONE='Asia/Singapore'
+    target_day = getattr(settings, 'CREDIT_RESET_DAY', 1)
+    force = request.GET.get('force') == '1'
+
+    if today.day != target_day and not force:
+        return JsonResponse({
+            'ok': True,
+            'skipped': True,
+            'reason': f'Today SGT is day {today.day}; reset runs on day {target_day}.',
+            'today_sgt': today.isoformat(),
+        })
+
     from django.core.management import call_command
     from io import StringIO
     out = StringIO()
     call_command('reset_credits', stdout=out)
-    return JsonResponse({'ok': True, 'output': out.getvalue()})
+    return JsonResponse({
+        'ok': True,
+        'skipped': False,
+        'today_sgt': today.isoformat(),
+        'output': out.getvalue(),
+    })
 
 
 @login_required

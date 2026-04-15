@@ -1,24 +1,36 @@
 name: Monthly Credit Reset
 
 on:
-  # Runs at 00:01 Asia/Singapore (UTC+8) on the 1st of every month.
-  # That's 16:01 UTC on the last day of the prior month — or simply
-  # schedule for 16:01 UTC on the 31st/30th and let the server
-  # decide. Simpler: just run at 16:01 UTC on the 1st of each month
-  # (slightly past midnight SGT on the 2nd — close enough).
+  # Runs DAILY at 16:01 UTC = 00:01 Asia/Singapore (UTC+8) of the next day.
+  # The Django endpoint checks the current SGT date and only actually
+  # performs the reset when SGT day == CREDIT_RESET_DAY (default 1).
+  # Strictly fires at 00:01 SGT on the 1st of each month.
   schedule:
-    - cron: '1 16 1 * *'
-  # Manual trigger button in GitHub Actions UI.
+    - cron: '1 16 * * *'
+  # Manual trigger button — forces the reset regardless of date.
   workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force reset (ignore date check)'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 jobs:
   reset:
     runs-on: ubuntu-latest
     steps:
       - name: Call Railway endpoint
+        env:
+          FORCE: ${{ github.event.inputs.force || 'false' }}
         run: |
+          URL="${{ secrets.RAILWAY_APP_URL }}/internal/reset-credits/"
+          if [ "$FORCE" = "true" ]; then URL="${URL}?force=1"; fi
           curl -X POST \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -w "\nHTTP %{http_code}\n" \
             --fail-with-body \
-            "${{ secrets.RAILWAY_APP_URL }}/internal/reset-credits/"
+            "$URL"
