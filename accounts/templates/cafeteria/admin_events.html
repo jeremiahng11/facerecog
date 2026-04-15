@@ -50,6 +50,7 @@
           <option value="all"       {% if status_filter == 'all' %}selected{% endif %}>All</option>
         </select>
       </form>
+      <a href="{% url 'cafeteria_admin_event_new' %}" class="btn btn-primary">+ New Booking</a>
       <a href="{% url 'cafeteria_dashboard' %}" class="btn btn-secondary">← Dashboard</a>
     </div>
   </div>

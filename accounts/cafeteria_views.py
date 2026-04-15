@@ -2271,6 +2271,72 @@ def admin_events_view(request):
 
 @login_required
 @user_passes_test(is_admin)
+def admin_event_new_view(request):
+    """
+    Admin creates + auto-approves an event booking — no 14-day minimum,
+    no approval queue. Used for walk-in bookings / admin-managed events.
+    """
+    today = timezone.localdate()
+    menus = EventMenu.objects.filter(is_available=True).prefetch_related('components').order_by('display_order', 'name')
+
+    if request.method == 'POST':
+        try:
+            menu = EventMenu.objects.get(pk=int(request.POST.get('event_menu')), is_available=True)
+            event_type = request.POST.get('event_type', 'meeting')
+            if event_type not in dict(EventBooking.EVENT_TYPE_CHOICES):
+                raise ValueError('invalid event type')
+
+            pax = int(request.POST.get('pax') or 0)
+            if pax < 1:
+                messages.error(request, 'Pax must be at least 1.')
+                raise ValueError('pax')
+
+            from datetime import date as _date
+            event_date = _date.fromisoformat(request.POST.get('event_date'))
+            event_time = request.POST.get('event_time')
+            if not event_time:
+                messages.error(request, 'Event time is required.')
+                raise ValueError('time')
+
+            # Optional: let admin nominate a booker (falls back to themselves).
+            booker = request.user
+            booker_staff_id = (request.POST.get('booker_staff_id') or '').strip()
+            if booker_staff_id:
+                try:
+                    booker = StaffUser.objects.get(staff_id=booker_staff_id, is_active=True)
+                except StaffUser.DoesNotExist:
+                    messages.warning(request, f'Staff ID {booker_staff_id} not found — booking under your account.')
+                    booker = request.user
+
+            booking = EventBooking.objects.create(
+                booked_by=booker,
+                event_type=event_type,
+                event_menu=menu,
+                pax=pax,
+                event_date=event_date,
+                event_time=event_time,
+                venue=(request.POST.get('venue') or '').strip()[:200],
+                notes=(request.POST.get('notes') or '').strip(),
+                title=(request.POST.get('title') or '').strip()[:160],
+                # Admin-created bookings are auto-approved.
+                status='approved',
+                approved_by=request.user,
+                approved_at=timezone.now(),
+            )
+            messages.success(request, f'Event #{booking.id} created and approved.')
+            return redirect('cafeteria_admin_event_detail', booking_id=booking.id)
+        except (EventMenu.DoesNotExist, ValueError, TypeError):
+            pass
+
+    return render(request, 'cafeteria/admin_event_new.html', {
+        'menus': menus,
+        'today': today.isoformat(),
+        'event_type_choices': EventBooking.EVENT_TYPE_CHOICES,
+    })
+
+
+@login_required
+@user_passes_test(is_admin)
 def admin_event_detail_view(request, booking_id):
     booking = get_object_or_404(EventBooking, pk=booking_id)
     return render(request, 'cafeteria/admin_event_detail.html', {

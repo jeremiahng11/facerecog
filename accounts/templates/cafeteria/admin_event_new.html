@@ -1,0 +1,168 @@
+{% extends 'base.html' %}
+{% block title %}New Event Booking — Admin{% endblock %}
+{% block extra_head %}
+<style>
+  .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  @media (max-width: 700px) {
+    .form-row-2, .form-row-3 { grid-template-columns: 1fr; }
+  }
+  #menu-preview {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 18px;
+    display: none;
+  }
+  #menu-preview.active { display: block; }
+  #menu-preview .pv-title { font-weight: 700; color: var(--accent); margin-bottom: 6px; font-size: 15px; }
+  #menu-preview .pv-price { font-size: 13px; color: var(--text2); margin-bottom: 10px; }
+  #menu-preview .pv-cat {
+    font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--text3); font-weight: 700;
+    margin-top: 10px; margin-bottom: 4px;
+  }
+  #menu-preview .pv-item { font-size: 13px; color: var(--text); padding: 2px 0; }
+  #menu-preview .pv-total {
+    margin-top: 12px; padding-top: 10px;
+    border-top: 1px solid var(--border);
+    font-weight: 700; font-size: 15px; color: var(--accent);
+  }
+  .admin-note {
+    background: #d1fae5; border: 1px solid #a7f3d0; color: #047857;
+    padding: 10px 14px; border-radius: 10px; font-size: 13px; margin-bottom: 18px;
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="page-title">New Event Booking</div>
+      <div class="page-subtitle">Admin bookings auto-approve &mdash; no 14-day minimum, no approval queue.</div>
+    </div>
+    <a href="{% url 'cafeteria_admin_events' %}" class="btn btn-secondary">← Events</a>
+  </div>
+
+  <div class="admin-note">
+    ✓ This booking will be <strong>auto-approved</strong> and immediately visible to kitchen &amp; cafe-bar counters.
+  </div>
+
+  <form method="post" class="card" style="max-width:900px">
+    {% csrf_token %}
+
+    <div class="form-row-2">
+      <div class="form-group">
+        <label for="title">Event Title</label>
+        <input type="text" id="title" name="title" placeholder="e.g. Q3 Offsite" required>
+      </div>
+      <div class="form-group">
+        <label for="event_type">Event Type</label>
+        <select id="event_type" name="event_type" required>
+          {% for val, label in event_type_choices %}
+          <option value="{{ val }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="event_menu">Catering Package</label>
+      <select id="event_menu" name="event_menu" required onchange="updatePreview()">
+        <option value="">— Select a package —</option>
+        {% for m in menus %}
+        <option value="{{ m.id }}">{{ m.name }} — S${{ m.price_per_pax|floatformat:2 }}/pax · {{ m.min_pax }}–{{ m.max_pax }} pax</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div id="menu-preview"></div>
+
+    <div class="form-row-3">
+      <div class="form-group">
+        <label for="pax">Number of pax</label>
+        <input type="number" id="pax" name="pax" min="1" value="10" required onchange="updatePreview()">
+      </div>
+      <div class="form-group">
+        <label for="event_date">Date</label>
+        <input type="date" id="event_date" name="event_date" min="{{ today }}" required>
+      </div>
+      <div class="form-group">
+        <label for="event_time">Time</label>
+        <input type="time" id="event_time" name="event_time" required>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="venue">Venue</label>
+      <input type="text" id="venue" name="venue" placeholder="e.g. Level 5 Boardroom" required>
+    </div>
+
+    <div class="form-group">
+      <label for="booker_staff_id">Book under (staff ID)</label>
+      <input type="text" id="booker_staff_id" name="booker_staff_id" placeholder="Leave blank to book as yourself">
+      <div class="hint">If this event is on behalf of another staff member, enter their staff ID here.</div>
+    </div>
+
+    <div class="form-group">
+      <label for="notes">Notes / special requests</label>
+      <textarea id="notes" name="notes" rows="3" placeholder="Dietary requirements, setup notes, etc."></textarea>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+      <a href="{% url 'cafeteria_admin_events' %}" class="btn btn-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary">✓ Create &amp; Approve</button>
+    </div>
+  </form>
+</div>
+
+<script>
+  window.MENUS = {
+    {% for m in menus %}
+    "{{ m.id }}": {
+      name: "{{ m.name|escapejs }}",
+      price_per_pax: {{ m.price_per_pax }},
+      min_pax: {{ m.min_pax }},
+      max_pax: {{ m.max_pax }},
+      components: [
+        {% for c in m.components.all %}
+        { category: "{{ c.get_category_display|escapejs }}", name: "{{ c.name|escapejs }}", description: "{{ c.description|default:''|escapejs }}", is_vegetarian: {% if c.is_vegetarian %}true{% else %}false{% endif %} }{% if not forloop.last %},{% endif %}
+        {% endfor %}
+      ]
+    }{% if not forloop.last %},{% endif %}
+    {% endfor %}
+  };
+
+  function updatePreview() {
+    const sel = document.getElementById('event_menu');
+    const paxIn = document.getElementById('pax');
+    const preview = document.getElementById('menu-preview');
+    const id = sel.value;
+    if (!id || !window.MENUS[id]) {
+      preview.classList.remove('active');
+      preview.innerHTML = '';
+      return;
+    }
+    const m = window.MENUS[id];
+    const pax = parseInt(paxIn.value, 10) || m.min_pax;
+    const groups = {};
+    m.components.forEach(c => {
+      groups[c.category] = groups[c.category] || [];
+      groups[c.category].push(c);
+    });
+    let html = `<div class="pv-title">${m.name}</div>`;
+    html += `<div class="pv-price">S$${m.price_per_pax.toFixed(2)} / pax · ${m.min_pax}–${m.max_pax} pax</div>`;
+    Object.keys(groups).forEach(cat => {
+      html += `<div class="pv-cat">${cat}</div>`;
+      groups[cat].forEach(item => {
+        html += `<div class="pv-item">• ${item.name}${item.is_vegetarian ? ' 🌱' : ''}</div>`;
+      });
+    });
+    const total = (m.price_per_pax * pax).toFixed(2);
+    html += `<div class="pv-total">Estimated total: S$${total} (${pax} pax)</div>`;
+    preview.innerHTML = html;
+    preview.classList.add('active');
+  }
+</script>
+{% endblock %}

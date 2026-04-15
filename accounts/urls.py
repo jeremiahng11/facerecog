@@ -105,6 +105,7 @@ urlpatterns = [
 
     # Events (admin approval + kitchen view + menu CRUD)
     path('cafeteria/admin/events/', cafeteria_views.admin_events_view, name='cafeteria_admin_events'),
+    path('cafeteria/admin/events/new/', cafeteria_views.admin_event_new_view, name='cafeteria_admin_event_new'),
     path('cafeteria/admin/events/<int:booking_id>/', cafeteria_views.admin_event_detail_view, name='cafeteria_admin_event_detail'),
     path('cafeteria/admin/events/<int:booking_id>/approve/', cafeteria_views.admin_event_approve_view, name='cafeteria_admin_event_approve'),
     path('cafeteria/admin/events/<int:booking_id>/reject/', cafeteria_views.admin_event_reject_view, name='cafeteria_admin_event_reject'),
