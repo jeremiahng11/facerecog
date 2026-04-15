@@ -247,27 +247,38 @@ def kiosk_menu_select_view(request):
 def kiosk_menu_view(request, menu_type):
     """
     Browse menu items and add to cart.
-    menu_type: 'kitchen' (shows halal/non_halal tabs) or 'cafe_bar'.
+
+    `menu_type` in the URL picks the INITIAL tab (kitchen → halal,
+    cafe_bar → cafe_bar) but the page renders all three sub-menus
+    (Halal / Non-Halal / Cafe Bar) as tabs so the user can freely
+    toggle between them inside a single ordering flow.
     """
-    if menu_type == 'kitchen':
-        halal_items = MenuItem.objects.filter(menu_type='halal', is_available=True).order_by('display_order', 'name')
-        non_halal_items = MenuItem.objects.filter(menu_type='non_halal', is_available=True).order_by('display_order', 'name')
-        items_by_type = {
-            'halal': halal_items,
-            'non_halal': non_halal_items,
-        }
-    elif menu_type == 'cafe_bar':
-        items_by_type = {
-            'cafe_bar': MenuItem.objects.filter(menu_type='cafe_bar', is_available=True).order_by('display_order', 'name'),
-        }
-    else:
+    if menu_type not in ('kitchen', 'cafe_bar'):
         raise Http404('Unknown menu type')
+
+    items_by_type = {
+        'halal':     MenuItem.objects.filter(menu_type='halal',     is_available=True).order_by('display_order', 'name'),
+        'non_halal': MenuItem.objects.filter(menu_type='non_halal', is_available=True).order_by('display_order', 'name'),
+        'cafe_bar':  MenuItem.objects.filter(menu_type='cafe_bar',  is_available=True).order_by('display_order', 'name'),
+    }
+
+    kitchen_open = _is_menu_open('halal')  # both halal + non_halal share 'kitchen' hours
+    cafe_bar_open = _is_menu_open('cafe_bar')
+
+    # Initial tab selection based on which card was tapped on menu-select.
+    if menu_type == 'cafe_bar':
+        initial_tab = 'cafe_bar' if cafe_bar_open else ('halal' if kitchen_open else 'cafe_bar')
+    else:
+        initial_tab = 'halal' if kitchen_open else 'cafe_bar'
 
     cart = request.session.get('cafeteria_cart', {})
     return render(request, 'cafeteria/kiosk_menu.html', {
         'menu_type': menu_type,
         'items_by_type': items_by_type,
         'cart': cart,
+        'initial_tab': initial_tab,
+        'kitchen_open': kitchen_open,
+        'cafe_bar_open': cafe_bar_open,
         'idle_timeout': KioskConfig.get().idle_session_seconds,
     })
 

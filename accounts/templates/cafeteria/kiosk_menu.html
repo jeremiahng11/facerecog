@@ -24,9 +24,15 @@
   .tab {
     flex: 1; padding: 14px; text-align: center; font-weight: 600;
     color: var(--text2); cursor: pointer; border-bottom: 3px solid transparent;
+    transition: color 0.15s, border-bottom-color 0.15s;
   }
   .tab.active { color: var(--success); border-bottom-color: var(--success); }
   .tab.non-halal.active { color: var(--non-halal); border-bottom-color: var(--non-halal); }
+  .tab.cafe-bar.active { color: var(--cafe); border-bottom-color: var(--cafe); }
+  .tab.closed {
+    color: var(--text3); cursor: not-allowed; opacity: 0.55;
+    background: var(--bg2);
+  }
 
   .main {
     flex: 1; display: grid; grid-template-columns: 1fr 340px;
@@ -157,17 +163,31 @@
   <button class="btn btn-secondary" onclick="logout()" style="padding:6px 14px;font-size:13px">Logout</button>
 </div>
 
-{% if menu_type == 'kitchen' %}
 <div class="tabs">
-  <div class="tab active" data-tab="halal" onclick="switchTab('halal')">🟢 Halal Kitchen</div>
-  <div class="tab non-halal" data-tab="non_halal" onclick="switchTab('non_halal')">🔵 Non-Halal Kitchen</div>
+  <div class="tab{% if initial_tab == 'halal' %} active{% endif %}{% if not kitchen_open %} closed{% endif %}"
+       data-tab="halal"
+       onclick="{% if kitchen_open %}switchTab('halal'){% endif %}"
+       title="{% if not kitchen_open %}Kitchen is closed{% endif %}">
+    🟢 Halal Kitchen{% if not kitchen_open %} · Closed{% endif %}
+  </div>
+  <div class="tab non-halal{% if initial_tab == 'non_halal' %} active{% endif %}{% if not kitchen_open %} closed{% endif %}"
+       data-tab="non_halal"
+       onclick="{% if kitchen_open %}switchTab('non_halal'){% endif %}"
+       title="{% if not kitchen_open %}Kitchen is closed{% endif %}">
+    🔵 Non-Halal Kitchen{% if not kitchen_open %} · Closed{% endif %}
+  </div>
+  <div class="tab cafe-bar{% if initial_tab == 'cafe_bar' %} active{% endif %}{% if not cafe_bar_open %} closed{% endif %}"
+       data-tab="cafe_bar"
+       onclick="{% if cafe_bar_open %}switchTab('cafe_bar'){% endif %}"
+       title="{% if not cafe_bar_open %}Cafe Bar is closed{% endif %}">
+    ☕ Cafe Bar{% if not cafe_bar_open %} · Closed{% endif %}
+  </div>
 </div>
-{% endif %}
 
 <div class="main">
   <div class="items-pane">
     {% for type_key, items in items_by_type.items %}
-    <div class="tab-pane" data-pane="{{ type_key }}" {% if menu_type == 'kitchen' and type_key != 'halal' %}style="display:none"{% endif %}>
+    <div class="tab-pane" data-pane="{{ type_key }}" {% if type_key != initial_tab %}style="display:none"{% endif %}>
       <div class="section-title">
         {% if type_key == 'halal' %}Halal Items
         {% elif type_key == 'non_halal' %}Non-Halal Items
@@ -229,7 +249,6 @@
       <div class="row"><span>Subtotal</span><span id="subtotal">S$0.00</span></div>
       <div class="row"><span>Credits Applied</span><span class="credit-applied" id="creditsApplied">-S$0.00</span></div>
       <div class="row total"><span>Balance Due</span><span id="balanceDue">S$0.00</span></div>
-      <button class="btn btn-secondary" style="width:100%;margin-bottom:8px" onclick="addMoreFromOtherMenu()">+ Add items from another menu</button>
       <button class="checkout-btn" id="checkoutBtn" disabled onclick="checkout()">Checkout &amp; Get QR →</button>
       <div class="cart-hint">QR code to collect your meal<br>will be shown on screen to print</div>
     </div>
@@ -263,7 +282,7 @@ function clearCart() {
 // Cart: map of id → {id, name, price, qty, stock, menu}
 let cart = loadCart();
 let collectionTime = 0;
-let currentTab = 'halal';
+let currentTab = '{{ initial_tab|default:"halal" }}';
 
 function switchTab(tab) {
   currentTab = tab;
@@ -338,13 +357,6 @@ document.querySelectorAll('.add-btn').forEach(btn => {
     renderCart();
   });
 });
-
-function addMoreFromOtherMenu() {
-  // Cart stays in sessionStorage — go back to menu-select and pick
-  // the other menu. Items from both will appear in the cart.
-  saveCart();
-  window.location = '/cafeteria/kiosk/menu-select/';
-}
 
 async function checkout() {
   const items = Object.keys(cart).map(k => ({
