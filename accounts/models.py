@@ -264,12 +264,57 @@ class OrderingHours(models.Model):
     opens_at = models.TimeField()
     closes_at = models.TimeField()
     is_active = models.BooleanField(default=True)
+    # Per-day toggles (Python weekday: Mon=0 … Sun=6). Defaults to every day
+    # so existing rows keep their previous always-on behaviour after migration.
+    mon = models.BooleanField(default=True)
+    tue = models.BooleanField(default=True)
+    wed = models.BooleanField(default=True)
+    thu = models.BooleanField(default=True)
+    fri = models.BooleanField(default=True)
+    sat = models.BooleanField(default=True)
+    sun = models.BooleanField(default=True)
 
     class Meta:
         ordering = ['menu_type', 'opens_at']
 
     def __str__(self):
         return f'{self.get_menu_type_display()} {self.label}: {self.opens_at}-{self.closes_at}'
+
+    def applies_to_weekday(self, weekday: int) -> bool:
+        """weekday: Python Date.weekday() (Mon=0 … Sun=6)."""
+        return [self.mon, self.tue, self.wed, self.thu, self.fri, self.sat, self.sun][weekday]
+
+
+class Holiday(models.Model):
+    """
+    Closed-day calendar. Admin adds public holidays / special closures here;
+    _is_menu_open() treats any matching date as closed for the selected
+    scope.
+    """
+    SCOPE_CHOICES = [
+        ('all', 'Everything closed'),
+        ('kitchen', 'Kitchen only'),
+        ('cafe_bar', 'Cafe Bar only'),
+    ]
+    date = models.DateField(unique=True)
+    label = models.CharField(max_length=100, help_text='e.g. Christmas Day, Stock-take')
+    scope = models.CharField(max_length=10, choices=SCOPE_CHOICES, default='all')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['date']
+
+    def __str__(self):
+        return f'{self.date:%d %b %Y} — {self.label}'
+
+    def closes(self, menu_type: str) -> bool:
+        if self.scope == 'all':
+            return True
+        if self.scope == 'kitchen' and menu_type in ('kitchen', 'halal', 'non_halal'):
+            return True
+        if self.scope == 'cafe_bar' and menu_type == 'cafe_bar':
+            return True
+        return False
 
 
 class Order(models.Model):

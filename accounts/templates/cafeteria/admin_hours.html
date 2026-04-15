@@ -1,0 +1,204 @@
+{% extends 'base.html' %}
+{% block title %}Operating Hours{% endblock %}
+{% block extra_head %}
+<style>
+  .hours-table th, .hours-table td { padding: 8px 6px; font-size: 13px; }
+  .hours-table input[type=time], .hours-table input[type=text], .hours-table select {
+    padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
+    font-family: var(--sans); font-size: 13px; background: #fff; color: var(--text);
+  }
+  .day-check { display: inline-flex; flex-direction: column; align-items: center; font-size: 10px; color: var(--text3); margin-right: 2px; }
+  .day-check input { margin: 2px 0 0; }
+  .sub-section { margin-top: 28px; }
+  .sub-section h3 { font-size: 14px; font-family: var(--mono); color: var(--accent); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px; }
+  .inline-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; padding: 14px; background: var(--bg2); border-radius: 10px; }
+  .inline-form label { font-size: 11px; font-family: var(--mono); color: var(--text2); letter-spacing: 1px; display: block; margin-bottom: 4px; }
+  .inline-form input, .inline-form select {
+    padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 13px; background: #fff;
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="page-title">Operating Hours</div>
+      <div class="page-subtitle">Service windows per menu + weekday, plus public-holiday calendar.</div>
+    </div>
+    <a href="{% url 'cafeteria_dashboard' %}" class="btn btn-secondary">← Dashboard</a>
+  </div>
+
+  {# ─── Operating Hours ─── #}
+  <div class="card" style="padding:0">
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="save_hours">
+      <div class="table-wrap">
+        <table class="hours-table">
+          <thead>
+            <tr>
+              <th>Menu</th><th>Label</th><th>Opens</th><th>Closes</th>
+              <th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th>
+              <th>Active</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for h in hours %}
+            <tr>
+              <td>
+                <input type="hidden" name="id" value="{{ h.id }}">
+                <select name="menu_type_{{ h.id }}">
+                  <option value="kitchen" {% if h.menu_type == 'kitchen' %}selected{% endif %}>Kitchen</option>
+                  <option value="cafe_bar" {% if h.menu_type == 'cafe_bar' %}selected{% endif %}>Cafe Bar</option>
+                </select>
+              </td>
+              <td><input type="text" name="label_{{ h.id }}" value="{{ h.label }}" placeholder="e.g. Lunch" style="width:100px"></td>
+              <td><input type="time" name="opens_at_{{ h.id }}" value="{{ h.opens_at|time:'H:i' }}"></td>
+              <td><input type="time" name="closes_at_{{ h.id }}" value="{{ h.closes_at|time:'H:i' }}"></td>
+              {% for d in 'mon,tue,wed,thu,fri,sat,sun'|lower|safe|cut:' ' %}{% endfor %}
+              <td style="text-align:center"><input type="checkbox" name="mon_{{ h.id }}" {% if h.mon %}checked{% endif %}></td>
+              <td style="text-align:center"><input type="checkbox" name="tue_{{ h.id }}" {% if h.tue %}checked{% endif %}></td>
+              <td style="text-align:center"><input type="checkbox" name="wed_{{ h.id }}" {% if h.wed %}checked{% endif %}></td>
+              <td style="text-align:center"><input type="checkbox" name="thu_{{ h.id }}" {% if h.thu %}checked{% endif %}></td>
+              <td style="text-align:center"><input type="checkbox" name="fri_{{ h.id }}" {% if h.fri %}checked{% endif %}></td>
+              <td style="text-align:center"><input type="checkbox" name="sat_{{ h.id }}" {% if h.sat %}checked{% endif %}></td>
+              <td style="text-align:center"><input type="checkbox" name="sun_{{ h.id }}" {% if h.sun %}checked{% endif %}></td>
+              <td style="text-align:center"><input type="checkbox" name="is_active_{{ h.id }}" {% if h.is_active %}checked{% endif %}></td>
+              <td>
+                <button type="submit" form="delete_h_{{ h.id }}" class="btn btn-sm btn-danger">Remove</button>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="13" style="text-align:center;padding:30px;color:var(--text3)">No hours defined yet — add your first window below.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if hours %}
+      <div style="padding:14px;border-top:1px solid var(--border);text-align:right">
+        <button type="submit" class="btn btn-primary">💾 Save All</button>
+      </div>
+      {% endif %}
+    </form>
+    {# Separate delete forms so they're outside the main save form #}
+    {% for h in hours %}
+    <form method="post" id="delete_h_{{ h.id }}" style="display:none">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="delete_hours">
+      <input type="hidden" name="id" value="{{ h.id }}">
+    </form>
+    {% endfor %}
+  </div>
+
+  {# ─── Add a new window ─── #}
+  <div class="sub-section">
+    <h3>Add New Window</h3>
+    <form method="post" class="inline-form">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="add_hours">
+      <div>
+        <label>Menu</label>
+        <select name="new_menu_type">
+          <option value="kitchen">Kitchen</option>
+          <option value="cafe_bar">Cafe Bar</option>
+        </select>
+      </div>
+      <div>
+        <label>Label</label>
+        <input type="text" name="new_label" placeholder="Lunch / Breakfast / …">
+      </div>
+      <div>
+        <label>Opens</label>
+        <input type="time" name="new_opens_at" value="08:00">
+      </div>
+      <div>
+        <label>Closes</label>
+        <input type="time" name="new_closes_at" value="17:00">
+      </div>
+      <button type="submit" class="btn btn-primary">+ Add</button>
+    </form>
+    <div class="text-xs text-dim" style="margin-top:6px">New windows default to Mon–Fri. Toggle weekends in the table above after adding.</div>
+  </div>
+
+  {# ─── Holidays ─── #}
+  <div class="sub-section">
+    <h3>Public Holidays &amp; Closures</h3>
+
+    <form method="post" class="inline-form" style="margin-bottom:16px">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="add_holiday">
+      <div>
+        <label>Date</label>
+        <input type="date" name="holiday_date" min="{{ today|date:'Y-m-d' }}" required>
+      </div>
+      <div>
+        <label>Label</label>
+        <input type="text" name="holiday_label" placeholder="Christmas Day" required style="min-width:180px">
+      </div>
+      <div>
+        <label>What's closed</label>
+        <select name="holiday_scope">
+          <option value="all">Everything</option>
+          <option value="kitchen">Kitchen only</option>
+          <option value="cafe_bar">Cafe Bar only</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary">+ Add Holiday</button>
+    </form>
+
+    <div class="card" style="padding:0">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Label</th><th>Scope</th><th></th></tr></thead>
+          <tbody>
+            {% for h in holidays %}
+            <tr>
+              <td class="mono">{{ h.date|date:"D, d M Y" }}</td>
+              <td class="td-main">{{ h.label }}</td>
+              <td>
+                {% if h.scope == 'all' %}<span class="badge badge-red">Everything</span>
+                {% elif h.scope == 'kitchen' %}<span class="badge badge-green">Kitchen only</span>
+                {% else %}<span class="badge badge-blue">Cafe Bar only</span>{% endif %}
+              </td>
+              <td style="text-align:right">
+                <form method="post" style="display:inline">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="delete_holiday">
+                  <input type="hidden" name="id" value="{{ h.id }}">
+                  <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Remove this holiday?')">Remove</button>
+                </form>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text3)">No upcoming holidays.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {% if past_holidays %}
+    <div class="sub-section">
+      <h3 style="color:var(--text3)">Past Holidays (last 10)</h3>
+      <div class="card" style="padding:0">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Label</th><th>Scope</th></tr></thead>
+            <tbody>
+              {% for h in past_holidays %}
+              <tr>
+                <td class="mono text-dim">{{ h.date|date:"D, d M Y" }}</td>
+                <td>{{ h.label }}</td>
+                <td>{{ h.get_scope_display }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

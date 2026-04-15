@@ -32,7 +32,7 @@ from django.views.decorators.http import require_POST
 
 from .models import (
     StaffUser, MenuItem, Order, OrderItem, CreditTransaction,
-    QRScanLog, OrderingHours, KioskConfig,
+    QRScanLog, OrderingHours, KioskConfig, Holiday,
 )
 from .consumers import push_order_event
 
@@ -153,17 +153,37 @@ def _generate_qr_image_base64(data: str, box_size: int = 6) -> str:
 # ─── Ordering Hours ──────────────────────────────────────────────────────────
 
 def _is_menu_open(menu_type: str) -> bool:
-    """Check if a menu is currently accepting orders based on OrderingHours."""
-    # Map specific menu types to the OrderingHours menu_type key.
+    """
+    Check whether a menu is currently accepting orders.
+
+    Rules (applied in order):
+      1. If today is a configured Holiday that closes this scope → closed.
+      2. Active OrderingHours windows for the given menu_type filtered to
+         today's weekday.
+      3. If any such window covers the current local time → open.
+      4. If no windows exist at all for the menu_type → default open
+         (backward-compat with pre-hours deployments).
+    """
     hours_key = 'cafe_bar' if menu_type == 'cafe_bar' else 'kitchen'
+    today = timezone.localdate()
     now = timezone.localtime().time()
+
+    # 1. Holidays.
+    holiday = Holiday.objects.filter(date=today).first()
+    if holiday and holiday.closes(hours_key):
+        return False
+
+    # 2–3. OrderingHours for this menu + today's weekday.
+    weekday = today.weekday()  # Mon=0 … Sun=6
     windows = OrderingHours.objects.filter(menu_type=hours_key, is_active=True)
-    for w in windows:
+    if not windows.exists():
+        return True  # never configured → open by default
+    windows_today = [w for w in windows if w.applies_to_weekday(weekday)]
+    if not windows_today:
+        return False  # weekend / day off
+    for w in windows_today:
         if w.opens_at <= now <= w.closes_at:
             return True
-    # If no hours configured, default to open.
-    if not windows.exists():
-        return True
     return False
 
 
@@ -1523,6 +1543,89 @@ def admin_new_order_view(request):
         'non_halal_items': non_halal,
         'cafe_items': cafe,
         'tabs': {'halal': halal, 'non_halal': non_halal, 'cafe_bar': cafe},
+    })
+
+
+@login_required
+@user_passes_test(is_admin)
+def cafeteria_hours_view(request):
+    """Admin: operating hours (per menu + weekday) and holiday calendar."""
+    if request.method == 'POST':
+        action = request.POST.get('action', '')
+
+        if action == 'save_hours':
+            # Expect a list of existing row ids + corresponding fields.
+            row_ids = request.POST.getlist('id')
+            for rid in row_ids:
+                try:
+                    row = OrderingHours.objects.get(pk=int(rid))
+                except (ValueError, OrderingHours.DoesNotExist):
+                    continue
+                row.menu_type = request.POST.get(f'menu_type_{rid}', row.menu_type)
+                row.label = request.POST.get(f'label_{rid}', '')[:40]
+                row.opens_at = request.POST.get(f'opens_at_{rid}', row.opens_at) or row.opens_at
+                row.closes_at = request.POST.get(f'closes_at_{rid}', row.closes_at) or row.closes_at
+                row.is_active = request.POST.get(f'is_active_{rid}') == 'on'
+                for d in ('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'):
+                    setattr(row, d, request.POST.get(f'{d}_{rid}') == 'on')
+                row.save()
+            messages.success(request, 'Operating hours saved.')
+            return redirect('cafeteria_admin_hours')
+
+        if action == 'add_hours':
+            try:
+                OrderingHours.objects.create(
+                    menu_type=request.POST.get('new_menu_type', 'kitchen'),
+                    label=request.POST.get('new_label', '')[:40],
+                    opens_at=request.POST.get('new_opens_at') or '08:00',
+                    closes_at=request.POST.get('new_closes_at') or '17:00',
+                    is_active=True,
+                    mon=True, tue=True, wed=True, thu=True, fri=True,
+                    sat=False, sun=False,
+                )
+                messages.success(request, 'Window added (Mon–Fri by default).')
+            except Exception as e:
+                messages.error(request, f'Could not add window: {e}')
+            return redirect('cafeteria_admin_hours')
+
+        if action == 'delete_hours':
+            try:
+                OrderingHours.objects.filter(pk=int(request.POST.get('id'))).delete()
+                messages.success(request, 'Window removed.')
+            except (TypeError, ValueError):
+                pass
+            return redirect('cafeteria_admin_hours')
+
+        if action == 'add_holiday':
+            d = request.POST.get('holiday_date')
+            label = (request.POST.get('holiday_label') or '').strip()[:100]
+            scope = request.POST.get('holiday_scope', 'all')
+            if d and label and scope in ('all', 'kitchen', 'cafe_bar'):
+                Holiday.objects.update_or_create(
+                    date=d,
+                    defaults={'label': label, 'scope': scope},
+                )
+                messages.success(request, f'Holiday "{label}" saved.')
+            else:
+                messages.error(request, 'Date and label are required.')
+            return redirect('cafeteria_admin_hours')
+
+        if action == 'delete_holiday':
+            try:
+                Holiday.objects.filter(pk=int(request.POST.get('id'))).delete()
+                messages.success(request, 'Holiday removed.')
+            except (TypeError, ValueError):
+                pass
+            return redirect('cafeteria_admin_hours')
+
+    hours = OrderingHours.objects.all().order_by('menu_type', 'opens_at')
+    holidays = Holiday.objects.filter(date__gte=timezone.localdate()).order_by('date')
+    past_holidays = Holiday.objects.filter(date__lt=timezone.localdate()).order_by('-date')[:10]
+    return render(request, 'cafeteria/admin_hours.html', {
+        'hours': hours,
+        'holidays': holidays,
+        'past_holidays': past_holidays,
+        'today': timezone.localdate(),
     })
 
 

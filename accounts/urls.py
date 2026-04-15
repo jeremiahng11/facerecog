@@ -103,6 +103,7 @@ urlpatterns = [
     path('cafeteria/admin/my-orders/', cafeteria_views.admin_my_orders_view, name='cafeteria_admin_my_orders'),
     path('cafeteria/admin/my-orders/new/', cafeteria_views.admin_new_order_view, name='cafeteria_admin_new_order'),
     path('cafeteria/admin/kiosk-config/', cafeteria_views.cafeteria_kiosk_config_view, name='cafeteria_kiosk_config'),
+    path('cafeteria/admin/hours/', cafeteria_views.cafeteria_hours_view, name='cafeteria_admin_hours'),
     path('cafeteria/admin/dashboard/', cafeteria_views.cafeteria_dashboard_view, name='cafeteria_dashboard'),
     path('cafeteria/admin/reports/', cafeteria_views.cafeteria_reports_view, name='cafeteria_admin_reports'),
     path('cafeteria/admin/refunds/', cafeteria_views.cafeteria_refunds_view, name='cafeteria_admin_refunds'),
