@@ -2,6 +2,9 @@
 {% block title %}History{% endblock %}
 {% block header_title %}Order History{% endblock %}
 {% block content %}
+<div style="margin-bottom:12px">
+  <a href="{% url 'staff_portal_profile' %}" style="font-size:13px;color:var(--primary);font-weight:600;text-decoration:none">← Profile</a>
+</div>
 {% for order in orders %}
 <div class="card">
   <div style="display:flex;justify-content:space-between;align-items:flex-start">
