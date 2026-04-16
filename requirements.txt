@@ -10,6 +10,7 @@ psycopg2-binary>=2.9.9
 cloudinary>=1.36.0
 django-cloudinary-storage>=0.3.0
 qrcode>=7.4.0
+openpyxl>=3.1.0
 
 # Real-time WebSockets (activated when Redis is deployed)
 channels>=4.0.0
