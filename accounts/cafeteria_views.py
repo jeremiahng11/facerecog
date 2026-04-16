@@ -1955,6 +1955,20 @@ def vending_api_docs_view(request):
     })
 
 
+@login_required
+@user_passes_test(is_admin)
+def vending_api_docs_download_view(request):
+    """Admin: Download Vending API docs as .doc file."""
+    from django.http import HttpResponse
+    domain = request.get_host()
+    content = render(request, 'cafeteria/vending_api_doc_download.html', {
+        'domain': domain,
+    }).content
+    response = HttpResponse(content, content_type='application/msword')
+    response['Content-Disposition'] = 'attachment; filename="Vending_Machine_API_Documentation.doc"'
+    return response
+
+
 @csrf_exempt
 @require_POST
 def vending_deduct_view(request):

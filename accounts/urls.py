@@ -124,6 +124,7 @@ urlpatterns = [
     path('cafeteria/admin/my-orders/new/', cafeteria_views.admin_new_order_view, name='cafeteria_admin_new_order'),
     path('cafeteria/admin/kiosk-config/', cafeteria_views.cafeteria_kiosk_config_view, name='cafeteria_kiosk_config'),
     path('cafeteria/admin/vending-api/', cafeteria_views.vending_api_docs_view, name='vending_api_docs'),
+    path('cafeteria/admin/vending-api/download/', cafeteria_views.vending_api_docs_download_view, name='vending_api_docs_download'),
     path('cafeteria/admin/hours/', cafeteria_views.cafeteria_hours_view, name='cafeteria_admin_hours'),
     path('cafeteria/admin/dashboard/', cafeteria_views.cafeteria_dashboard_view, name='cafeteria_dashboard'),
     path('cafeteria/admin/reports/', cafeteria_views.cafeteria_reports_view, name='cafeteria_admin_reports'),

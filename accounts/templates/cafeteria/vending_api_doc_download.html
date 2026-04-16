@@ -1,0 +1,300 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8">
+<title>Vending Machine API Documentation</title>
+<style>
+  body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #1a1a1a; line-height: 1.6; margin: 40px; }
+  h1 { font-size: 22pt; color: #1e56b8; border-bottom: 2px solid #1e56b8; padding-bottom: 8px; }
+  h2 { font-size: 16pt; color: #1e56b8; margin-top: 28px; border-bottom: 1px solid #d6e2f0; padding-bottom: 4px; }
+  h3 { font-size: 13pt; color: #333; margin-top: 20px; }
+  code { font-family: Consolas, 'Courier New', monospace; font-size: 10pt; background: #f0f4f8; padding: 2px 5px; border-radius: 3px; }
+  pre { font-family: Consolas, 'Courier New', monospace; font-size: 10pt; background: #f0f4f8; padding: 12px 16px; border: 1px solid #d6e2f0; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th { background: #eef2f7; text-align: left; padding: 8px 12px; border: 1px solid #d6e2f0; font-size: 10pt; }
+  td { padding: 8px 12px; border: 1px solid #d6e2f0; font-size: 10pt; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 9pt; font-weight: bold; }
+  .badge-green { background: #d1fae5; color: #047857; }
+  .badge-red { background: #fee2e2; color: #b91c1c; }
+  .badge-yellow { background: #fef3c7; color: #92400e; }
+  .note { background: #eff6ff; border-left: 4px solid #1e56b8; padding: 10px 14px; margin: 12px 0; font-size: 10pt; }
+  .warn { background: #fef3c7; border-left: 4px solid #d97706; padding: 10px 14px; margin: 12px 0; font-size: 10pt; }
+  ol, ul { padding-left: 24px; }
+  li { margin-bottom: 4px; }
+  hr { border: none; border-top: 1px solid #d6e2f0; margin: 24px 0; }
+</style>
+</head>
+<body>
+
+<h1>Vending Machine API Documentation</h1>
+<p><strong>Base URL:</strong> <code>https://{{ domain }}</code><br>
+<strong>Version:</strong> 1.0<br>
+<strong>Last Updated:</strong> April 2026</p>
+
+<hr>
+
+<h2>1. Overview</h2>
+<p>This API allows cafeteria vending machines to deduct credit from staff accounts. Each staff member has a unique QR code displayed on their phone (PWA Home screen). The vending machine scans the QR, then calls this API to deduct the purchase amount.</p>
+
+<hr>
+
+<h2>2. Authentication</h2>
+<p>All requests must include a <strong>Bearer token</strong> in the <code>Authorization</code> header:</p>
+<pre>Authorization: Bearer &lt;VENDING_API_KEY&gt;</pre>
+<p>The API key is configured on the server via the <code>VENDING_API_KEY</code> environment variable. Contact the system administrator to obtain your API key.</p>
+
+<hr>
+
+<h2>3. Endpoint: Deduct Credit</h2>
+<p>Deduct credit from a staff member's cafeteria balance.</p>
+<pre>POST /cafeteria/api/vending/deduct/</pre>
+
+<h3>3.1 Request Headers</h3>
+<table>
+  <tr><th>Header</th><th>Value</th></tr>
+  <tr><td><code>Content-Type</code></td><td><code>application/json</code></td></tr>
+  <tr><td><code>Authorization</code></td><td><code>Bearer &lt;VENDING_API_KEY&gt;</code></td></tr>
+</table>
+
+<h3>3.2 Request Body (JSON)</h3>
+<table>
+  <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+  <tr><td><code>qr_token</code></td><td>string</td><td>Yes</td><td>Full QR code string scanned from the staff member's phone</td></tr>
+  <tr><td><code>amount</code></td><td>number</td><td>Yes</td><td>Positive amount to deduct in SGD (e.g. <code>2.50</code>)</td></tr>
+  <tr><td><code>machine_id</code></td><td>string</td><td>No</td><td>Identifier for the vending machine (e.g. <code>"VM-01"</code>). Max 50 chars.</td></tr>
+  <tr><td><code>description</code></td><td>string</td><td>No</td><td>Item description (e.g. <code>"Canned Coffee"</code>). Max 120 chars. Shown in user's transaction history.</td></tr>
+</table>
+
+<h3>3.3 Example Request</h3>
+<pre>curl -X POST https://{{ domain }}/cafeteria/api/vending/deduct/ \
+  -H "Authorization: Bearer your-secret-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "qr_token": "VEND:EMP-001.a1b2c3d4e5f6g7h8...",
+    "amount": 2.50,
+    "machine_id": "VM-LOBBY-01",
+    "description": "Canned Coffee"
+  }'</pre>
+
+<hr>
+
+<h2>4. Responses</h2>
+<p>All responses are JSON with a <code>success</code> boolean field.</p>
+
+<h3>4.1 Success <span class="badge badge-green">HTTP 200</span></h3>
+<p>Credit was deducted successfully.</p>
+<pre>{
+  "success": true,
+  "balance": 47.50,
+  "staff_id": "EMP-001",
+  "transaction_id": 42
+}</pre>
+<table>
+  <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+  <tr><td><code>success</code></td><td>bool</td><td><code>true</code></td></tr>
+  <tr><td><code>balance</code></td><td>number</td><td>User's remaining credit balance after deduction</td></tr>
+  <tr><td><code>staff_id</code></td><td>string</td><td>Staff member's ID</td></tr>
+  <tr><td><code>transaction_id</code></td><td>number</td><td>Unique transaction ID for this purchase</td></tr>
+</table>
+
+<h3>4.2 Insufficient Funds <span class="badge badge-red">HTTP 200</span></h3>
+<p>User does not have enough credit for the requested amount.</p>
+<pre>{
+  "success": false,
+  "error": "insufficient_funds",
+  "message": "Insufficient credit. Balance: S$1.20, required: S$2.50",
+  "balance": 1.20
+}</pre>
+<table>
+  <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+  <tr><td><code>success</code></td><td>bool</td><td><code>false</code></td></tr>
+  <tr><td><code>error</code></td><td>string</td><td><code>"insufficient_funds"</code></td></tr>
+  <tr><td><code>message</code></td><td>string</td><td>Human-readable explanation</td></tr>
+  <tr><td><code>balance</code></td><td>number</td><td>User's current credit balance</td></tr>
+</table>
+
+<h3>4.3 Invalid QR Code <span class="badge badge-red">HTTP 200</span></h3>
+<p>The QR code is not recognised &mdash; tampered, wrong format, or user is inactive.</p>
+<pre>{
+  "success": false,
+  "error": "invalid_qr",
+  "message": "Invalid or unrecognised QR code"
+}</pre>
+
+<h3>4.4 Unauthorized <span class="badge badge-red">HTTP 401</span></h3>
+<p>Missing or invalid API key.</p>
+<pre>{
+  "success": false,
+  "error": "unauthorized",
+  "message": "Invalid API key"
+}</pre>
+
+<h3>4.5 Bad Request <span class="badge badge-yellow">HTTP 400</span></h3>
+<p>Missing required fields or invalid JSON.</p>
+<pre>{
+  "success": false,
+  "error": "bad_request",
+  "message": "qr_token is required"
+}</pre>
+<p>Possible messages:</p>
+<ul>
+  <li><code>"Invalid JSON body"</code></li>
+  <li><code>"qr_token is required"</code></li>
+  <li><code>"amount is required"</code></li>
+  <li><code>"amount must be a positive number"</code></li>
+  <li><code>"amount must be greater than 0"</code></li>
+</ul>
+
+<h3>4.6 Server Error <span class="badge badge-red">HTTP 500</span></h3>
+<p><code>VENDING_API_KEY</code> is not configured on the server.</p>
+<pre>{
+  "success": false,
+  "error": "server_error",
+  "message": "Vending API not configured"
+}</pre>
+
+<hr>
+
+<h2>5. Error Codes Summary</h2>
+<table>
+  <tr><th>Error Code</th><th>HTTP Status</th><th>Description</th></tr>
+  <tr><td><code>unauthorized</code></td><td>401</td><td>Missing or invalid API key</td></tr>
+  <tr><td><code>bad_request</code></td><td>400</td><td>Missing required fields or invalid JSON</td></tr>
+  <tr><td><code>invalid_qr</code></td><td>200</td><td>QR code not recognised (tampered, wrong format, inactive user)</td></tr>
+  <tr><td><code>insufficient_funds</code></td><td>200</td><td>User's credit balance is less than the requested amount</td></tr>
+  <tr><td><code>server_error</code></td><td>500</td><td><code>VENDING_API_KEY</code> not configured on the server</td></tr>
+</table>
+
+<div class="note">
+  <strong>Note:</strong> <code>invalid_qr</code> and <code>insufficient_funds</code> return HTTP 200 (not 4xx) because the request itself was valid &mdash; the business logic rejected it. This makes it easier for vending machines to distinguish network/auth errors (4xx/5xx) from business outcomes (200).
+</div>
+
+<hr>
+
+<h2>6. Integration Flow</h2>
+<ol>
+  <li>Staff opens their <strong>PWA Home</strong> page &mdash; their unique QR code is displayed beside the credit balance</li>
+  <li>Staff holds their phone up to the vending machine's QR scanner</li>
+  <li>Vending machine reads the QR string (format: <code>VEND:&lt;staff_id&gt;.&lt;hmac&gt;</code>)</li>
+  <li>Vending machine calls <code>POST /cafeteria/api/vending/deduct/</code> with the QR token and item price</li>
+  <li>Server verifies the HMAC signature on the QR token</li>
+  <li>Server checks the user's credit balance</li>
+  <li>Server deducts credit atomically (row-level locking prevents race conditions)</li>
+  <li>Machine receives the response &mdash; dispenses the item on success, shows error on failure</li>
+  <li>Transaction appears in the staff member's <strong>History &rarr; Vending</strong> tab (success or failed with reason)</li>
+</ol>
+
+<hr>
+
+<h2>7. QR Code Format</h2>
+<p>Staff QR codes follow this format:</p>
+<pre>VEND:&lt;staff_id&gt;.&lt;hmac_signature&gt;</pre>
+<p><strong>Example:</strong></p>
+<pre>VEND:EMP-001.a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6</pre>
+<ul>
+  <li><code>VEND:</code> &mdash; fixed prefix identifying this as a vending QR</li>
+  <li><code>&lt;staff_id&gt;</code> &mdash; the staff member's unique ID</li>
+  <li><code>.&lt;hmac_signature&gt;</code> &mdash; 32-character HMAC-SHA256 signature</li>
+</ul>
+<p>The QR code is:</p>
+<ul>
+  <li><strong>Permanent</strong> &mdash; does not expire or change (unless the server's signing key changes)</li>
+  <li><strong>Reusable</strong> &mdash; can be scanned multiple times (unlike order collection QR codes)</li>
+  <li><strong>Tamper-proof</strong> &mdash; HMAC signature prevents forgery</li>
+  <li><strong>User-bound</strong> &mdash; each staff member has a unique QR; inactive users are automatically rejected</li>
+</ul>
+
+<div class="warn">
+  <strong>Important:</strong> The vending machine should treat the QR token as an opaque string. Do not parse or validate the format client-side. Always send the full string to the API for server-side verification.
+</div>
+
+<hr>
+
+<h2>8. Recommended Machine-Side Logic (Python)</h2>
+<pre>import requests
+
+API_URL = "https://{{ domain }}/cafeteria/api/vending/deduct/"
+API_KEY = "your-secret-api-key"
+MACHINE_ID = "VM-LOBBY-01"
+
+def process_purchase(qr_code: str, item_price: float, item_name: str) -> bool:
+    """
+    Call after the user scans their QR and selects an item.
+    Returns True if credit was deducted, False otherwise.
+    """
+    response = requests.post(
+        API_URL,
+        headers={
+            "Authorization": f"Bearer {API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "qr_token": qr_code,
+            "amount": item_price,
+            "machine_id": MACHINE_ID,
+            "description": item_name,
+        },
+        timeout=10,
+    )
+
+    if response.status_code == 401:
+        log_error("Invalid API key")
+        display_message("System error. Please contact support.")
+        return False
+
+    if response.status_code != 200:
+        display_message("Connection error. Please try again.")
+        return False
+
+    data = response.json()
+
+    if data["success"]:
+        display_message(f"Success! Remaining: S${data['balance']:.2f}")
+        dispense_item()
+        return True
+
+    error = data.get("error", "")
+    if error == "insufficient_funds":
+        display_message(f"Insufficient credit. Balance: S${data.get('balance', 0):.2f}")
+    elif error == "invalid_qr":
+        display_message("QR code not recognised. Please try again.")
+    else:
+        display_message(data.get("message", "Error. Please try again."))
+
+    return False</pre>
+
+<hr>
+
+<h2>9. Testing with cURL</h2>
+<pre># Successful deduction
+curl -X POST https://{{ domain }}/cafeteria/api/vending/deduct/ \
+  -H "Authorization: Bearer your-secret-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"qr_token":"VEND:EMP-001.abc123...","amount":2.50,"machine_id":"VM-TEST","description":"Test Item"}'
+
+# Test with wrong API key (should return 401)
+curl -X POST https://{{ domain }}/cafeteria/api/vending/deduct/ \
+  -H "Authorization: Bearer wrong-key" \
+  -H "Content-Type: application/json" \
+  -d '{"qr_token":"VEND:EMP-001.abc123...","amount":2.50}'
+
+# Test with invalid QR (should return invalid_qr)
+curl -X POST https://{{ domain }}/cafeteria/api/vending/deduct/ \
+  -H "Authorization: Bearer your-secret-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"qr_token":"INVALID-TOKEN","amount":2.50}'
+
+# Test with very large amount (should return insufficient_funds)
+curl -X POST https://{{ domain }}/cafeteria/api/vending/deduct/ \
+  -H "Authorization: Bearer your-secret-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"qr_token":"VEND:EMP-001.abc123...","amount":99999}'</pre>
+
+<hr>
+
+<p style="font-size:10pt;color:#888;margin-top:40px">
+  <em>This document was auto-generated from the FaceID Portal system.<br>
+  For the latest version, visit the admin dashboard at <code>/cafeteria/admin/vending-api/</code></em>
+</p>
+
+</body>
+</html>
