@@ -349,6 +349,7 @@ class Order(models.Model):
         ('collected', 'Collected'),
         ('cancelled', 'Cancelled'),
         ('refunded', 'Refunded'),
+        ('no_show', 'No Show'),
     ]
     MENU_CHOICES = [
         ('halal', 'Local'),
@@ -561,6 +562,21 @@ class KioskConfig(models.Model):
     # Working days per month for credit proration when adding new staff.
     credit_working_days = models.PositiveIntegerField(
         default=30, help_text='Working days per month (used for prorating new staff credit).'
+    )
+    # Auto-cancellation: daily cutoff times after which uncollected orders
+    # are marked as no-show and credits refunded.
+    kitchen_cutoff_time = models.TimeField(
+        default='17:01',
+        help_text='Kitchen (Local + International) daily cutoff — uncollected orders auto-cancel after this time'
+    )
+    cafe_bar_cutoff_time = models.TimeField(
+        default='20:01',
+        help_text='Cafe Bar daily cutoff — uncollected orders auto-cancel after this time'
+    )
+    # Orders not collected within this many minutes are shown in the No Show tab.
+    no_show_minutes = models.PositiveIntegerField(
+        default=20,
+        help_text='Minutes after order is ready before it appears as No Show at the counter'
     )
     updated_at = models.DateTimeField(auto_now=True)
 

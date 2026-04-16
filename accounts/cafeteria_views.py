@@ -188,6 +188,101 @@ def _generate_qr_image_base64(data: str, box_size: int = 6) -> str:
     return 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode()
 
 
+# ─── Auto-cancel / No-show ───────────────────────────────────────────────────
+
+
+def _process_cutoff_cancellations():
+    """
+    Auto-cancel uncollected orders past the daily cutoff time.
+    Called from counter view loads and cron endpoint.
+
+    For mixed orders with partial collection, only refund the uncollected
+    items' value (not the full order).
+    """
+    cfg = KioskConfig.get()
+    now = timezone.localtime()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Kitchen cutoff (halal + non_halal items)
+    if now.time() >= cfg.kitchen_cutoff_time:
+        _cancel_uncollected_items(
+            today_start, now,
+            menu_types=['halal', 'non_halal'],
+            reason=f'Auto-cancelled: past kitchen cutoff ({cfg.kitchen_cutoff_time.strftime("%H:%M")})',
+        )
+
+    # Cafe bar cutoff
+    if now.time() >= cfg.cafe_bar_cutoff_time:
+        _cancel_uncollected_items(
+            today_start, now,
+            menu_types=['cafe_bar'],
+            reason=f'Auto-cancelled: past cafe bar cutoff ({cfg.cafe_bar_cutoff_time.strftime("%H:%M")})',
+        )
+
+
+def _cancel_uncollected_items(today_start, now, menu_types, reason):
+    """
+    Cancel uncollected items for given menu types on today's orders.
+    Handles mixed orders with partial collection — only refunds the
+    uncollected portion.
+    """
+    # Find active orders created today that still have uncollected items
+    # for these menu types.
+    orders = Order.objects.filter(
+        status__in=['confirmed', 'preparing', 'ready'],
+        created_at__gte=today_start,
+    ).prefetch_related('items', 'items__menu_item')
+
+    for order in orders:
+        uncollected_items = [
+            i for i in order.items.all()
+            if (i.menu_type_snapshot or (i.menu_item.menu_type if i.menu_item else '')) in menu_types
+            and i.collected_at is None
+        ]
+        if not uncollected_items:
+            continue
+
+        with transaction.atomic():
+            refund_amount = sum(i.subtotal for i in uncollected_items)
+
+            # Mark uncollected items as collected with a "no_show" timestamp
+            for item in uncollected_items:
+                item.collected_at = now
+                item.save(update_fields=['collected_at'])
+
+            # Check if ALL items in the order are now collected/cancelled
+            all_collected = not order.items.filter(collected_at__isnull=True).exists()
+
+            if all_collected:
+                # Entire order uncollected — mark as no_show
+                order.status = 'no_show'
+                order.cancelled_at = now
+                order.cancel_reason = reason
+                order.save(update_fields=['status', 'cancelled_at', 'cancel_reason'])
+            else:
+                # Partial collection (mixed order) — keep order status but
+                # note the partial no-show. Don't change overall status since
+                # some items were collected.
+                if not order.cancel_reason:
+                    order.cancel_reason = f'Partial no-show: {reason}'
+                    order.save(update_fields=['cancel_reason'])
+
+            # Refund credits for uncollected items
+            if refund_amount > 0 and order.customer and order.credits_applied > 0:
+                # Only refund up to the credits that were applied
+                credit_refund = min(refund_amount, order.credits_applied)
+                locked_user = StaffUser.objects.select_for_update().get(pk=order.customer.pk)
+                locked_user.credit_balance += credit_refund
+                locked_user.save(update_fields=['credit_balance'])
+                CreditTransaction.objects.create(
+                    user=locked_user, type='refund',
+                    amount=credit_refund,
+                    balance_after=locked_user.credit_balance,
+                    related_order=order,
+                    notes=reason,
+                )
+
+
 # ─── Ordering Hours ──────────────────────────────────────────────────────────
 
 def _is_menu_open(menu_type: str) -> bool:
@@ -679,10 +774,15 @@ def kitchen_view(request, kitchen_type):
             'required_role': 'Kitchen Counter' if kitchen_type in ('halal', 'non_halal') else 'Cafe Bar Counter',
         }, status=403)
 
-    today_start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+    # Run cutoff auto-cancellations on each page load
+    _process_cutoff_cancellations()
+
+    cfg = KioskConfig.get()
+    now = timezone.localtime()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    no_show_threshold = now - timezone.timedelta(minutes=cfg.no_show_minutes)
+
     # Only show orders that still have UNCOLLECTED items for this counter.
-    # Mixed orders drop off a counter once its items are collected, even if
-    # other counters still have items pending.
     uncollected_here = OrderItem.objects.filter(
         order=OuterRef('pk'),
         collected_at__isnull=True,
@@ -699,18 +799,32 @@ def kitchen_view(request, kitchen_type):
         _has_uncollected_here=True,
     ).prefetch_related('items', 'items__menu_item').order_by('created_at')
 
-    # For each order, attach the filtered item list for this counter
-    # (excluding items already collected at this counter).
+    # Split into active vs no-show (ready for > N minutes)
+    active_list = []
+    no_show_list = []
     for order in active_orders:
         order.counter_items = [
             i for i in order.items.all()
             if (i.menu_type_snapshot or (i.menu_item.menu_type if i.menu_item else '')) == kitchen_type
                and i.collected_at is None
         ]
+        if order.status == 'ready' and order.created_at < no_show_threshold:
+            no_show_list.append(order)
+        else:
+            active_list.append(order)
+
+    # Also show orders already marked no_show today
+    todays_no_shows = Order.objects.filter(
+        status='no_show',
+        cancelled_at__gte=today_start,
+    ).prefetch_related('items').order_by('-cancelled_at')[:20]
 
     return render(request, 'cafeteria/kitchen_view.html', {
         'kitchen_type': kitchen_type,
-        'orders': active_orders,
+        'orders': active_list,
+        'no_show_orders': no_show_list,
+        'todays_no_shows': todays_no_shows,
+        'no_show_minutes': cfg.no_show_minutes,
     })
 
 
@@ -1214,9 +1328,14 @@ def cafe_bar_counter_view(request):
         return render(request, 'cafeteria/access_denied.html', {
             'required_role': 'Cafe Bar Counter',
         }, status=403)
-    today_start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # Orders pending payment (public terminal flow) — cafe bar processes these.
+    _process_cutoff_cancellations()
+
+    cfg = KioskConfig.get()
+    now = timezone.localtime()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    no_show_threshold = now - timezone.timedelta(minutes=cfg.no_show_minutes)
+
     pending_payment = Order.objects.filter(
         is_public=True, payment_method='terminal',
         payment_received_at__isnull=True,
@@ -1224,9 +1343,6 @@ def cafe_bar_counter_view(request):
         created_at__gte=today_start,
     ).prefetch_related('items').order_by('created_at')
 
-    # All active cafe bar orders with at least one UNCOLLECTED cafe_bar item.
-    # Mixed orders whose cafe_bar items are already collected must drop off
-    # this counter even if kitchen items remain uncollected.
     uncollected_cafe_items = OrderItem.objects.filter(
         order=OuterRef('pk'),
         collected_at__isnull=True,
@@ -1243,16 +1359,30 @@ def cafe_bar_counter_view(request):
         _has_uncollected_cafe=True,
     ).prefetch_related('items', 'items__menu_item').order_by('created_at')
 
+    active_list = []
+    no_show_list = []
     for order in ready:
         order.counter_items = [
             i for i in order.items.all()
             if (i.menu_type_snapshot or (i.menu_item.menu_type if i.menu_item else '')) == 'cafe_bar'
                and i.collected_at is None
         ]
+        if order.status == 'ready' and order.created_at < no_show_threshold:
+            no_show_list.append(order)
+        else:
+            active_list.append(order)
+
+    todays_no_shows = Order.objects.filter(
+        status='no_show',
+        cancelled_at__gte=today_start,
+    ).prefetch_related('items').order_by('-cancelled_at')[:20]
 
     return render(request, 'cafeteria/cafe_bar_counter.html', {
-        'ready': ready,
+        'ready': active_list,
+        'no_show_orders': no_show_list,
+        'todays_no_shows': todays_no_shows,
         'pending_payment': pending_payment,
+        'no_show_minutes': cfg.no_show_minutes,
     })
 
 
@@ -1689,19 +1819,33 @@ def cafeteria_kiosk_config_view(request):
     cfg = KioskConfig.get()
     if request.method == 'POST':
         try:
+            from datetime import time as _time
             landing = int(request.POST.get('idle_landing_seconds') or cfg.idle_landing_seconds)
             session_s = int(request.POST.get('idle_session_seconds') or cfg.idle_session_seconds)
             post_print = int(request.POST.get('post_print_seconds') or cfg.post_print_seconds)
             working_days = int(request.POST.get('credit_working_days') or cfg.credit_working_days)
-            # Sane bounds.
+            no_show = int(request.POST.get('no_show_minutes') or cfg.no_show_minutes)
+
             cfg.idle_landing_seconds = max(5, min(600, landing))
             cfg.idle_session_seconds = max(5, min(600, session_s))
             cfg.post_print_seconds = max(1, min(120, post_print))
             cfg.credit_working_days = max(1, min(31, working_days))
+            cfg.no_show_minutes = max(5, min(120, no_show))
+
+            # Parse cutoff times (HH:MM format)
+            k_cutoff = request.POST.get('kitchen_cutoff_time', '')
+            c_cutoff = request.POST.get('cafe_bar_cutoff_time', '')
+            if k_cutoff:
+                h, m = k_cutoff.split(':')
+                cfg.kitchen_cutoff_time = _time(int(h), int(m))
+            if c_cutoff:
+                h, m = c_cutoff.split(':')
+                cfg.cafe_bar_cutoff_time = _time(int(h), int(m))
+
             cfg.save()
             messages.success(request, 'Settings updated.')
         except (TypeError, ValueError):
-            messages.error(request, 'Please enter whole numbers only.')
+            messages.error(request, 'Please check your input values.')
         return redirect('cafeteria_kiosk_config')
     return render(request, 'cafeteria/admin_kiosk_config.html', {'cfg': cfg})
 
@@ -1833,6 +1977,15 @@ def cafeteria_reports_view(request):
             'total': abs(m['total'] or 0),
         })
 
+    # ── Refunds & No-shows for this period ──────────────────────
+    cancelled_orders = Order.objects.filter(
+        cancelled_at__gte=start,
+    ).select_related('customer').order_by('-cancelled_at')[:50]
+    no_show_orders = Order.objects.filter(
+        status='no_show',
+        cancelled_at__gte=start,
+    ).select_related('customer').order_by('-cancelled_at')[:50]
+
     return render(request, 'cafeteria/admin_reports.html', {
         'period': period,
         'totals': totals,
@@ -1843,6 +1996,8 @@ def cafeteria_reports_view(request):
         'vending_count': vending_count,
         'vending_failed': vending_failed,
         'vending_machine_rows': vending_machine_rows,
+        'cancelled_orders': cancelled_orders,
+        'no_show_orders': no_show_orders,
     })
 
 
@@ -2376,6 +2531,9 @@ def cron_reset_credits_view(request):
     expired_count = expired.count()
     if expired_count:
         expired.update(is_active=False)
+
+    # ── Auto-cancel uncollected orders past cutoff ────────────
+    _process_cutoff_cancellations()
 
     return JsonResponse({
         'ok': True,

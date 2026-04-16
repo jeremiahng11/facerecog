@@ -134,6 +134,16 @@
 <div class="layout">
   <!-- Left: Orders -->
   <div class="orders-pane">
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <button class="kitchen-badge" style="padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:var(--primary);color:#fff;font-weight:700;font-size:12px;cursor:pointer" onclick="switchKTab('active',this)">
+        Active ({{ orders|length }})
+      </button>
+      <button class="kitchen-badge" style="padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);font-weight:700;font-size:12px;cursor:pointer" onclick="switchKTab('noshow',this)">
+        No Show ({{ no_show_orders|length|add:todays_no_shows.count }})
+      </button>
+    </div>
+
+    <div id="ktab-active">
     <div class="orders-grid">
       {% for order in orders %}
       <div class="order-card {% if order.status == 'ready' %}ready{% endif %} {% if order.collection_time_minutes %}scheduled{% endif %}" id="order-{{ order.id }}">
@@ -165,6 +175,46 @@
       {% empty %}
       <div class="empty">No active orders.</div>
       {% endfor %}
+    </div>
+    </div>
+
+    <div id="ktab-noshow" style="display:none">
+    <div class="orders-grid">
+      {% for order in no_show_orders %}
+      <div class="order-card" style="border-color:var(--danger);opacity:0.8" id="order-{{ order.id }}">
+        <div class="order-header">
+          <div class="order-num">{{ order.order_number }}</div>
+          <div class="order-meta">
+            <span style="color:var(--danger);font-weight:700">NO SHOW</span>
+            <div>{{ order.created_at|time:"H:i" }}</div>
+            <span class="badge badge-cancelled" style="font-size:10px">{{ no_show_minutes }}+ min</span>
+          </div>
+        </div>
+        <div class="customer">{{ order.customer.display_name|default:order.public_name }}</div>
+        <ul class="items">
+          {% for item in order.counter_items %}
+          <li><span class="qty">{{ item.quantity }}×</span>{{ item.name_snapshot }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+      {% for order in todays_no_shows %}
+      <div class="order-card" style="border-color:var(--border);opacity:0.5">
+        <div class="order-header">
+          <div class="order-num">{{ order.order_number }}</div>
+          <div class="order-meta">
+            <span class="badge badge-cancelled" style="font-size:10px">Auto-cancelled</span>
+            <div>{{ order.cancelled_at|time:"H:i" }}</div>
+          </div>
+        </div>
+        <div class="customer">{{ order.customer.display_name|default:order.public_name|default:"Walk-in" }}</div>
+        <div style="font-size:11px;color:var(--danger);margin-top:4px">{{ order.cancel_reason }}</div>
+      </div>
+      {% endfor %}
+      {% if not no_show_orders and not todays_no_shows %}
+      <div class="empty">No no-shows today.</div>
+      {% endif %}
+    </div>
     </div>
   </div>
 
@@ -213,6 +263,15 @@
 const CSRF = '{{ csrf_token }}';
 function getCSRF() { const m = document.cookie.match(/csrftoken=([^;]+)/); return m ? m[1] : CSRF; }
 const KITCHEN = '{{ kitchen_type }}';
+
+function switchKTab(tab, btn) {
+  document.getElementById('ktab-active').style.display = tab === 'active' ? '' : 'none';
+  document.getElementById('ktab-noshow').style.display = tab === 'noshow' ? '' : 'none';
+  btn.parentElement.querySelectorAll('button').forEach(b => {
+    b.style.background = '#fff'; b.style.color = 'var(--text)';
+  });
+  btn.style.background = 'var(--primary)'; btn.style.color = '#fff';
+}
 
 // ─── Hardware HID QR scanner support ────────────────────────────────────────
 // Bluetooth/USB HID scanners act as keyboards: they type the QR payload into

@@ -51,8 +51,36 @@
       <label>Working Days / Month</label>
       <input type="number" name="credit_working_days" min="1" max="31"
              value="{{ cfg.credit_working_days }}" required>
-      <div class="hint">Used when prorating credit for new staff added mid-month.
-        e.g. S$50 monthly credit, 15 days remaining out of 30 working days = S$25 opening balance. Range 1 – 31.</div>
+      <div class="hint">Used when prorating credit for new staff added mid-month. Range 1 – 31.</div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="card-header" style="margin-bottom:16px">
+      <h2>Auto-Cancellation</h2>
+      <p>Uncollected orders are auto-cancelled and credits refunded after the cutoff time</p>
+    </div>
+
+    <div class="form-row" style="display:flex;gap:12px">
+      <div class="form-group" style="flex:1">
+        <label>Kitchen Cutoff Time</label>
+        <input type="time" name="kitchen_cutoff_time"
+               value="{{ cfg.kitchen_cutoff_time|time:'H:i' }}" required>
+        <div class="hint">Local + International Kitchen daily cutoff</div>
+      </div>
+      <div class="form-group" style="flex:1">
+        <label>Cafe Bar Cutoff Time</label>
+        <input type="time" name="cafe_bar_cutoff_time"
+               value="{{ cfg.cafe_bar_cutoff_time|time:'H:i' }}" required>
+        <div class="hint">Cafe Bar daily cutoff</div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>No Show Timer (minutes)</label>
+      <input type="number" name="no_show_minutes" min="5" max="120"
+             value="{{ cfg.no_show_minutes }}" required>
+      <div class="hint">Orders not collected within this many minutes appear in the No Show tab at the counter. Range 5 – 120.</div>
     </div>
 
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:24px">

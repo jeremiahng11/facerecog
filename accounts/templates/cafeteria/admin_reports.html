@@ -92,5 +92,56 @@
   {% else %}
   <div class="card" style="text-align:center;color:var(--text3);padding:24px">No vending transactions for this period</div>
   {% endif %}
+
+  {# ── Refunds & No Shows ──────────────────────────────── #}
+  <div style="margin-top:32px;margin-bottom:12px">
+    <div class="page-title" style="font-size:18px">Refunds & No Shows</div>
+  </div>
+
+  {% if cancelled_orders or no_show_orders %}
+  <div class="card" style="padding:0;margin-bottom:20px">
+    <h2 class="mono" style="font-size:14px;color:var(--danger);letter-spacing:1px;padding:16px 16px 8px">CANCELLED / REFUNDED</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Order</th><th>Customer</th><th>Amount</th><th>Credits Refunded</th><th>Reason</th><th>Cancelled</th></tr></thead>
+      <tbody>
+        {% for o in cancelled_orders %}
+        <tr>
+          <td class="mono" style="font-weight:700">{{ o.order_number }}</td>
+          <td>{{ o.customer.display_name|default:o.public_name|default:"Walk-in" }}</td>
+          <td class="mono">S${{ o.subtotal|floatformat:2 }}</td>
+          <td class="mono">{% if o.credits_applied %}S${{ o.credits_applied|floatformat:2 }}{% else %}—{% endif %}</td>
+          <td style="font-size:12px;max-width:200px">{{ o.cancel_reason|default:"—" }}</td>
+          <td style="font-size:12px;white-space:nowrap">{{ o.cancelled_at|date:"d M · H:i" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px">No cancelled orders this period</td></tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+
+  {% if no_show_orders %}
+  <div class="card" style="padding:0">
+    <h2 class="mono" style="font-size:14px;color:var(--warn,#d97706);letter-spacing:1px;padding:16px 16px 8px">NO SHOWS</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Order</th><th>Customer</th><th>Amount</th><th>Credits Refunded</th><th>Reason</th><th>Time</th></tr></thead>
+      <tbody>
+        {% for o in no_show_orders %}
+        <tr>
+          <td class="mono" style="font-weight:700">{{ o.order_number }}</td>
+          <td>{{ o.customer.display_name|default:o.public_name|default:"Walk-in" }}</td>
+          <td class="mono">S${{ o.subtotal|floatformat:2 }}</td>
+          <td class="mono">{% if o.credits_applied %}S${{ o.credits_applied|floatformat:2 }}{% else %}—{% endif %}</td>
+          <td style="font-size:12px;max-width:200px">{{ o.cancel_reason|default:"—" }}</td>
+          <td style="font-size:12px;white-space:nowrap">{{ o.cancelled_at|date:"d M · H:i" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="card" style="text-align:center;color:var(--text3);padding:24px">No refunds or no-shows this period</div>
+  {% endif %}
 </div>
 {% endblock %}
