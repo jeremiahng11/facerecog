@@ -100,19 +100,16 @@ document.querySelectorAll('.add-btn').forEach(btn => {
 });
 
 async function checkout() {
-  // Group items by menu (server requires one menu_type per order).
-  const menus = {};
-  Object.values(cart).forEach(it => {
-    menus[it.menu] = menus[it.menu] || [];
-    menus[it.menu].push({ id: parseInt(it.id), quantity: it.qty, customizations: {} });
-  });
-  const menuKeys = Object.keys(menus);
-  if (menuKeys.length > 1) { alert('Please order from one menu at a time.'); return; }
-  const menu_type = menuKeys[0];
+  // Collect all items across all menus into one flat list — the backend
+  // handles mixed carts (sets is_mixed=True, assigns 'M' order prefix).
+  const items = Object.values(cart).map(it => ({
+    id: parseInt(it.id), quantity: it.qty, customizations: {},
+  }));
+  if (!items.length) return;
 
   const resp = await fetch('/cafeteria/api/place-order/', {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
-    body: JSON.stringify({ menu_type, items: menus[menu_type], collection_time_minutes: 0, source: 'portal' }),
+    body: JSON.stringify({ items, collection_time_minutes: 0, source: 'portal' }),
   });
   const data = await resp.json();
   if (data.success) window.location = data.redirect;
