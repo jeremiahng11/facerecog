@@ -14,6 +14,7 @@
     </div>
   </div>
 
+  {# ── Order KPIs ──────────────────────────────────────── #}
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:24px">
     <div class="card"><div style="font-size:11px;color:var(--text3);letter-spacing:2px;font-weight:700">TOTAL REVENUE</div><div class="mono" style="font-size:24px;color:var(--accent3);margin-top:6px">S${{ totals.revenue|floatformat:2 }}</div></div>
     <div class="card"><div style="font-size:11px;color:var(--text3);letter-spacing:2px;font-weight:700">CREDITS USED</div><div class="mono" style="font-size:24px;color:var(--accent);margin-top:6px">S${{ totals.credits|floatformat:2 }}</div></div>
@@ -47,5 +48,49 @@
       </tbody>
     </table></div>
   </div>
+
+  {# ── Vending Section ─────────────────────────────────── #}
+  <div style="margin-top:32px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <div class="page-title" style="font-size:18px">Vending Machines</div>
+    <a href="{% url 'admin_vending_report' %}" class="btn btn-secondary" style="font-size:12px">Full Vending Report →</a>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:20px">
+    <div class="card">
+      <div style="font-size:11px;color:var(--text3);letter-spacing:2px;font-weight:700">VENDING TOTAL</div>
+      <div class="mono" style="font-size:24px;color:var(--accent3);margin-top:6px">S${{ vending_total|floatformat:2 }}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:2px">Payable to vendor</div>
+    </div>
+    <div class="card">
+      <div style="font-size:11px;color:var(--text3);letter-spacing:2px;font-weight:700">VENDING TXNS</div>
+      <div class="mono" style="font-size:24px;color:var(--text);margin-top:6px">{{ vending_count }}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:2px">Successful</div>
+    </div>
+    <div class="card">
+      <div style="font-size:11px;color:var(--text3);letter-spacing:2px;font-weight:700">VENDING FAILED</div>
+      <div class="mono" style="font-size:24px;color:var(--danger);margin-top:6px">{{ vending_failed }}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:2px">Rejected</div>
+    </div>
+  </div>
+
+  {% if vending_machine_rows %}
+  <div class="card" style="padding:0">
+    <h2 class="mono" style="font-size:14px;color:var(--accent);padding:16px 16px 8px">BY MACHINE</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Machine ID</th><th style="text-align:right">Transactions</th><th style="text-align:right">Total (SGD)</th></tr></thead>
+      <tbody>
+        {% for m in vending_machine_rows %}
+        <tr>
+          <td><strong>{{ m.id }}</strong></td>
+          <td class="mono" style="text-align:right">{{ m.count }}</td>
+          <td class="mono" style="text-align:right">S${{ m.total|floatformat:2 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+  {% else %}
+  <div class="card" style="text-align:center;color:var(--text3);padding:24px">No vending transactions for this period</div>
+  {% endif %}
 </div>
 {% endblock %}

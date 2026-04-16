@@ -1756,7 +1756,7 @@ def cafeteria_dashboard_view(request):
 @login_required
 @user_passes_test(is_admin)
 def cafeteria_reports_view(request):
-    """Revenue reports (daily/weekly/monthly)."""
+    """Revenue reports (daily/weekly/monthly) including vending."""
     from django.db.models import Sum, Count
     period = request.GET.get('period', 'week')  # 'day', 'week', 'month'
     now = timezone.localtime()
@@ -1805,12 +1805,40 @@ def cafeteria_reports_view(request):
             'revenue': day_orders.aggregate(s=Sum('subtotal'))['s'] or 0,
         })
 
+    # ── Vending summary for this period ───────────────────────────
+    vending_qs = CreditTransaction.objects.filter(
+        type='vending', status='success', created_at__gte=start,
+    )
+    vending_total = abs(vending_qs.aggregate(s=Sum('amount'))['s'] or 0)
+    vending_count = vending_qs.count()
+    vending_failed = CreditTransaction.objects.filter(
+        type='vending', status='failed', created_at__gte=start,
+    ).count()
+
+    # Per-machine breakdown
+    vending_machines = (
+        vending_qs.values('machine_id')
+        .annotate(total=Sum('amount'), count=Count('id'))
+        .order_by('-total')
+    )
+    vending_machine_rows = []
+    for m in vending_machines:
+        vending_machine_rows.append({
+            'id': m['machine_id'] or '(unknown)',
+            'count': m['count'],
+            'total': abs(m['total'] or 0),
+        })
+
     return render(request, 'cafeteria/admin_reports.html', {
         'period': period,
         'totals': totals,
         'by_menu': by_menu,
         'by_payment': by_payment,
         'daily_rows': daily_rows,
+        'vending_total': vending_total,
+        'vending_count': vending_count,
+        'vending_failed': vending_failed,
+        'vending_machine_rows': vending_machine_rows,
     })
 
 
