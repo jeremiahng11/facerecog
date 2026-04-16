@@ -1781,16 +1781,20 @@ def cafeteria_reports_view(request):
     totals['net'] = totals['revenue'] - totals['refunds']
 
     by_menu = {}
-    for mt in ['halal', 'non_halal', 'cafe_bar']:
-        by_menu[mt] = orders.filter(menu_type=mt).aggregate(
+    menu_labels = {'halal': 'Local Kitchen', 'non_halal': 'International Kitchen', 'cafe_bar': 'Cafe Bar', 'mixed': 'Mixed'}
+    for mt in ['halal', 'non_halal', 'cafe_bar', 'mixed']:
+        data = orders.filter(menu_type=mt).aggregate(
             revenue=Sum('subtotal'), count=Count('id')
         )
+        by_menu[menu_labels[mt]] = data
 
     by_payment = {}
-    for p in ['credits', 'stripe', 'paynow', 'cash', 'mixed']:
-        by_payment[p] = orders.filter(payment_method=p).aggregate(
+    payment_labels = {'credits': 'Staff Credits', 'stripe': 'Stripe Card', 'paynow': 'PayNow QR', 'cash': 'Cash', 'terminal': 'Terminal', 'mixed': 'Credits + Card/PayNow'}
+    for p in ['credits', 'stripe', 'paynow', 'cash', 'terminal', 'mixed']:
+        data = orders.filter(payment_method=p).aggregate(
             revenue=Sum('subtotal'), count=Count('id')
         )
+        by_payment[payment_labels[p]] = data
 
     # Daily breakdown
     daily_rows = []

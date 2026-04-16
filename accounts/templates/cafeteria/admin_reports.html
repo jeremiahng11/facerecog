@@ -27,14 +27,14 @@
       <h2 class="mono" style="font-size:14px;color:var(--accent);margin-bottom:12px">BY MENU TYPE</h2>
       <table style="width:100%"><tbody>
         {% for k, v in by_menu.items %}
-        <tr><td>{{ k|capfirst }}</td><td class="mono" style="text-align:right">{{ v.count|default:0 }}</td><td class="mono" style="text-align:right">S${{ v.revenue|default:0|floatformat:2 }}</td></tr>
+        <tr><td>{{ k }}</td><td class="mono" style="text-align:right">{{ v.count|default:0 }}</td><td class="mono" style="text-align:right">S${{ v.revenue|default:0|floatformat:2 }}</td></tr>
         {% endfor %}
       </tbody></table>
     </div>
     <div class="card">
       <h2 class="mono" style="font-size:14px;color:var(--accent);margin-bottom:12px">BY PAYMENT METHOD</h2>
       <table style="width:100%"><tbody>
-        {% for k, v in by_payment.items %}<tr><td>{{ k|capfirst }}</td><td class="mono" style="text-align:right">{{ v.count|default:0 }}</td><td class="mono" style="text-align:right">S${{ v.revenue|default:0|floatformat:2 }}</td></tr>{% endfor %}
+        {% for k, v in by_payment.items %}<tr><td>{{ k }}</td><td class="mono" style="text-align:right">{{ v.count|default:0 }}</td><td class="mono" style="text-align:right">S${{ v.revenue|default:0|floatformat:2 }}</td></tr>{% endfor %}
       </tbody></table>
     </div>
   </div>
