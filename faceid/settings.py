@@ -177,8 +177,9 @@ FACE_ENROLL_NUM_SAMPLES = int(os.environ.get('FACE_ENROLL_NUM_SAMPLES', '5'))
 FACE_MIN_CONFIDENCE = float(os.environ.get('FACE_MIN_CONFIDENCE', '65'))
 
 # Number of consecutive successful matches to the same user required
-# before granting login. Prevents single-frame spoofing with photos.
-FACE_VERIFY_CONSECUTIVE_MATCHES = int(os.environ.get('FACE_VERIFY_CONSECUTIVE_MATCHES', '3'))
+# before granting login. 2 is sufficient for liveness variance check
+# while keeping kiosk queues fast.  Override via env var if needed.
+FACE_VERIFY_CONSECUTIVE_MATCHES = int(os.environ.get('FACE_VERIFY_CONSECUTIVE_MATCHES', '2'))
 
 FACE_PHOTOS_DIR = 'face_photos'
 
