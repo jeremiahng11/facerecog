@@ -2517,12 +2517,12 @@ def cron_reset_credits_view(request):
             'today_sgt': today.isoformat(),
         })
 
-    from django.core.management import call_command
-    from io import StringIO
-    out = StringIO()
-    call_command('reset_credits', stdout=out)
+    # ── 1. Auto-cancel uncollected orders BEFORE credit reset ──
+    # On the 1st, we must refund yesterday's no-shows first, then reset
+    # credits. Otherwise refunds would be lost in the reset.
+    _process_cutoff_cancellations()
 
-    # ── Auto-disable expired temp/intern accounts ─────────────
+    # ── 2. Auto-disable expired temp/intern accounts ─────────────
     expired = StaffUser.objects.filter(
         is_active=True,
         staff_type__in=['temp', 'intern'],
@@ -2532,8 +2532,11 @@ def cron_reset_credits_view(request):
     if expired_count:
         expired.update(is_active=False)
 
-    # ── Auto-cancel uncollected orders past cutoff ────────────
-    _process_cutoff_cancellations()
+    # ── 3. Monthly credit reset (last — after refunds are applied) ──
+    from django.core.management import call_command
+    from io import StringIO
+    out = StringIO()
+    call_command('reset_credits', stdout=out)
 
     return JsonResponse({
         'ok': True,
