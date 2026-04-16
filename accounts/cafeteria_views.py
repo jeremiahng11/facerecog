@@ -1934,6 +1934,198 @@ def stripe_webhook_view(request):
     return JsonResponse({'ok': True})
 
 
+# ─── Vending Machine Admin Reports ───────────────────────────────────────────
+
+
+@login_required
+@user_passes_test(is_admin)
+def admin_vending_report_view(request):
+    """
+    Admin: Vending machine transaction report.
+    Filters: month (YYYY-MM), machine_id, status.
+    Shows KPIs, per-machine breakdown, transaction list, and CSV download link.
+    """
+    from django.db.models import Sum, Count
+    import calendar as _cal
+
+    now = timezone.localtime()
+
+    # ── Parse month filter ────────────────────────────────────────
+    month_str = request.GET.get('month', '')
+    try:
+        year, month = int(month_str[:4]), int(month_str[5:7])
+    except (ValueError, IndexError):
+        year, month = now.year, now.month
+
+    _, days_in = _cal.monthrange(year, month)
+    start = timezone.make_aware(
+        timezone.datetime(year, month, 1),
+        timezone.get_current_timezone(),
+    )
+    end = timezone.make_aware(
+        timezone.datetime(year, month, days_in, 23, 59, 59),
+        timezone.get_current_timezone(),
+    )
+
+    # Filter params
+    machine_filter = request.GET.get('machine', '').strip()
+    status_filter = request.GET.get('status', '').strip()
+
+    qs = CreditTransaction.objects.filter(
+        type='vending',
+        created_at__gte=start,
+        created_at__lte=end,
+    ).select_related('user')
+
+    if machine_filter:
+        qs = qs.filter(machine_id=machine_filter)
+    if status_filter in ('success', 'failed'):
+        qs = qs.filter(status=status_filter)
+
+    # ── KPIs ──────────────────────────────────────────────────────
+    success_qs = qs.filter(status='success')
+    failed_qs = qs.filter(status='failed')
+
+    total_deducted = abs(success_qs.aggregate(s=Sum('amount'))['s'] or 0)
+    total_txns = qs.count()
+    success_count = success_qs.count()
+    failed_count = failed_qs.count()
+
+    # ── Per-machine breakdown ─────────────────────────────────────
+    machines = (
+        success_qs.values('machine_id')
+        .annotate(total=Sum('amount'), count=Count('id'))
+        .order_by('-total')
+    )
+    machine_rows = []
+    for m in machines:
+        machine_rows.append({
+            'id': m['machine_id'] or '(unknown)',
+            'count': m['count'],
+            'total': abs(m['total'] or 0),
+        })
+
+    # ── All machines for filter dropdown ──────────────────────────
+    all_machines = (
+        CreditTransaction.objects.filter(type='vending')
+        .exclude(machine_id='')
+        .values_list('machine_id', flat=True)
+        .distinct()
+        .order_by('machine_id')
+    )
+
+    # ── Available months for dropdown ─────────────────────────────
+    first_txn = CreditTransaction.objects.filter(type='vending').order_by('created_at').first()
+    available_months = []
+    if first_txn:
+        cursor = first_txn.created_at.replace(day=1)
+        end_cursor = now.replace(day=1)
+        while cursor <= end_cursor:
+            available_months.append(f'{cursor.year}-{cursor.month:02d}')
+            m = cursor.month + 1
+            y = cursor.year
+            if m > 12:
+                m = 1
+                y += 1
+            cursor = cursor.replace(year=y, month=m)
+
+    txns = qs.order_by('-created_at')[:200]
+
+    return render(request, 'cafeteria/admin_vending_report.html', {
+        'month_str': f'{year}-{month:02d}',
+        'month_label': f'{_cal.month_name[month]} {year}',
+        'total_deducted': total_deducted,
+        'total_txns': total_txns,
+        'success_count': success_count,
+        'failed_count': failed_count,
+        'machine_rows': machine_rows,
+        'txns': txns,
+        'all_machines': all_machines,
+        'available_months': available_months,
+        'machine_filter': machine_filter,
+        'status_filter': status_filter,
+    })
+
+
+@login_required
+@user_passes_test(is_admin)
+def admin_vending_csv_view(request):
+    """
+    Download vending transactions as CSV for a given month.
+    Used by accounts team to reconcile with vendor invoices.
+    """
+    import csv as _csv
+    import calendar as _cal
+    from django.http import HttpResponse
+
+    now = timezone.localtime()
+    month_str = request.GET.get('month', '')
+    try:
+        year, month = int(month_str[:4]), int(month_str[5:7])
+    except (ValueError, IndexError):
+        year, month = now.year, now.month
+
+    _, days_in = _cal.monthrange(year, month)
+    start = timezone.make_aware(
+        timezone.datetime(year, month, 1),
+        timezone.get_current_timezone(),
+    )
+    end = timezone.make_aware(
+        timezone.datetime(year, month, days_in, 23, 59, 59),
+        timezone.get_current_timezone(),
+    )
+
+    machine_filter = request.GET.get('machine', '').strip()
+
+    qs = CreditTransaction.objects.filter(
+        type='vending',
+        status='success',
+        created_at__gte=start,
+        created_at__lte=end,
+    ).select_related('user').order_by('created_at')
+
+    if machine_filter:
+        qs = qs.filter(machine_id=machine_filter)
+
+    filename = f'vending_report_{year}_{month:02d}'
+    if machine_filter:
+        filename += f'_{machine_filter}'
+    filename += '.csv'
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+    writer = _csv.writer(response)
+    writer.writerow([
+        'Date', 'Time', 'Staff ID', 'Staff Name', 'Department',
+        'Machine ID', 'Description', 'Amount (SGD)', 'Balance After',
+    ])
+
+    total = Decimal('0')
+    for txn in qs:
+        local_dt = timezone.localtime(txn.created_at)
+        amt = abs(txn.amount)
+        total += amt
+        writer.writerow([
+            local_dt.strftime('%Y-%m-%d'),
+            local_dt.strftime('%H:%M:%S'),
+            txn.user.staff_id if txn.user else '',
+            txn.user.full_name if txn.user else '',
+            txn.user.department if txn.user else '',
+            txn.machine_id,
+            txn.notes,
+            f'{amt:.2f}',
+            f'{txn.balance_after:.2f}',
+        ])
+
+    # Summary row
+    writer.writerow([])
+    writer.writerow(['', '', '', '', '', '', 'TOTAL', f'{total:.2f}', ''])
+    writer.writerow([f'Report: {_cal.month_name[month]} {year}'])
+
+    return response
+
+
 # ─── Vending Machine API ─────────────────────────────────────────────────────
 
 

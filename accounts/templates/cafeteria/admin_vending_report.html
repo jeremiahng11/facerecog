@@ -1,0 +1,134 @@
+{% extends 'base.html' %}
+{% block title %}Vending Report{% endblock %}
+{% block content %}
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="page-title">Vending Transactions</div>
+      <div class="page-subtitle">{{ month_label }} — vendor reconciliation report</div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <a href="{% url 'admin_vending_csv' %}?month={{ month_str }}{% if machine_filter %}&machine={{ machine_filter }}{% endif %}" class="btn btn-primary" style="font-size:13px">Download CSV</a>
+      <a href="{% url 'cafeteria_dashboard' %}" class="btn btn-secondary" style="font-size:13px">← Dashboard</a>
+    </div>
+  </div>
+
+  {# ── Filters ─────────────────────────────────────────── #}
+  <form class="card" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding:14px 16px" method="get">
+    <div style="flex:1;min-width:120px">
+      <label style="font-size:11px;font-weight:700;color:var(--text3);letter-spacing:1px;display:block;margin-bottom:4px">MONTH</label>
+      <select name="month" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+        {% for m in available_months reversed %}
+        <option value="{{ m }}" {% if m == month_str %}selected{% endif %}>{{ m }}</option>
+        {% empty %}
+        <option value="{{ month_str }}" selected>{{ month_str }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="flex:1;min-width:120px">
+      <label style="font-size:11px;font-weight:700;color:var(--text3);letter-spacing:1px;display:block;margin-bottom:4px">MACHINE</label>
+      <select name="machine" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+        <option value="">All Machines</option>
+        {% for mid in all_machines %}
+        <option value="{{ mid }}" {% if mid == machine_filter %}selected{% endif %}>{{ mid }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="flex:1;min-width:120px">
+      <label style="font-size:11px;font-weight:700;color:var(--text3);letter-spacing:1px;display:block;margin-bottom:4px">STATUS</label>
+      <select name="status" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+        <option value="">All</option>
+        <option value="success" {% if status_filter == 'success' %}selected{% endif %}>Success</option>
+        <option value="failed" {% if status_filter == 'failed' %}selected{% endif %}>Failed</option>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary" style="font-size:13px;padding:8px 16px">Filter</button>
+  </form>
+
+  {# ── KPIs ────────────────────────────────────────────── #}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:24px">
+    <div class="card">
+      <div style="font-size:11px;color:var(--text3);letter-spacing:2px;font-weight:700">TOTAL PAYABLE</div>
+      <div class="mono" style="font-size:24px;color:var(--accent3);margin-top:6px">S${{ total_deducted|floatformat:2 }}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:2px">Amount to pay vendor</div>
+    </div>
+    <div class="card">
+      <div style="font-size:11px;color:var(--text3);letter-spacing:2px;font-weight:700">TRANSACTIONS</div>
+      <div class="mono" style="font-size:24px;color:var(--text);margin-top:6px">{{ total_txns }}</div>
+    </div>
+    <div class="card">
+      <div style="font-size:11px;color:var(--text3);letter-spacing:2px;font-weight:700">SUCCESSFUL</div>
+      <div class="mono" style="font-size:24px;color:var(--accent3);margin-top:6px">{{ success_count }}</div>
+    </div>
+    <div class="card">
+      <div style="font-size:11px;color:var(--text3);letter-spacing:2px;font-weight:700">FAILED</div>
+      <div class="mono" style="font-size:24px;color:var(--danger);margin-top:6px">{{ failed_count }}</div>
+    </div>
+  </div>
+
+  {# ── Per-Machine Breakdown ──────────────────────────── #}
+  {% if machine_rows %}
+  <div class="card" style="margin-bottom:20px">
+    <h2 class="mono" style="font-size:14px;color:var(--accent);letter-spacing:1px;margin-bottom:12px">BY MACHINE</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Machine ID</th><th style="text-align:right">Transactions</th><th style="text-align:right">Total (SGD)</th></tr></thead>
+      <tbody>
+        {% for m in machine_rows %}
+        <tr>
+          <td><strong>{{ m.id }}</strong></td>
+          <td class="mono" style="text-align:right">{{ m.count }}</td>
+          <td class="mono" style="text-align:right">S${{ m.total|floatformat:2 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+  {% endif %}
+
+  {# ── Transaction List ───────────────────────────────── #}
+  <div class="card" style="padding:0">
+    <h2 class="mono" style="font-size:14px;color:var(--accent);letter-spacing:1px;padding:16px 16px 8px">TRANSACTIONS</h2>
+    <div class="table-wrap"><table>
+      <thead>
+        <tr>
+          <th>Date / Time</th>
+          <th>Staff</th>
+          <th>Machine</th>
+          <th>Description</th>
+          <th style="text-align:right">Amount</th>
+          <th style="text-align:center">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for txn in txns %}
+        <tr>
+          <td style="white-space:nowrap;font-size:12px">{{ txn.created_at|date:"d M · H:i" }}</td>
+          <td>
+            <strong style="font-size:13px">{{ txn.user.staff_id }}</strong>
+            <div style="font-size:11px;color:var(--text3)">{{ txn.user.full_name }}</div>
+          </td>
+          <td class="mono" style="font-size:12px">{{ txn.machine_id|default:"—" }}</td>
+          <td style="font-size:13px">{{ txn.notes|default:"—" }}</td>
+          <td class="mono" style="text-align:right;font-weight:700;{% if txn.status == 'failed' %}color:var(--text3){% endif %}">
+            S${{ txn.amount|floatformat:2|cut:"-" }}
+          </td>
+          <td style="text-align:center">
+            {% if txn.status == 'success' %}
+              <span class="badge badge-ready" style="font-size:10px">Success</span>
+            {% else %}
+              <span class="badge badge-cancelled" style="font-size:10px">Failed</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text3)">No vending transactions for this period</td></tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+
+  <div style="margin-top:16px;font-size:12px;color:var(--text3)">
+    Showing up to 200 transactions. Download CSV for the complete dataset.
+  </div>
+</div>
+{% endblock %}
