@@ -4,14 +4,14 @@
 {% block content %}
 <div class="credit-card" style="display:flex;align-items:center;gap:16px">
   <div style="flex:1">
-    <div class="label">CAFETERIA CREDIT</div>
+    <div class="label">WALLET BALANCE</div>
     <div class="amount">S${{ user.credit_balance|floatformat:2 }}</div>
     <div class="sub">Monthly allowance: S${{ user.monthly_credit|floatformat:2 }}</div>
   </div>
   {% if vending_qr %}
   <div style="flex-shrink:0;text-align:center">
     <img src="{{ vending_qr }}" alt="My QR" style="width:100px;height:100px;border-radius:8px;border:2px solid rgba(255,255,255,0.3)">
-    <div style="font-size:9px;opacity:0.7;margin-top:4px">Vending QR</div>
+    <div style="font-size:9px;opacity:0.7;margin-top:4px">Wallet QR</div>
   </div>
   {% endif %}
 </div>
