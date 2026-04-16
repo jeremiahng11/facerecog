@@ -183,12 +183,13 @@ FACE_RECOGNITION_TOLERANCE = float(os.environ.get('FACE_TOLERANCE', '0.4'))
 FACE_ENROLL_DUPLICATE_TOLERANCE = float(os.environ.get('FACE_ENROLL_DUPLICATE_TOLERANCE', '0.35'))
 
 # Number of jitters (re-samples) when extracting an enrollment encoding.
-# Higher = more accurate template but slower. 3 is a good balance.
-FACE_ENROLL_NUM_JITTERS = int(os.environ.get('FACE_ENROLL_NUM_JITTERS', '3'))
+# 1 is fast and sufficient when averaging across multiple captures.
+FACE_ENROLL_NUM_JITTERS = int(os.environ.get('FACE_ENROLL_NUM_JITTERS', '1'))
 
-# Number of separate captures to average during enrollment. More samples
-# produce a more robust template that handles lighting/angle variation.
-FACE_ENROLL_NUM_SAMPLES = int(os.environ.get('FACE_ENROLL_NUM_SAMPLES', '5'))
+# Number of separate captures to average during enrollment. 3 captures
+# is enough for liveness variance + template averaging while keeping
+# enrollment fast (~2 seconds vs ~5 with 5 samples).
+FACE_ENROLL_NUM_SAMPLES = int(os.environ.get('FACE_ENROLL_NUM_SAMPLES', '3'))
 
 # Minimum confidence (0-100) required for a verification match. Even if
 # the distance is within tolerance, reject if confidence is below this.

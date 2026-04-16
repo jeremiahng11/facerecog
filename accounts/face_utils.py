@@ -446,6 +446,29 @@ def validate_and_extract(data_url: str, min_face_pct: float = 0.04) -> dict:
         return {'ok': False, 'reason': 'Error processing face.'}
 
 
+def fast_extract(data_url: str) -> list | None:
+    """
+    Fast-path encoding extraction — skips quality checks (size, centering,
+    multi-face).  Used for follow-up frames during a verification match
+    streak where the first frame already passed full validation.
+
+    Returns 128-dim encoding list, or None if no face found.
+    """
+    if not FACE_RECOGNITION_AVAILABLE:
+        return None
+    arr = decode_base64_image(data_url)
+    if arr is None:
+        return None
+    try:
+        locations = face_recognition.face_locations(arr, model='hog')
+        if len(locations) != 1:
+            return None
+        encodings = face_recognition.face_encodings(arr, known_face_locations=locations, num_jitters=1)
+        return encodings[0].tolist() if encodings else None
+    except Exception:
+        return None
+
+
 def check_duplicate_face(
     candidate_encoding: list,
     tolerance: float,

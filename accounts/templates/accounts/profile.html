@@ -3,6 +3,9 @@
 
 {% block extra_head %}
 <style>
+  /* Hide the top nav bar on this page */
+  .nav { display: none !important; }
+
   .profile-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -201,7 +204,7 @@
       <!-- Enrollment instructions banner -->
       <div style="background:rgba(30,86,184,0.06);border:1px solid rgba(30,86,184,0.2);border-radius:10px;padding:14px;margin-bottom:14px;font-size:13px;color:var(--text2)">
         <div style="font-weight:600;color:var(--accent);margin-bottom:6px;font-size:12px;font-family:var(--mono);letter-spacing:1px">HOW ENROLLMENT WORKS</div>
-        <div style="margin-bottom:6px">When you click <strong>Capture & Enroll</strong>, the system will take <strong>{{ enroll_num_samples|default:"5" }} photos</strong> over a few seconds.</div>
+        <div style="margin-bottom:6px">When you click <strong>Capture & Enroll</strong>, the system will take <strong>{{ enroll_num_samples|default:"3" }} photos</strong> in about 2 seconds.</div>
         <div style="display:flex;flex-direction:column;gap:4px">
           <span>&#8226; <strong>Move your head slightly</strong> between captures (small tilts, nods)</span>
           <span>&#8226; <strong>Blink naturally</strong> — don't stare frozen at the camera</span>
@@ -264,8 +267,8 @@ async function startEnrollCamera() {
 // sends them all to the server which extracts a jittered encoding from
 // each, averages them into one robust template, and checks for duplicate
 // faces before storing.
-const NUM_SAMPLES = {{ enroll_num_samples|default:"5" }};
-const SAMPLE_DELAY_MS = 600;  // time between auto-captures
+const NUM_SAMPLES = {{ enroll_num_samples|default:"3" }};
+const SAMPLE_DELAY_MS = 400;  // time between auto-captures
 
 async function captureAndEnroll() {
   if (!enrollStream) { setEnrollStatus('err', 'Please start camera first.'); return; }

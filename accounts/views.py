@@ -198,18 +198,30 @@ def face_verify_ajax(request):
         min_confidence = getattr(settings, 'FACE_MIN_CONFIDENCE', 65)
         tolerance = getattr(settings, 'FACE_RECOGNITION_TOLERANCE', 0.4)
 
-        # ── Single-pass: validate face quality AND extract encoding ──
-        # Old flow called face_locations() twice (once for quality, once
-        # inside face_encodings).  This halves the per-frame CPU work.
-        result = face_utils.validate_and_extract(image_data)
-        if not result['ok']:
-            return JsonResponse({
-                'success': False,
-                'message': result['reason'],
-                'face_detected': False,
-            })
-
-        candidate_encoding = result['encoding']
+        # ── Extract face encoding ─────────────────────────────────
+        # Frame 1: full quality validation (size, centering, single face).
+        # Frame 2+: fast path — skip quality checks since frame 1 already
+        # passed. This cuts ~40% off the per-frame time on follow-up frames.
+        in_streak = bool(request.session.get('_face_match_user'))
+        if in_streak:
+            candidate_encoding = face_utils.fast_extract(image_data)
+            if candidate_encoding is None:
+                # Face lost — reset streak and fall back to full validation
+                _clear_face_session(request)
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Hold still…',
+                    'face_detected': False,
+                })
+        else:
+            result = face_utils.validate_and_extract(image_data)
+            if not result['ok']:
+                return JsonResponse({
+                    'success': False,
+                    'message': result['reason'],
+                    'face_detected': False,
+                })
+            candidate_encoding = result['encoding']
 
         # ── Batch compare against all enrolled users at once ─────
         # Uses in-memory numpy matrix — no DB query, no JSON parsing,
@@ -429,8 +441,7 @@ def enroll_face_ajax(request):
         if not images and data.get('image'):
             images = [data['image']]
 
-        num_samples_required = getattr(settings, 'FACE_ENROLL_NUM_SAMPLES', 5)
-        num_jitters = getattr(settings, 'FACE_ENROLL_NUM_JITTERS', 3)
+        num_samples_required = getattr(settings, 'FACE_ENROLL_NUM_SAMPLES', 3)
         dup_tolerance = getattr(settings, 'FACE_ENROLL_DUPLICATE_TOLERANCE', 0.35)
 
         if len(images) < num_samples_required:
@@ -443,21 +454,15 @@ def enroll_face_ajax(request):
         encodings = []
 
         for idx, image_data in enumerate(images):
-            quality = face_utils.validate_face_quality(image_data)
-            if not quality['ok']:
+            # Single-pass: validate quality + extract encoding together.
+            # This avoids calling face_locations() twice per frame.
+            result = face_utils.validate_and_extract(image_data)
+            if not result['ok']:
                 return JsonResponse({
                     'success': False,
-                    'message': f'Capture {idx + 1}: {quality["reason"]}',
+                    'message': f'Capture {idx + 1}: {result["reason"]}',
                 })
-            enc = face_utils.extract_encoding_from_b64_jittered(
-                image_data, num_jitters=num_jitters
-            )
-            if enc is None:
-                return JsonResponse({
-                    'success': False,
-                    'message': f'Could not extract face data from capture {idx + 1}.',
-                })
-            encodings.append(enc)
+            encodings.append(result['encoding'])
 
         # ── Liveness: check frame variance ────────────────────────
         # If all encodings are nearly identical, the user might be
