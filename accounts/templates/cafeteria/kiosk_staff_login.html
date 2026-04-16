@@ -160,49 +160,43 @@ const video = document.getElementById('videoEl');
 const camStatus = document.getElementById('camStatus');
 let stream = null;
 let scanning = false;
-let matchUser = null, matchCount = 0, matchEncodings = [];
-const CAP_MAX_DIM = 480;
+const CAP_MAX_DIM = 240;
+const _cap = document.createElement('canvas');
 
 function captureFrame() {
-  const vw = video.videoWidth || 480, vh = video.videoHeight || 480;
+  const vw = video.videoWidth || 320, vh = video.videoHeight || 320;
   const s = Math.min(1, CAP_MAX_DIM / Math.max(vw, vh));
-  const c = document.createElement('canvas');
-  c.width = Math.max(1, Math.round(vw * s));
-  c.height = Math.max(1, Math.round(vh * s));
-  c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
-  return c.toDataURL('image/jpeg', 0.75);
+  _cap.width = Math.max(1, Math.round(vw * s));
+  _cap.height = Math.max(1, Math.round(vh * s));
+  _cap.getContext('2d').drawImage(video, 0, 0, _cap.width, _cap.height);
+  return _cap.toDataURL('image/jpeg', 0.65);
 }
 
 async function scanLoop() {
   while (scanning) {
     try {
+      const f1 = captureFrame();
+      await new Promise(r => setTimeout(r, 300));
+      if (!scanning) break;
+      const f2 = captureFrame();
+
       const resp = await fetch('{% url "face_verify_ajax" %}', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
-        body: JSON.stringify({
-          image: captureFrame(),
-          match_user: matchUser, match_count: matchCount, match_encodings: matchEncodings,
-        }),
+        body: JSON.stringify({ images: [f1, f2] }),
       });
       const data = await resp.json();
-      matchUser = data.match_user || null;
-      matchCount = data.match_count || 0;
-      matchEncodings = data.match_encodings || [];
       if (data.success) {
         scanning = false;
         camStatus.textContent = '✓ ' + data.message;
         window.location.replace('/cafeteria/kiosk/menu-select/');
         return;
-      } else if (data.verifying) {
-        camStatus.textContent = data.message;
       } else if (data.face_detected === false) {
         camStatus.textContent = 'Position your face in the circle';
-      } else {
-        matchUser = null; matchCount = 0; matchEncodings = [];
       }
     } catch (e) {}
     if (!scanning) break;
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 50));
   }
 }
 

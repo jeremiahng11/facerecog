@@ -169,19 +169,17 @@ def face_login_view(request):
 @require_POST
 def face_verify_ajax(request):
     """
-    AJAX: receive base64 frame, compare against enrolled faces.
+    AJAX: receive 2 base64 frames in ONE request, compare against enrolled
+    faces, run liveness check, and grant login — all in a single round-trip.
 
-    Optimised for kiosk queue speed:
-    • Single-pass face detection + encoding (no duplicate work)
-    • In-memory encoding cache with batch numpy distance computation
-    • Server-side session state (no large encoding arrays in payload)
-    • Reduced default consecutive matches (2 instead of 3)
+    The client captures two frames ~300ms apart and sends both together,
+    eliminating the "Verifying 1/2 → 2/2" multi-request flow that caused
+    perceived slowness (each round-trip was 1-3s on shared Railway CPU).
     """
     try:
         ip_addr = get_client_ip(request)
         device_info = parse_device(request)
 
-        # ── IP lockout check ───────────────────────────────────────
         if _is_ip_locked_out(ip_addr):
             return JsonResponse({
                 'success': False,
@@ -190,140 +188,124 @@ def face_verify_ajax(request):
             })
 
         data = json.loads(request.body)
-        image_data = data.get('image')
-        if not image_data:
+        # Accept both single-frame (image) and dual-frame (images) payloads
+        images = data.get('images') or []
+        if not images and data.get('image'):
+            images = [data['image']]
+        if not images:
             return JsonResponse({'success': False, 'message': 'No image received'})
 
-        required_consecutive = getattr(settings, 'FACE_VERIFY_CONSECUTIVE_MATCHES', 2)
         min_confidence = getattr(settings, 'FACE_MIN_CONFIDENCE', 65)
         tolerance = getattr(settings, 'FACE_RECOGNITION_TOLERANCE', 0.4)
 
-        # ── Extract face encoding ─────────────────────────────────
-        # Frame 1: full quality validation (size, centering, single face).
-        # Frame 2+: fast path — skip quality checks since frame 1 already
-        # passed. This cuts ~40% off the per-frame time on follow-up frames.
-        in_streak = bool(request.session.get('_face_match_user'))
-        if in_streak:
-            candidate_encoding = face_utils.fast_extract(image_data)
-            if candidate_encoding is None:
-                # Face lost — reset streak and fall back to full validation
-                _clear_face_session(request)
-                return JsonResponse({
-                    'success': False,
-                    'message': 'Hold still…',
-                    'face_detected': False,
-                })
-        else:
-            result = face_utils.validate_and_extract(image_data)
-            if not result['ok']:
-                return JsonResponse({
-                    'success': False,
-                    'message': result['reason'],
-                    'face_detected': False,
-                })
-            candidate_encoding = result['encoding']
-
-        # ── Batch compare against all enrolled users at once ─────
-        # Uses in-memory numpy matrix — no DB query, no JSON parsing,
-        # single vectorised distance computation.
-        match = face_utils.encoding_cache.find_best_match(candidate_encoding, tolerance)
-
-        if match and match['confidence'] >= min_confidence:
-            # ── Server-side consecutive match tracking ────────────
-            # Stored in Django session to avoid sending large encoding
-            # arrays back and forth in every request payload.
-            sess_match_user = request.session.get('_face_match_user')
-            sess_match_count = request.session.get('_face_match_count', 0)
-            sess_encodings = request.session.get('_face_match_encs', [])
-
-            if sess_match_user == match['staff_id']:
-                consecutive = sess_match_count + 1
+        # ── Extract encodings from all frames ─────────────────────
+        encodings = []
+        for i, img in enumerate(images):
+            if i == 0:
+                result = face_utils.validate_and_extract(img)
+                if not result['ok']:
+                    return JsonResponse({
+                        'success': False,
+                        'message': result['reason'],
+                        'face_detected': False,
+                    })
+                encodings.append(result['encoding'])
             else:
-                consecutive = 1
-                sess_encodings = []
+                enc = face_utils.fast_extract(img)
+                if enc is None:
+                    return JsonResponse({
+                        'success': False,
+                        'message': 'Hold still…',
+                        'face_detected': False,
+                    })
+                encodings.append(enc)
 
-            # Accumulate this frame's encoding for liveness check.
-            all_encodings = sess_encodings + [candidate_encoding]
+        # ── Batch compare first frame against all enrolled users ──
+        match = face_utils.encoding_cache.find_best_match(encodings[0], tolerance)
 
-            if consecutive < required_consecutive:
-                request.session['_face_match_user'] = match['staff_id']
-                request.session['_face_match_count'] = consecutive
-                request.session['_face_match_encs'] = all_encodings
-                return JsonResponse({
-                    'success': False,
-                    'face_detected': True,
-                    'message': f'Verifying… ({consecutive}/{required_consecutive})',
-                    'confidence': match['confidence'],
-                    'verifying': True,
-                })
-
-            # ── Liveness check: verify frame variance ─────────────
-            if not face_utils.check_encoding_variance(all_encodings, min_std=0.008):
-                _clear_face_session(request)
-                FaceLoginLog.objects.create(
-                    success=False, ip_address=ip_addr,
-                    device=device_info,
-                    notes='Liveness check failed — possible photo spoofing',
-                )
-                logger.warning(f"Liveness check failed during login from {ip_addr}")
-                _send_security_notification(
-                    'Possible Photo Spoofing Attempt',
-                    f'A face login attempt from IP {ip_addr} failed the '
-                    f'liveness check (zero encoding variance across '
-                    f'{len(all_encodings)} frames). This may indicate a '
-                    f'printed photo or phone screen was used.\n'
-                    f'Device: {device_info}\n'
-                    f'Matched user: {match["staff_id"]}\n'
-                    f'Time: {timezone.now().isoformat()}',
-                )
-                return JsonResponse({
-                    'success': False,
-                    'face_detected': True,
-                    'message': 'Liveness check failed. Please look directly at the camera and blink naturally.',
-                })
-
-            # ── Grant login ───────────────────────────────────────
-            _clear_face_session(request)
-            best_match = StaffUser.objects.get(pk=match['pk'])
-
-            # Auto-disable expired temp/intern accounts
-            if (best_match.staff_type in ('temp', 'intern')
-                    and best_match.contract_end_date
-                    and best_match.contract_end_date < timezone.localdate()):
-                best_match.is_active = False
-                best_match.save(update_fields=['is_active'])
-                return JsonResponse({
-                    'success': False,
-                    'face_detected': True,
-                    'message': 'Your account has expired. Please contact admin.',
-                })
-
-            FaceLoginLog.objects.create(
-                user=best_match, success=True,
-                confidence=match['confidence'], ip_address=ip_addr,
-                device=device_info,
-                notes=f'{required_consecutive} consecutive matches',
-            )
-            best_match.last_face_login = timezone.now()
-            best_match.save(update_fields=['last_face_login'])
-            login(request, best_match, backend='django.contrib.auth.backends.ModelBackend')
-
-            logger.info(f"Face login: {best_match.staff_id} from {ip_addr} ({device_info})")
-
-            return JsonResponse({
-                'success': True,
-                'message': f'Welcome, {best_match.display_name}!',
-                'confidence': match['confidence'],
-                'redirect': '/dashboard/',
-            })
-        else:
-            # No match — reset session streak
-            _clear_face_session(request)
+        if not match or match['confidence'] < min_confidence:
             return JsonResponse({
                 'success': False, 'face_detected': True,
                 'message': 'Face not recognised. Try again or use Staff ID login.',
                 'confidence': 0,
             })
+
+        # If only 1 frame was sent (legacy client), ask for more
+        if len(encodings) < 2:
+            return JsonResponse({
+                'success': False,
+                'face_detected': True,
+                'message': 'Verifying…',
+                'confidence': match['confidence'],
+                'verifying': True,
+            })
+
+        # ── Verify second frame matches the same user ─────────────
+        match2 = face_utils.encoding_cache.find_best_match(encodings[1], tolerance)
+        if not match2 or match2['staff_id'] != match['staff_id']:
+            return JsonResponse({
+                'success': False, 'face_detected': True,
+                'message': 'Hold still — verifying…',
+                'verifying': True,
+            })
+
+        # ── Liveness check: verify frame variance ─────────────────
+        if not face_utils.check_encoding_variance(encodings, min_std=0.008):
+            FaceLoginLog.objects.create(
+                success=False, ip_address=ip_addr,
+                device=device_info,
+                notes='Liveness check failed — possible photo spoofing',
+            )
+            logger.warning(f"Liveness check failed during login from {ip_addr}")
+            _send_security_notification(
+                'Possible Photo Spoofing Attempt',
+                f'A face login attempt from IP {ip_addr} failed the '
+                f'liveness check (zero encoding variance across '
+                f'{len(encodings)} frames). This may indicate a '
+                f'printed photo or phone screen was used.\n'
+                f'Device: {device_info}\n'
+                f'Matched user: {match["staff_id"]}\n'
+                f'Time: {timezone.now().isoformat()}',
+            )
+            return JsonResponse({
+                'success': False,
+                'face_detected': True,
+                'message': 'Liveness check failed. Please look directly at the camera and blink naturally.',
+            })
+
+        # ── Grant login ───────────────────────────────────────────
+        best_match = StaffUser.objects.get(pk=match['pk'])
+
+        # Auto-disable expired temp/intern accounts
+        if (best_match.staff_type in ('temp', 'intern')
+                and best_match.contract_end_date
+                and best_match.contract_end_date < timezone.localdate()):
+            best_match.is_active = False
+            best_match.save(update_fields=['is_active'])
+            return JsonResponse({
+                'success': False,
+                'face_detected': True,
+                'message': 'Your account has expired. Please contact admin.',
+            })
+
+        FaceLoginLog.objects.create(
+            user=best_match, success=True,
+            confidence=match['confidence'], ip_address=ip_addr,
+            device=device_info,
+            notes='2-frame batch verify',
+        )
+        best_match.last_face_login = timezone.now()
+        best_match.save(update_fields=['last_face_login'])
+        login(request, best_match, backend='django.contrib.auth.backends.ModelBackend')
+
+        logger.info(f"Face login: {best_match.staff_id} from {ip_addr} ({device_info})")
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Welcome, {best_match.display_name}!',
+            'confidence': match['confidence'],
+            'redirect': '/dashboard/',
+        })
 
     except Exception as e:
         logger.exception("Error in face_verify_ajax")

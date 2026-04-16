@@ -87,8 +87,9 @@
 
 <script>
 const CSRF_TOKEN = '{{ csrf_token }}';
-const CAPTURE_MAX_DIM = 320;   // smaller = faster encode/upload/detection
-const SCAN_GAP_MS = 50;        // tight loop — server is the bottleneck
+const CAPTURE_MAX_DIM = 240;
+const FRAME_GAP_MS = 300;     // delay between the 2 frames
+const SCAN_GAP_MS = 50;
 const RESET_DELAY_MS = 4000;
 
 let stream = null;
@@ -100,7 +101,6 @@ const statusEl = document.getElementById('statusText');
 const overlay = document.getElementById('welcomeOverlay');
 const nameEl = document.getElementById('welcomeName');
 
-// Reuse a single canvas to avoid GC pressure in the hot loop
 const _cap = document.createElement('canvas');
 
 function captureFrame() {
@@ -110,16 +110,22 @@ function captureFrame() {
   _cap.width = Math.max(1, Math.round(vw * scale));
   _cap.height = Math.max(1, Math.round(vh * scale));
   _cap.getContext('2d').drawImage(video, 0, 0, _cap.width, _cap.height);
-  return _cap.toDataURL('image/jpeg', 0.70);
+  return _cap.toDataURL('image/jpeg', 0.65);
 }
 
 async function scanLoop() {
   while (scanning) {
     try {
+      // Capture 2 frames with a small gap for liveness variance
+      const frame1 = captureFrame();
+      await new Promise(r => setTimeout(r, FRAME_GAP_MS));
+      if (!scanning) break;
+      const frame2 = captureFrame();
+
       const resp = await fetch('{% url "face_verify_ajax" %}', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
-        body: JSON.stringify({ image: captureFrame() }),
+        body: JSON.stringify({ images: [frame1, frame2] }),
       });
       const data = await resp.json();
 
@@ -130,14 +136,10 @@ async function scanLoop() {
         statusEl.textContent = data.message;
         nameEl.textContent = data.message;
         overlay.classList.add('show');
-
-        // Brief greeting, then navigate to dashboard.
         setTimeout(() => {
           window.location.replace(data.redirect || '/dashboard/');
         }, 1500);
         return;
-      } else if (data.verifying) {
-        statusEl.textContent = data.message;
       } else if (data.locked_out) {
         statusEl.className = 'status-text failed';
         statusEl.textContent = 'Temporarily locked out. Please wait.';

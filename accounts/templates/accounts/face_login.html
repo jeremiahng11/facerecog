@@ -241,10 +241,11 @@ const CSRF_TOKEN = '{{ csrf_token }}';
 let stream = null;
 let scanning = false;
 let attemptCount = 0;
-const MAX_ATTEMPTS = 40;              // up to ~15 seconds of scanning
-const CAPTURE_MAX_DIM = 320;           // smaller = faster encode/upload/detection
-const CAPTURE_JPEG_QUALITY = 0.70;     // smaller payload, still plenty for face recognition
-const SCAN_GAP_MS = 50;               // tight loop — server is the bottleneck
+const MAX_ATTEMPTS = 30;
+const CAPTURE_MAX_DIM = 240;
+const CAPTURE_JPEG_QUALITY = 0.65;
+const FRAME_GAP_MS = 300;             // gap between 2 frames for liveness
+const SCAN_GAP_MS = 50;
 
 const video = document.getElementById('videoEl');
 const camera = document.getElementById('cameraContainer');
@@ -344,10 +345,18 @@ async function captureAndVerify() {
   }
 
   try {
+    // Capture 2 frames with a small gap for liveness variance
+    const frame1 = captureFrame();
+    await new Promise(r => setTimeout(r, FRAME_GAP_MS));
+    if (!scanning) return;
+    const frame2 = captureFrame();
+
+    setStatus('scanning', 'Verifying…', 'Checking identity…');
+
     const resp = await fetch('{% url "face_verify_ajax" %}', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
-      body: JSON.stringify({ image: captureFrame() }),
+      body: JSON.stringify({ images: [frame1, frame2] }),
     });
     const data = await resp.json();
 
@@ -359,8 +368,6 @@ async function captureAndVerify() {
       scanBtn.style.background = 'var(--accent3)';
       window.location.replace(data.redirect || '/dashboard/');
       return;
-    } else if (data.verifying) {
-      setStatus('scanning', 'Verifying Identity…', data.message);
     } else if (data.face_detected === false) {
       setStatus('scanning', 'No Face Detected', 'Please centre your face in the circle.');
     }
