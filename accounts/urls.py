@@ -46,6 +46,7 @@ urlpatterns = [
     path('admin-panel/face-logs/', views.admin_face_logs_view, name='admin_face_logs'),
     path('admin-panel/action-logs/', views.admin_action_logs_view, name='admin_action_logs'),
     path('admin-panel/bulk-import/', views.admin_bulk_import_view, name='admin_bulk_import'),
+    path('admin-panel/bulk-import/template/', views.admin_bulk_template_download_view, name='admin_bulk_template'),
 
     # ═══ Cafeteria System ═══
     # Kiosk

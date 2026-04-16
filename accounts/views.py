@@ -682,18 +682,26 @@ def admin_delete_user_view(request, user_id):
 @login_required
 @user_passes_test(is_admin)
 def admin_bulk_import_view(request):
-    """CSV bulk import of users. Expects columns: staff_id, email, full_name, department, password."""
+    """CSV/Excel bulk import of users."""
     import csv
     import io
     import calendar
     from decimal import Decimal
 
     results = None
-    if request.method == 'POST' and request.FILES.get('csv_file'):
-        csv_file = request.FILES['csv_file']
+    if request.method == 'POST' and request.FILES.get('import_file'):
+        upload = request.FILES['import_file']
+        fname = upload.name.lower()
+
         try:
-            decoded = csv_file.read().decode('utf-8-sig')
-            reader = csv.DictReader(io.StringIO(decoded))
+            # ── Parse file into list of dicts ─────────────────────
+            if fname.endswith('.xlsx') or fname.endswith('.xls'):
+                rows = _parse_excel(upload)
+            else:
+                decoded = upload.read().decode('utf-8-sig')
+                reader = csv.DictReader(io.StringIO(decoded))
+                rows = list(reader)
+
             results = {'created': [], 'skipped': [], 'errors': []}
 
             # Prorate credit for bulk-imported users
@@ -705,12 +713,14 @@ def admin_bulk_import_view(request):
             ratio = min(Decimal('1'), Decimal(str(remaining)) / Decimal(str(working_days)))
             prorated = (default_credit * ratio).quantize(Decimal('0.01'))
 
-            for i, row in enumerate(reader, start=2):  # row 1 is header
+            for i, row in enumerate(rows, start=2):  # row 1 is header
                 staff_id = (row.get('staff_id') or '').strip()
                 email = (row.get('email') or '').strip()
                 full_name = (row.get('full_name') or '').strip()
                 department = (row.get('department') or '').strip()
                 password = (row.get('password') or '').strip()
+                staff_type = (row.get('staff_type') or '').strip().lower()
+                end_date_str = (row.get('contract_end_date') or '').strip()
 
                 if not staff_id or not email or not password:
                     results['errors'].append(f'Row {i}: missing staff_id, email, or password')
@@ -723,6 +733,25 @@ def admin_bulk_import_view(request):
                     results['skipped'].append(f'{email} — email already in use')
                     continue
 
+                # Validate staff_type
+                if staff_type not in ('permanent', 'temp', 'intern', ''):
+                    results['errors'].append(f'Row {i} ({staff_id}): invalid staff_type "{staff_type}"')
+                    continue
+
+                # Parse contract end date
+                contract_end = None
+                if end_date_str:
+                    from datetime import datetime as _dt
+                    for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%m/%d/%Y'):
+                        try:
+                            contract_end = _dt.strptime(end_date_str, fmt).date()
+                            break
+                        except ValueError:
+                            continue
+                    if contract_end is None:
+                        results['errors'].append(f'Row {i} ({staff_id}): invalid date "{end_date_str}" — use YYYY-MM-DD')
+                        continue
+
                 try:
                     user = StaffUser.objects.create_user(
                         staff_id=staff_id,
@@ -732,16 +761,84 @@ def admin_bulk_import_view(request):
                         department=department,
                         monthly_credit=default_credit,
                         credit_balance=prorated,
+                        staff_type=staff_type or 'permanent',
+                        contract_end_date=contract_end,
                     )
-                    _log_admin_action(request.user, 'create', user, f'CSV bulk import · S${prorated}')
+                    _log_admin_action(request.user, 'create', user, f'Bulk import · S${prorated}')
                     results['created'].append(staff_id)
                 except Exception as e:
                     results['errors'].append(f'Row {i} ({staff_id}): {e}')
 
         except Exception as e:
-            results = {'created': [], 'skipped': [], 'errors': [f'CSV parse error: {e}']}
+            results = {'created': [], 'skipped': [], 'errors': [f'File parse error: {e}']}
 
     return render(request, 'accounts/admin_bulk_import.html', {'results': results})
+
+
+def _parse_excel(upload):
+    """Parse an Excel (.xlsx) file into a list of dicts (same as csv.DictReader output)."""
+    try:
+        import openpyxl
+    except ImportError:
+        raise ValueError('Excel support requires openpyxl. Install with: pip install openpyxl')
+
+    wb = openpyxl.load_workbook(upload, read_only=True, data_only=True)
+    ws = wb.active
+    rows_iter = ws.iter_rows(values_only=True)
+    headers = [str(h or '').strip().lower() for h in next(rows_iter)]
+    result = []
+    for row in rows_iter:
+        d = {}
+        for j, val in enumerate(row):
+            if j < len(headers):
+                d[headers[j]] = str(val) if val is not None else ''
+        result.append(d)
+    wb.close()
+    return result
+
+
+@login_required
+@user_passes_test(is_admin)
+def admin_bulk_template_download_view(request):
+    """Download a CSV/Excel template for bulk user import."""
+    import csv as _csv
+    from django.http import HttpResponse
+
+    fmt = request.GET.get('format', 'csv')
+
+    if fmt == 'xlsx':
+        try:
+            import openpyxl
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = 'Staff Import'
+            headers = ['staff_id', 'email', 'full_name', 'department', 'password', 'staff_type', 'contract_end_date']
+            ws.append(headers)
+            ws.append(['EMP-001', 'john@company.com', 'John Smith', 'Engineering', 'SecurePass123', 'permanent', ''])
+            ws.append(['TMP-001', 'jane@company.com', 'Jane Doe', 'Marketing', 'TempPass456', 'temp', '2026-06-30'])
+            ws.append(['INT-001', 'bob@company.com', 'Bob Lee', 'Finance', 'InternPass789', 'intern', '2026-08-31'])
+            # Column widths
+            for col, w in zip('ABCDEFG', [12, 24, 18, 16, 16, 12, 18]):
+                ws.column_dimensions[col].width = w
+
+            from io import BytesIO
+            buf = BytesIO()
+            wb.save(buf)
+            buf.seek(0)
+            response = HttpResponse(buf.getvalue(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            response['Content-Disposition'] = 'attachment; filename="staff_import_template.xlsx"'
+            return response
+        except ImportError:
+            pass  # Fall through to CSV
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename="staff_import_template.csv"'
+    writer = _csv.writer(response)
+    writer.writerow(['staff_id', 'email', 'full_name', 'department', 'password', 'staff_type', 'contract_end_date'])
+    writer.writerow(['EMP-001', 'john@company.com', 'John Smith', 'Engineering', 'SecurePass123', 'permanent', ''])
+    writer.writerow(['TMP-001', 'jane@company.com', 'Jane Doe', 'Marketing', 'TempPass456', 'temp', '2026-06-30'])
+    writer.writerow(['INT-001', 'bob@company.com', 'Bob Lee', 'Finance', 'InternPass789', 'intern', '2026-08-31'])
+    return response
 
 
 @login_required
