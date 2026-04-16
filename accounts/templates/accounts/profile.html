@@ -108,9 +108,14 @@
 
 {% block content %}
 <div class="page">
-  <div style="margin-bottom:24px">
-    <div class="page-title">Profile & Face ID</div>
-    <div class="page-subtitle">Manage your profile photo and Face ID enrollment</div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="page-title">Profile & Face ID</div>
+      <div class="page-subtitle">Manage your profile photo and Face ID enrollment</div>
+    </div>
+    {% if not user.is_admin_role %}
+    <a href="{% url 'staff_portal_profile' %}" class="btn btn-secondary">← Back to Profile</a>
+    {% endif %}
   </div>
 
   <div class="profile-grid">

@@ -123,7 +123,7 @@ def _log_admin_action(admin_user, action, target_user, details=''):
 
 def login_view(request):
     if request.user.is_authenticated:
-        return redirect('dashboard')
+        return redirect('dashboard')  # smart router dispatches by role
     if request.method == 'POST':
         form = StaffLoginForm(request.POST)
         if form.is_valid():
@@ -132,7 +132,7 @@ def login_view(request):
             user = authenticate(request, username=staff_id, password=password)
             if user is not None and user.is_active:
                 login(request, user)
-                next_url = request.GET.get('next', 'dashboard')
+                next_url = request.GET.get('next', 'dashboard')  # router
                 return redirect(next_url)
             else:
                 messages.error(request, 'Invalid Staff ID or Password.')
@@ -352,22 +352,18 @@ def face_verify_fail_ajax(request):
 
 @login_required
 def dashboard_view(request):
+    """
+    Smart router: after login, land each role on the right home screen.
+    Regular staff go straight to the PWA; admin/kitchen roles go to their
+    respective dashboards.
+    """
     user = request.user
-    show_reenroll = user.face_registered
-
-    # User's own recent face login history.
-    my_logins = FaceLoginLog.objects.filter(
-        user=user
-    ).order_by('-timestamp')[:10]
-
-    context = {
-        'user': user,
-        'face_enabled': user.face_enabled,
-        'face_registered': user.face_registered,
-        'show_reenroll': show_reenroll,
-        'my_logins': my_logins,
-    }
-    return render(request, 'accounts/dashboard.html', context)
+    if user.is_admin_role:
+        return redirect('cafeteria_dashboard')
+    if getattr(user, 'role', '') in ('kitchen', 'cafe_bar', 'kitchen_admin'):
+        return redirect('cafeteria_displays_hub')
+    # Regular staff → PWA home (My Orders)
+    return redirect('staff_portal_home')
 
 
 # ─── Profile / Face Enrolment ──────────────────────────────────────────────────

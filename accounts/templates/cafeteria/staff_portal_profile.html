@@ -21,14 +21,44 @@
     <span style="color:var(--text3)">Email</span><strong>{{ user.email }}</strong>
   </div>
   <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px">
-    <span style="color:var(--text3)">Face ID</span>
-    {% if user.face_registered %}<span class="badge badge-ready">✓ Enrolled</span>{% else %}<span class="badge badge-cancelled">Not Enrolled</span>{% endif %}
+    <span style="color:var(--text3)">Department</span><strong>{{ user.department|default:"—" }}</strong>
   </div>
 </div>
 
+{# Face ID section #}
+<div class="card">
+  <h3 style="font-size:15px;margin-bottom:12px">🔐 Face ID</h3>
+  <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;align-items:center">
+    <span style="color:var(--text3)">Status</span>
+    {% if user.face_registered %}
+      <span class="badge badge-ready" style="font-size:12px;padding:5px 12px">✓ Enrolled</span>
+    {% else %}
+      <span class="badge badge-cancelled" style="font-size:12px;padding:5px 12px">Not Enrolled</span>
+    {% endif %}
+  </div>
+  <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;align-items:center">
+    <span style="color:var(--text3)">Face Login</span>
+    {% if user.face_enabled %}
+      <span style="color:var(--success);font-weight:600;font-size:13px">Enabled</span>
+    {% else %}
+      <span style="color:var(--text3);font-size:13px">Disabled</span>
+    {% endif %}
+  </div>
+  {% if user.last_face_login %}
+  <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px">
+    <span style="color:var(--text3)">Last Face Login</span>
+    <span>{{ user.last_face_login|date:"d M Y H:i" }}</span>
+  </div>
+  {% endif %}
+  <a href="{% url 'profile' %}" class="btn btn-primary btn-full" style="margin-top:12px">
+    {% if user.face_registered %}Re-enroll / Manage Face ID{% else %}Set Up Face ID{% endif %}
+  </a>
+</div>
+
+{# Kiosk PIN #}
 <form method="post" class="card">
   {% csrf_token %}
-  <h3 style="font-size:15px;margin-bottom:12px">🔑 Change Kiosk PIN</h3>
+  <h3 style="font-size:15px;margin-bottom:12px">🔑 Kiosk PIN</h3>
   <div style="margin-bottom:10px">
     <input type="password" name="kiosk_pin" placeholder="4-digit PIN" maxlength="6" pattern="[0-9]{4,6}" inputmode="numeric"
       style="width:100%;padding:12px;border:1.5px solid var(--border);border-radius:10px;font-size:15px;font-family:inherit;outline:none" required>
@@ -36,6 +66,7 @@
   <button type="submit" class="btn btn-primary btn-full">Update PIN</button>
 </form>
 
+{# Order History #}
 <a href="{% url 'staff_portal_history' %}" class="card" style="display:flex;justify-content:space-between;align-items:center;text-decoration:none;color:inherit">
   <div>
     <div style="font-size:15px;font-weight:700">📋 Order History</div>
@@ -44,10 +75,7 @@
   <div style="color:var(--text3);font-size:18px">›</div>
 </a>
 
-<div class="card" style="text-align:center">
-  <a href="{% url 'profile' %}" style="font-size:13px;color:var(--primary);font-weight:600">Manage Face ID →</a>
-</div>
-
+{# Logout #}
 <div style="margin-top:16px;text-align:center">
   <form method="post" action="{% url 'logout' %}" style="display:inline">
     {% csrf_token %}
