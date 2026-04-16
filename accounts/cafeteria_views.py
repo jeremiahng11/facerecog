@@ -2362,11 +2362,23 @@ def cron_reset_credits_view(request):
     from io import StringIO
     out = StringIO()
     call_command('reset_credits', stdout=out)
+
+    # ── Auto-disable expired temp/intern accounts ─────────────
+    expired = StaffUser.objects.filter(
+        is_active=True,
+        staff_type__in=['temp', 'intern'],
+        contract_end_date__lt=today,
+    )
+    expired_count = expired.count()
+    if expired_count:
+        expired.update(is_active=False)
+
     return JsonResponse({
         'ok': True,
         'skipped': False,
         'today_sgt': today.isoformat(),
         'output': out.getvalue(),
+        'expired_accounts_disabled': expired_count,
     })
 
 

@@ -85,6 +85,21 @@ class StaffUser(AbstractBaseUser, PermissionsMixin):
         help_text='Current cafeteria credit balance'
     )
 
+    # Employment type — temp staff and interns auto-deactivate after their last day.
+    STAFF_TYPE_CHOICES = [
+        ('permanent', 'Permanent'),
+        ('temp', 'Temp Staff'),
+        ('intern', 'Intern'),
+    ]
+    staff_type = models.CharField(
+        max_length=10, choices=STAFF_TYPE_CHOICES, default='permanent',
+        help_text='Temp and Intern accounts are auto-disabled after contract end date'
+    )
+    contract_end_date = models.DateField(
+        null=True, blank=True,
+        help_text='Last working day — account auto-disabled after this date'
+    )
+
     objects = StaffUserManager()
 
     USERNAME_FIELD = 'staff_id'

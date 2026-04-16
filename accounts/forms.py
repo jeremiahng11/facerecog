@@ -45,12 +45,14 @@ class StaffUserCreationForm(forms.ModelForm):
     class Meta:
         model = StaffUser
         fields = ['staff_id', 'email', 'full_name', 'department',
-                  'monthly_credit', 'profile_picture']
+                  'monthly_credit', 'staff_type', 'contract_end_date',
+                  'profile_picture']
         widgets = {
             'staff_id': forms.TextInput(attrs={'placeholder': 'e.g. EMP-001'}),
             'email': forms.EmailInput(attrs={'placeholder': 'staff@company.com'}),
             'full_name': forms.TextInput(attrs={'placeholder': 'Full Name'}),
             'department': forms.TextInput(attrs={'placeholder': 'Department (optional)'}),
+            'contract_end_date': forms.DateInput(attrs={'type': 'date'}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -80,11 +82,13 @@ class StaffUserEditForm(forms.ModelForm):
         model = StaffUser
         # face_photo removed: Face ID enrollment is live-camera only.
         fields = ['email', 'full_name', 'department',
-                  'profile_picture', 'face_enabled', 'is_active']
+                  'profile_picture', 'face_enabled', 'is_active',
+                  'staff_type', 'contract_end_date']
         widgets = {
             'email': forms.EmailInput(attrs={'placeholder': 'staff@company.com'}),
             'full_name': forms.TextInput(attrs={'placeholder': 'Full Name'}),
             'department': forms.TextInput(attrs={'placeholder': 'Department (optional)'}),
+            'contract_end_date': forms.DateInput(attrs={'type': 'date'}),
         }
 
 

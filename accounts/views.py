@@ -131,9 +131,17 @@ def login_view(request):
             password = form.cleaned_data['password']
             user = authenticate(request, username=staff_id, password=password)
             if user is not None and user.is_active:
-                login(request, user)
-                next_url = request.GET.get('next', 'dashboard')  # router
-                return redirect(next_url)
+                # Auto-disable expired temp/intern accounts at login time
+                if (user.staff_type in ('temp', 'intern')
+                        and user.contract_end_date
+                        and user.contract_end_date < timezone.localdate()):
+                    user.is_active = False
+                    user.save(update_fields=['is_active'])
+                    messages.error(request, 'Your account has expired. Please contact admin.')
+                else:
+                    login(request, user)
+                    next_url = request.GET.get('next', 'dashboard')  # router
+                    return redirect(next_url)
             else:
                 messages.error(request, 'Invalid Staff ID or Password.')
     else:
@@ -265,6 +273,19 @@ def face_verify_ajax(request):
             # ── Grant login ───────────────────────────────────────
             _clear_face_session(request)
             best_match = StaffUser.objects.get(pk=match['pk'])
+
+            # Auto-disable expired temp/intern accounts
+            if (best_match.staff_type in ('temp', 'intern')
+                    and best_match.contract_end_date
+                    and best_match.contract_end_date < timezone.localdate()):
+                best_match.is_active = False
+                best_match.save(update_fields=['is_active'])
+                return JsonResponse({
+                    'success': False,
+                    'face_detected': True,
+                    'message': 'Your account has expired. Please contact admin.',
+                })
+
             FaceLoginLog.objects.create(
                 user=best_match, success=True,
                 confidence=match['confidence'], ip_address=ip_addr,
