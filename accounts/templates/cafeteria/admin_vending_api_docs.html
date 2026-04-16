@@ -1,0 +1,172 @@
+{% extends 'base.html' %}
+{% block title %}Vending API Docs{% endblock %}
+{% block extra_head %}
+<style>
+  .api-doc { max-width:800px; }
+  .api-doc h2 { font-size:18px; margin:24px 0 8px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+  .api-doc h3 { font-size:15px; margin:16px 0 6px; }
+  .api-section { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px 20px; margin-bottom:16px; }
+  .method-badge { display:inline-block; padding:3px 10px; border-radius:6px; font-weight:700; font-size:12px; letter-spacing:1px; font-family:var(--mono); }
+  .method-post { background:#d1fae5; color:#047857; }
+  .endpoint { font-family:var(--mono); font-size:14px; font-weight:600; color:var(--primary); }
+  pre { background:#0f172a; color:#e2e8f0; padding:16px; border-radius:8px; overflow-x:auto; font-size:13px; line-height:1.5; margin:8px 0 12px; }
+  pre .key { color:#7dd3fc; }
+  pre .str { color:#86efac; }
+  pre .num { color:#fde68a; }
+  pre .bool { color:#c4b5fd; }
+  pre .comment { color:#64748b; }
+  .param-table { width:100%; border-collapse:collapse; font-size:13px; margin:8px 0; }
+  .param-table th { text-align:left; padding:8px 10px; background:var(--bg); border:1px solid var(--border); font-weight:600; }
+  .param-table td { padding:8px 10px; border:1px solid var(--border); }
+  .param-table code { background:var(--bg); padding:2px 6px; border-radius:4px; font-size:12px; }
+  .required { color:var(--danger); font-weight:600; font-size:11px; }
+  .optional { color:var(--text3); font-size:11px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page api-doc">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="page-title">Vending Machine API</div>
+      <div class="page-subtitle">Integration documentation for cafeteria vending machines</div>
+    </div>
+    <a href="{% url 'cafeteria_dashboard' %}" class="btn btn-secondary">← Dashboard</a>
+  </div>
+
+  <div class="api-section">
+    <h3>Authentication</h3>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:8px">
+      All requests must include a <strong>Bearer token</strong> in the <code>Authorization</code> header.
+      The API key is configured via the <code>VENDING_API_KEY</code> environment variable on the server.
+    </p>
+    <pre>Authorization: Bearer {{ api_key_preview }}</pre>
+    <p style="font-size:12px;color:var(--text3)">
+      {% if api_key_set %}
+        API key is configured.
+      {% else %}
+        <strong style="color:var(--danger)">Warning:</strong> VENDING_API_KEY is not set.
+        Set it in your environment variables to enable the vending API.
+        Generate one with: <code>python -c "import secrets; print(secrets.token_urlsafe(32))"</code>
+      {% endif %}
+    </p>
+  </div>
+
+  <h2>Deduct Credit</h2>
+  <div class="api-section">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <span class="method-badge method-post">POST</span>
+      <span class="endpoint">/cafeteria/api/vending/deduct/</span>
+    </div>
+    <p style="font-size:13px;color:var(--text2)">
+      Deduct credit from a staff member's cafeteria balance. The vending machine scans the staff
+      member's QR code from their phone, then calls this endpoint with the QR token and purchase amount.
+    </p>
+
+    <h3>Request Headers</h3>
+    <table class="param-table">
+      <tr><th>Header</th><th>Value</th></tr>
+      <tr><td><code>Content-Type</code></td><td><code>application/json</code></td></tr>
+      <tr><td><code>Authorization</code></td><td><code>Bearer &lt;VENDING_API_KEY&gt;</code></td></tr>
+    </table>
+
+    <h3>Request Body</h3>
+    <table class="param-table">
+      <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+      <tr><td><code>qr_token</code> <span class="required">required</span></td><td>string</td><td>The full QR code string scanned from the staff member's phone</td></tr>
+      <tr><td><code>amount</code> <span class="required">required</span></td><td>number</td><td>Positive amount to deduct (e.g. <code>2.50</code>)</td></tr>
+      <tr><td><code>machine_id</code> <span class="optional">optional</span></td><td>string</td><td>Identifier for the vending machine (e.g. <code>"VM-01"</code>). Max 50 chars.</td></tr>
+      <tr><td><code>description</code> <span class="optional">optional</span></td><td>string</td><td>Item description (e.g. <code>"Canned Coffee"</code>). Max 120 chars. Shown in user's history.</td></tr>
+    </table>
+
+    <h3>Example Request</h3>
+    <pre><span class="comment">POST /cafeteria/api/vending/deduct/</span>
+<span class="comment">Authorization: Bearer your-secret-api-key</span>
+<span class="comment">Content-Type: application/json</span>
+
+{
+  <span class="key">"qr_token"</span>:    <span class="str">"VEND:EMP-001.a1b2c3d4..."</span>,
+  <span class="key">"amount"</span>:      <span class="num">2.50</span>,
+  <span class="key">"machine_id"</span>:  <span class="str">"VM-LOBBY-01"</span>,
+  <span class="key">"description"</span>: <span class="str">"Canned Coffee"</span>
+}</pre>
+
+    <h3>Success Response <span style="color:var(--success);font-weight:400">(200 OK)</span></h3>
+    <pre>{
+  <span class="key">"success"</span>: <span class="bool">true</span>,
+  <span class="key">"balance"</span>: <span class="num">47.50</span>,
+  <span class="key">"staff_id"</span>: <span class="str">"EMP-001"</span>,
+  <span class="key">"transaction_id"</span>: <span class="num">42</span>
+}</pre>
+
+    <h3>Error Responses</h3>
+
+    <p style="font-size:13px;font-weight:600;margin:12px 0 4px">Insufficient funds <span style="font-weight:400;color:var(--text3)">(200)</span></p>
+    <pre>{
+  <span class="key">"success"</span>: <span class="bool">false</span>,
+  <span class="key">"error"</span>:   <span class="str">"insufficient_funds"</span>,
+  <span class="key">"message"</span>: <span class="str">"Insufficient credit. Balance: S$1.20, required: S$2.50"</span>,
+  <span class="key">"balance"</span>: <span class="num">1.20</span>
+}</pre>
+
+    <p style="font-size:13px;font-weight:600;margin:12px 0 4px">Invalid QR code <span style="font-weight:400;color:var(--text3)">(200)</span></p>
+    <pre>{
+  <span class="key">"success"</span>: <span class="bool">false</span>,
+  <span class="key">"error"</span>:   <span class="str">"invalid_qr"</span>,
+  <span class="key">"message"</span>: <span class="str">"Invalid or unrecognised QR code"</span>
+}</pre>
+
+    <p style="font-size:13px;font-weight:600;margin:12px 0 4px">Unauthorized <span style="font-weight:400;color:var(--text3)">(401)</span></p>
+    <pre>{
+  <span class="key">"success"</span>: <span class="bool">false</span>,
+  <span class="key">"error"</span>:   <span class="str">"unauthorized"</span>,
+  <span class="key">"message"</span>: <span class="str">"Invalid API key"</span>
+}</pre>
+
+    <p style="font-size:13px;font-weight:600;margin:12px 0 4px">Bad request <span style="font-weight:400;color:var(--text3)">(400)</span></p>
+    <pre>{
+  <span class="key">"success"</span>: <span class="bool">false</span>,
+  <span class="key">"error"</span>:   <span class="str">"bad_request"</span>,
+  <span class="key">"message"</span>: <span class="str">"qr_token is required"</span>
+}</pre>
+  </div>
+
+  <h2>Error Codes Summary</h2>
+  <div class="api-section">
+    <table class="param-table">
+      <tr><th>Error Code</th><th>HTTP Status</th><th>Description</th></tr>
+      <tr><td><code>unauthorized</code></td><td>401</td><td>Missing or invalid API key</td></tr>
+      <tr><td><code>bad_request</code></td><td>400</td><td>Missing required fields or invalid JSON</td></tr>
+      <tr><td><code>invalid_qr</code></td><td>200</td><td>QR code is not recognised (tampered, wrong format, or inactive user)</td></tr>
+      <tr><td><code>insufficient_funds</code></td><td>200</td><td>User's credit balance is less than the requested amount</td></tr>
+      <tr><td><code>server_error</code></td><td>500</td><td>VENDING_API_KEY not configured on the server</td></tr>
+    </table>
+  </div>
+
+  <h2>Integration Flow</h2>
+  <div class="api-section">
+    <ol style="font-size:13px;color:var(--text2);line-height:1.8;padding-left:20px">
+      <li>Staff opens their <strong>PWA Home</strong> page — their unique QR code is displayed beside the credit balance</li>
+      <li>Staff holds their phone up to the vending machine's QR scanner</li>
+      <li>Vending machine reads the QR string (format: <code>VEND:&lt;staff_id&gt;.&lt;hmac&gt;</code>)</li>
+      <li>Vending machine calls <code>POST /cafeteria/api/vending/deduct/</code> with the QR token and item price</li>
+      <li>API verifies the QR signature, checks balance, deducts credit atomically</li>
+      <li>Machine receives response — dispenses item on success, shows error on failure</li>
+      <li>Transaction appears in staff's <strong>History → Vending</strong> tab (success or failed with reason)</li>
+    </ol>
+  </div>
+
+  <h2>Testing with cURL</h2>
+  <div class="api-section">
+    <pre><span class="comment"># Deduct S$2.50 from a staff member</span>
+curl -X POST {{ base_url }}/cafeteria/api/vending/deduct/ \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "qr_token": "VEND:EMP-001.abc123...",
+    "amount": 2.50,
+    "machine_id": "VM-LOBBY-01",
+    "description": "Canned Coffee"
+  }'</pre>
+  </div>
+</div>
+{% endblock %}

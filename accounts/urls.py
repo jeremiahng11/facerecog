@@ -61,6 +61,9 @@ urlpatterns = [
     path('cafeteria/api/place-order/', cafeteria_views.kiosk_place_order_ajax, name='cafeteria_place_order'),
     path('cafeteria/api/scan-qr/', cafeteria_views.kitchen_scan_qr_ajax, name='cafeteria_scan_qr'),
 
+    # Vending machine API (external — Bearer token auth)
+    path('cafeteria/api/vending/deduct/', cafeteria_views.vending_deduct_view, name='vending_deduct'),
+
     # Kitchen / Cafe Bar counter views
     path('cafeteria/kitchen/<str:kitchen_type>/', cafeteria_views.kitchen_view, name='cafeteria_kitchen'),
     path('cafeteria/api/kitchen/mark-ready/<int:order_id>/', cafeteria_views.kitchen_mark_ready_ajax, name='cafeteria_mark_ready'),
@@ -120,6 +123,7 @@ urlpatterns = [
     path('cafeteria/admin/my-orders/', cafeteria_views.admin_my_orders_view, name='cafeteria_admin_my_orders'),
     path('cafeteria/admin/my-orders/new/', cafeteria_views.admin_new_order_view, name='cafeteria_admin_new_order'),
     path('cafeteria/admin/kiosk-config/', cafeteria_views.cafeteria_kiosk_config_view, name='cafeteria_kiosk_config'),
+    path('cafeteria/admin/vending-api/', cafeteria_views.vending_api_docs_view, name='vending_api_docs'),
     path('cafeteria/admin/hours/', cafeteria_views.cafeteria_hours_view, name='cafeteria_admin_hours'),
     path('cafeteria/admin/dashboard/', cafeteria_views.cafeteria_dashboard_view, name='cafeteria_dashboard'),
     path('cafeteria/admin/reports/', cafeteria_views.cafeteria_reports_view, name='cafeteria_admin_reports'),

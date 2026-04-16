@@ -1,10 +1,26 @@
 {% extends 'cafeteria/_staff_portal_base.html' %}
 {% block title %}History{% endblock %}
-{% block header_title %}Order History{% endblock %}
+{% block header_title %}History{% endblock %}
+{% block extra_head %}
+<style>
+  .tabs { display:flex; gap:4px; margin-bottom:14px; }
+  .tab-btn { flex:1; padding:10px; border-radius:8px; background:#fff; border:1px solid var(--border);
+    font-weight:600; font-size:13px; cursor:pointer; text-align:center; }
+  .tab-btn.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+</style>
+{% endblock %}
 {% block content %}
 <div style="margin-bottom:12px">
   <a href="{% url 'staff_portal_profile' %}" style="font-size:13px;color:var(--primary);font-weight:600;text-decoration:none">← Profile</a>
 </div>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('orders',this)">Orders</button>
+  <button class="tab-btn" onclick="switchTab('vending',this)">Vending</button>
+</div>
+
+{# ── Orders tab ───────────────────────────────────────── #}
+<div id="tab-orders">
 {% for order in orders %}
 <div class="card">
   <div style="display:flex;justify-content:space-between;align-items:flex-start">
@@ -25,4 +41,49 @@
 {% empty %}
 <div class="card" style="text-align:center;padding:40px;color:var(--text3)">No order history</div>
 {% endfor %}
+</div>
+
+{# ── Vending tab ──────────────────────────────────────── #}
+<div id="tab-vending" style="display:none">
+{% for txn in vending_txns %}
+<div class="card" style="{% if txn.status == 'failed' %}border-color:var(--danger);background:rgba(239,68,68,0.04){% endif %}">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <strong style="font-size:14px">{{ txn.notes|default:"Vending purchase" }}</strong>
+      <div style="font-size:12px;color:var(--text3)">{{ txn.created_at|date:"d M Y · H:i" }}</div>
+      {% if txn.machine_id %}<div style="font-size:11px;color:var(--text3)">Machine: {{ txn.machine_id }}</div>{% endif %}
+    </div>
+    <div style="text-align:right">
+      {% if txn.status == 'success' %}
+        <span class="badge badge-ready" style="font-size:11px">Success</span>
+        <div style="font-size:15px;font-weight:700;color:var(--danger);margin-top:4px">-S${{ txn.amount|floatformat:2|cut:"-" }}</div>
+      {% else %}
+        <span class="badge badge-cancelled" style="font-size:11px">Failed</span>
+        <div style="font-size:12px;color:var(--danger);margin-top:4px">S${{ txn.amount|floatformat:2|cut:"-" }}</div>
+      {% endif %}
+    </div>
+  </div>
+  {% if txn.status == 'failed' %}
+  <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--danger);font-size:12px;color:var(--danger)">
+    {{ txn.notes }}
+  </div>
+  {% else %}
+  <div style="margin-top:6px;font-size:12px;color:var(--text3)">
+    Balance after: S${{ txn.balance_after|floatformat:2 }}
+  </div>
+  {% endif %}
+</div>
+{% empty %}
+<div class="card" style="text-align:center;padding:40px;color:var(--text3)">No vending transactions</div>
+{% endfor %}
+</div>
+
+<script>
+function switchTab(tab, btn) {
+  document.getElementById('tab-orders').style.display = tab === 'orders' ? '' : 'none';
+  document.getElementById('tab-vending').style.display = tab === 'vending' ? '' : 'none';
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+</script>
 {% endblock %}

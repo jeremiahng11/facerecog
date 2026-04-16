@@ -266,4 +266,9 @@ PAYNOW_MERCHANT_NAME = os.environ.get('PAYNOW_MERCHANT_NAME', 'Cafeteria')
 # ─── Cron endpoint secret (for GitHub Actions scheduled tasks) ──────────────
 CRON_SECRET = os.environ.get('CRON_SECRET', '')
 
+# ─── Vending machine API ────────────────────────────────────────────────────
+# Shared API key that vending machines include as Bearer token.
+# Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+VENDING_API_KEY = os.environ.get('VENDING_API_KEY', '')
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

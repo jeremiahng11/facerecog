@@ -470,6 +470,11 @@ class CreditTransaction(models.Model):
         ('order', 'Order Debit'),
         ('refund', 'Refund Credit'),
         ('admin_adjust', 'Admin Adjustment'),
+        ('vending', 'Vending Machine'),
+    ]
+    STATUS_CHOICES = [
+        ('success', 'Success'),
+        ('failed', 'Failed'),
     ]
     user = models.ForeignKey(StaffUser, on_delete=models.CASCADE, related_name='credit_transactions')
     type = models.CharField(max_length=16, choices=TYPE_CHOICES)
@@ -477,6 +482,8 @@ class CreditTransaction(models.Model):
     balance_after = models.DecimalField(max_digits=8, decimal_places=2)
     related_order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True)
     notes = models.CharField(max_length=200, blank=True)
+    status = models.CharField(max_length=8, choices=STATUS_CHOICES, default='success')
+    machine_id = models.CharField(max_length=50, blank=True, help_text='Vending machine identifier')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

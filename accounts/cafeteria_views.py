@@ -144,6 +144,38 @@ def verify_order_qr(token: str):
         return None
 
 
+# ─── Vending Machine Staff QR ────────────────────────────────────────────────
+
+def sign_staff_vending_qr(user) -> str:
+    """
+    Generate a permanent HMAC-signed token identifying a staff member.
+    Format: VEND:<staff_id>.<hmac_sig>
+    Unlike order QR codes, this is reusable — the vending machine sends
+    this token to our API along with the purchase amount.
+    """
+    payload = f'VEND:{user.staff_id}'
+    sig = hmac.new(_qr_secret(), payload.encode(), hashlib.sha256).hexdigest()[:32]
+    return f'{payload}.{sig}'
+
+
+def verify_staff_vending_qr(token: str):
+    """
+    Verify a staff vending QR token.  Returns StaffUser or None.
+    Token format: VEND:<staff_id>.<hmac_sig>
+    """
+    if not token or not token.startswith('VEND:'):
+        return None
+    try:
+        prefix_and_id, sig = token.rsplit('.', 1)
+        expected = hmac.new(_qr_secret(), prefix_and_id.encode(), hashlib.sha256).hexdigest()[:32]
+        if not hmac.compare_digest(expected, sig):
+            return None
+        staff_id = prefix_and_id[5:]  # strip 'VEND:'
+        return StaffUser.objects.filter(staff_id=staff_id, is_active=True).first()
+    except (ValueError, StaffUser.DoesNotExist):
+        return None
+
+
 def _generate_qr_image_base64(data: str, box_size: int = 6) -> str:
     """Generate QR code as base64 PNG data URL."""
     import qrcode
@@ -1228,17 +1260,24 @@ def cafe_bar_counter_view(request):
 
 @login_required
 def staff_portal_home_view(request):
-    """Staff Portal: Home tab with credit balance and recent orders."""
+    """Staff Portal: Home tab with credit balance, vending QR, and recent orders."""
     user = request.user
     recent = Order.objects.filter(customer=user).order_by('-created_at')[:5]
     active = Order.objects.filter(
         customer=user,
         status__in=['confirmed', 'preparing', 'ready'],
     ).order_by('-created_at').first()
+
+    # Unique staff vending QR — shown on the home page for cafeteria
+    # vending machines to scan.
+    vending_token = sign_staff_vending_qr(user)
+    vending_qr = _generate_qr_image_base64(vending_token, box_size=5)
+
     return render(request, 'cafeteria/staff_portal_home.html', {
         'user': user,
         'recent': recent,
         'active': active,
+        'vending_qr': vending_qr,
     })
 
 
@@ -1277,9 +1316,15 @@ def staff_portal_qr_view(request):
 
 @login_required
 def staff_portal_history_view(request):
-    """Staff Portal: order history."""
+    """Staff Portal: order history + vending transactions."""
     orders = Order.objects.filter(customer=request.user).prefetch_related('items').order_by('-created_at')[:50]
-    return render(request, 'cafeteria/staff_portal_history.html', {'orders': orders})
+    vending_txns = CreditTransaction.objects.filter(
+        user=request.user, type='vending',
+    ).order_by('-created_at')[:50]
+    return render(request, 'cafeteria/staff_portal_history.html', {
+        'orders': orders,
+        'vending_txns': vending_txns,
+    })
 
 
 @login_required
@@ -1887,6 +1932,161 @@ def stripe_webhook_view(request):
                 pass
 
     return JsonResponse({'ok': True})
+
+
+# ─── Vending Machine API ─────────────────────────────────────────────────────
+
+
+@login_required
+@user_passes_test(is_admin)
+def vending_api_docs_view(request):
+    """Admin: Vending Machine API documentation page."""
+    api_key = getattr(settings, 'VENDING_API_KEY', '')
+    if api_key:
+        preview = api_key[:6] + '…' + api_key[-4:]
+    else:
+        preview = '(not set)'
+
+    base_url = request.build_absolute_uri('/').rstrip('/')
+    return render(request, 'cafeteria/admin_vending_api_docs.html', {
+        'api_key_preview': preview,
+        'api_key_set': bool(api_key),
+        'base_url': base_url,
+    })
+
+
+@csrf_exempt
+@require_POST
+def vending_deduct_view(request):
+    """
+    External API for vending machines to deduct staff cafeteria credit.
+
+    Authentication: Bearer token in Authorization header.
+        Authorization: Bearer <VENDING_API_KEY>
+
+    Request body (JSON):
+        {
+            "qr_token":    "VEND:<staff_id>.<hmac>",   // scanned from staff QR
+            "amount":      2.50,                        // positive number
+            "machine_id":  "VM-01",                     // machine identifier
+            "description": "Canned Coffee"              // optional item description
+        }
+
+    Response (JSON):
+        Success (200):
+            {"success": true, "balance": 47.50, "staff_id": "EMP-001", "transaction_id": 42}
+
+        Insufficient funds (200):
+            {"success": false, "error": "insufficient_funds",
+             "message": "Insufficient credit. Balance: S$1.20, required: S$2.50",
+             "balance": 1.20}
+
+        Invalid QR (200):
+            {"success": false, "error": "invalid_qr", "message": "Invalid or unrecognised QR code"}
+
+        Bad request (400):
+            {"success": false, "error": "bad_request", "message": "..."}
+
+        Unauthorized (401):
+            {"success": false, "error": "unauthorized", "message": "Invalid API key"}
+    """
+    # ── Authenticate machine via Bearer token ─────────────────────
+    api_key = getattr(settings, 'VENDING_API_KEY', '')
+    if not api_key:
+        return JsonResponse({'success': False, 'error': 'server_error',
+                             'message': 'Vending API not configured'}, status=500)
+
+    auth = request.META.get('HTTP_AUTHORIZATION', '')
+    if not auth.startswith('Bearer ') or auth[7:] != api_key:
+        return JsonResponse({'success': False, 'error': 'unauthorized',
+                             'message': 'Invalid API key'}, status=401)
+
+    # ── Parse request ─────────────────────────────────────────────
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'success': False, 'error': 'bad_request',
+                             'message': 'Invalid JSON body'}, status=400)
+
+    qr_token = (data.get('qr_token') or '').strip()
+    amount_raw = data.get('amount')
+    machine_id = (data.get('machine_id') or '').strip()[:50]
+    description = (data.get('description') or '').strip()[:120]
+
+    if not qr_token:
+        return JsonResponse({'success': False, 'error': 'bad_request',
+                             'message': 'qr_token is required'}, status=400)
+    if amount_raw is None:
+        return JsonResponse({'success': False, 'error': 'bad_request',
+                             'message': 'amount is required'}, status=400)
+    try:
+        amount = Decimal(str(amount_raw)).quantize(Decimal('0.01'))
+    except Exception:
+        return JsonResponse({'success': False, 'error': 'bad_request',
+                             'message': 'amount must be a positive number'}, status=400)
+    if amount <= 0:
+        return JsonResponse({'success': False, 'error': 'bad_request',
+                             'message': 'amount must be greater than 0'}, status=400)
+
+    # ── Verify QR token ───────────────────────────────────────────
+    user = verify_staff_vending_qr(qr_token)
+    if user is None:
+        # Log the failed attempt
+        CreditTransaction.objects.create(
+            user_id=1,  # system placeholder — will be overwritten below if we have a user
+            type='vending',
+            amount=Decimal('0'),
+            balance_after=Decimal('0'),
+            status='failed',
+            machine_id=machine_id,
+            notes=f'Invalid QR: {qr_token[:40]}',
+        ) if False else None  # Don't log unknown-user attempts (no user to attach)
+        return JsonResponse({'success': False, 'error': 'invalid_qr',
+                             'message': 'Invalid or unrecognised QR code'})
+
+    # ── Atomic credit deduction ───────────────────────────────────
+    with transaction.atomic():
+        # Lock the user row to prevent race conditions
+        locked_user = StaffUser.objects.select_for_update().get(pk=user.pk)
+        if locked_user.credit_balance < amount:
+            # Insufficient funds — log as failed
+            CreditTransaction.objects.create(
+                user=locked_user,
+                type='vending',
+                amount=-amount,
+                balance_after=locked_user.credit_balance,
+                status='failed',
+                machine_id=machine_id,
+                notes=f'Insufficient funds: {description}' if description else 'Insufficient funds',
+            )
+            return JsonResponse({
+                'success': False,
+                'error': 'insufficient_funds',
+                'message': f'Insufficient credit. Balance: S${locked_user.credit_balance}, required: S${amount}',
+                'balance': float(locked_user.credit_balance),
+            })
+
+        # Deduct credits
+        locked_user.credit_balance -= amount
+        locked_user.save(update_fields=['credit_balance'])
+
+        # Record transaction
+        txn = CreditTransaction.objects.create(
+            user=locked_user,
+            type='vending',
+            amount=-amount,
+            balance_after=locked_user.credit_balance,
+            status='success',
+            machine_id=machine_id,
+            notes=description or 'Vending machine purchase',
+        )
+
+    return JsonResponse({
+        'success': True,
+        'balance': float(locked_user.credit_balance),
+        'staff_id': locked_user.staff_id,
+        'transaction_id': txn.id,
+    })
 
 
 # ─── Internal cron endpoint (for GitHub Actions scheduled tasks) ─────────────
