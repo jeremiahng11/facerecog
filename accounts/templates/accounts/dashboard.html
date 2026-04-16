@@ -151,6 +151,59 @@
       <a href="{% url 'profile' %}" class="btn btn-secondary">Manage →</a>
     </div>
   </div>
+
+  {% if show_reenroll %}
+  <div class="card" style="border-color:rgba(0,212,255,0.3);margin-top:16px">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:200px;">
+        <div style="font-family:var(--mono);font-size:13px;color:var(--accent);margin-bottom:4px">IMPROVE ACCURACY</div>
+        <div style="font-size:14px;color:var(--text2)">Re-enroll your face with multi-sample capture for better accuracy and faster logins.</div>
+      </div>
+      <a href="{% url 'profile' %}" class="btn btn-primary" style="white-space:nowrap">Re-enroll Face →</a>
+    </div>
+  </div>
+  {% endif %}
+
+  {% endif %}
+
+  <!-- User's own login history -->
+  {% if my_logins %}
+  <div class="card" style="margin-top:24px">
+    <div class="card-header">
+      <h2>Your Recent Face Logins</h2>
+      <p>Last 10 face recognition attempts for your account</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Result</th>
+            <th>Device</th>
+            <th>IP Address</th>
+            <th>Date</th>
+            <th>Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in my_logins %}
+          <tr>
+            <td>
+              {% if log.success %}
+                <span class="badge badge-green">Success</span>
+              {% else %}
+                <span class="badge badge-red">Failed</span>
+              {% endif %}
+            </td>
+            <td class="text-sm text-muted">{{ log.device|default:"—" }}</td>
+            <td class="text-sm text-muted mono">{{ log.ip_address|default:"—" }}</td>
+            <td class="text-sm text-muted">{{ log.timestamp|date:"d M Y" }}</td>
+            <td class="text-sm text-muted mono">{{ log.timestamp|date:"H:i:s" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
   {% endif %}
 </div>
 {% endblock %}

@@ -43,7 +43,7 @@ class StaffUser(AbstractBaseUser, PermissionsMixin):
     )
     face_registered = models.BooleanField(default=False)
     face_enabled = models.BooleanField(
-        default=False,
+        default=True,
         help_text='Allow this user to login via Face ID'
     )
 
@@ -51,6 +51,20 @@ class StaffUser(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
     last_face_login = models.DateTimeField(null=True, blank=True)
+    kiosk_pin = models.CharField(
+        max_length=6, blank=True,
+        help_text='4-6 digit PIN for kiosk queue login (set in Profile)'
+    )
+
+    # Cafeteria credits
+    monthly_credit = models.DecimalField(
+        max_digits=8, decimal_places=2, default=50.00,
+        help_text='Monthly cafeteria credit allowance'
+    )
+    credit_balance = models.DecimalField(
+        max_digits=8, decimal_places=2, default=0.00,
+        help_text='Current cafeteria credit balance'
+    )
 
     objects = StaffUserManager()
 
@@ -89,6 +103,10 @@ class FaceLoginLog(models.Model):
     success = models.BooleanField(default=False)
     confidence = models.FloatField(null=True, blank=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
+    device = models.CharField(
+        max_length=120, blank=True,
+        help_text='Parsed device/browser info from User-Agent'
+    )
     notes = models.CharField(max_length=200, blank=True)
 
     class Meta:
@@ -97,3 +115,63 @@ class FaceLoginLog(models.Model):
     def __str__(self):
         status = "✓" if self.success else "✗"
         return f"{status} {self.user} @ {self.timestamp.strftime('%Y-%m-%d %H:%M')}"
+
+
+class AdminActionLog(models.Model):
+    """Audit trail for admin actions (user create/edit/delete)"""
+    ACTION_CHOICES = [
+        ('create', 'Created user'),
+        ('edit', 'Edited user'),
+        ('delete', 'Deleted user'),
+        ('reencode', 'Re-encoded face'),
+    ]
+    admin_user = models.ForeignKey(
+        StaffUser, on_delete=models.SET_NULL, null=True,
+        related_name='admin_actions'
+    )
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    target_staff_id = models.CharField(max_length=50)
+    target_name = models.CharField(max_length=150, blank=True)
+    details = models.CharField(max_length=300, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"{self.admin_user} {self.action} {self.target_staff_id} @ {self.timestamp.strftime('%Y-%m-%d %H:%M')}"
+
+
+class QueueTicket(models.Model):
+    """Queue ticket issued to a user."""
+    STATUS_CHOICES = [
+        ('waiting', 'Waiting'),
+        ('serving', 'Now Serving'),
+        ('served', 'Served'),
+        ('cancelled', 'Cancelled'),
+    ]
+    user = models.ForeignKey(
+        StaffUser, on_delete=models.CASCADE, related_name='queue_tickets'
+    )
+    number = models.PositiveIntegerField(
+        help_text='Queue number for the day (auto-incremented)'
+    )
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='waiting')
+    created_at = models.DateTimeField(auto_now_add=True)
+    served_at = models.DateTimeField(null=True, blank=True)
+    date = models.DateField(default=timezone.now, help_text='Queue date (resets daily)')
+
+    class Meta:
+        ordering = ['date', 'number']
+        unique_together = ['date', 'number']
+
+    def __str__(self):
+        return f"Q{self.number:03d} — {self.user.display_name} ({self.get_status_display()})"
+
+    @classmethod
+    def next_number(cls, date=None):
+        """Get the next queue number for the given date."""
+        if date is None:
+            date = timezone.localdate()
+        last = cls.objects.filter(date=date).order_by('-number').first()
+        return (last.number + 1) if last else 1

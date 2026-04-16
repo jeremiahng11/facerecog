@@ -80,6 +80,29 @@
     margin-bottom: 12px;
   }
   .cam-btn-row { display: flex; gap: 10px; margin-bottom: 0; }
+
+  .enrolled-badge {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 20px;
+    padding: 14px;
+    background: rgba(16,185,129,0.06);
+    border: 1px solid rgba(16,185,129,0.2);
+    border-radius: 10px;
+    transition: opacity 0.3s ease;
+  }
+  .enrolled-badge.hidden { display: none; }
+  .enrolled-icon {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center; justify-content: center;
+    background: rgba(16,185,129,0.12);
+    color: var(--accent3);
+    border: 2px solid rgba(16,185,129,0.35);
+    flex-shrink: 0;
+  }
 </style>
 {% endblock %}
 
@@ -92,27 +115,31 @@
 
   <div class="profile-grid">
 
-    <!-- Left: Photo upload form -->
+    <!-- Left: Profile picture + enrolled status -->
     <div class="card">
       <div class="card-header">
-        <h2>Profile Photos</h2>
-        <p>Upload profile picture and face recognition photo</p>
+        <h2>Profile Picture</h2>
+        <p>Upload your profile picture</p>
       </div>
 
-      {% if user.face_registered %}
-      <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;padding:14px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:10px;">
+      <div id="enrolledBadge" class="enrolled-badge{% if not user.face_registered %} hidden{% endif %}">
         {% if user.face_photo %}
-        <img src="{{ user.face_photo.url }}" class="current-face" alt="Face photo">
+        <img id="enrolledPhoto" class="current-face" alt="Your enrolled face"
+             src="{% url 'my_face_photo' %}"
+             onerror="this.style.display='none'">
+        {% else %}
+        <div class="enrolled-icon" aria-hidden="true">
+          <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+        </div>
         {% endif %}
         <div>
           <div style="font-size:13px;color:var(--accent3);font-weight:600;margin-bottom:2px">✓ Face ID Enrolled</div>
           <div style="font-size:12px;color:var(--text2)">Your face is registered for login</div>
-          {% if not user.face_enabled %}
-          <div style="font-size:11px;color:var(--warn);margin-top:3px">⚠ Face login disabled by admin</div>
-          {% endif %}
         </div>
       </div>
-      {% endif %}
 
       <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
@@ -127,16 +154,17 @@
           <div class="hint">Shown in navigation and dashboard</div>
         </div>
 
+        <div class="divider"></div>
+
         <div class="form-group">
-          <label>Face Recognition Photo</label>
-          <input type="file" name="face_photo" accept="image/*">
-          <div class="hint">Upload a clear frontal face photo to register for Face ID. Or use the live camera below.</div>
+          <label>Kiosk PIN</label>
+          <input type="password" name="kiosk_pin" value="{{ user.kiosk_pin }}" placeholder="4-6 digit PIN" maxlength="6" pattern="[0-9]{4,6}" inputmode="numeric" autocomplete="off">
+          <div class="hint">Set a 4-6 digit PIN to use Staff ID + PIN login on the queue kiosk. Leave blank to disable PIN login.</div>
         </div>
 
         <button type="submit" class="btn btn-primary btn-full">
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-          Save Photos
-        </button>
+          Save Profile
       </form>
     </div>
 
@@ -162,7 +190,19 @@
 
       <div class="enroll-status" id="enrollStatus">
         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        Start camera, then position your face in the oval and capture
+        Position your face in the oval, then click Capture. Move naturally and blink during the process.
+      </div>
+
+      <!-- Enrollment instructions banner -->
+      <div style="background:rgba(0,212,255,0.06);border:1px solid rgba(0,212,255,0.2);border-radius:10px;padding:14px;margin-bottom:14px;font-size:13px;color:var(--text2)">
+        <div style="font-weight:600;color:var(--accent);margin-bottom:6px;font-size:12px;font-family:var(--mono);letter-spacing:1px">HOW ENROLLMENT WORKS</div>
+        <div style="margin-bottom:6px">When you click <strong>Capture & Enroll</strong>, the system will take <strong>{{ enroll_num_samples|default:"5" }} photos</strong> over a few seconds.</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span>&#8226; <strong>Move your head slightly</strong> between captures (small tilts, nods)</span>
+          <span>&#8226; <strong>Blink naturally</strong> — don't stare frozen at the camera</span>
+          <span>&#8226; Stay within the oval but <strong>don't hold perfectly still</strong></span>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:var(--text3)">This ensures the system can tell you're a real person and builds a more accurate face profile.</div>
       </div>
 
       <div class="cam-btn-row">
@@ -215,32 +255,78 @@ async function startEnrollCamera() {
   }
 }
 
+// Multi-sample enrollment: captures NUM_SAMPLES frames spaced apart,
+// sends them all to the server which extracts a jittered encoding from
+// each, averages them into one robust template, and checks for duplicate
+// faces before storing.
+const NUM_SAMPLES = {{ enroll_num_samples|default:"5" }};
+const SAMPLE_DELAY_MS = 600;  // time between auto-captures
+
 async function captureAndEnroll() {
   if (!enrollStream) { setEnrollStatus('err', 'Please start camera first.'); return; }
   captureBtn.disabled = true;
-  captureBtn.innerHTML = `<svg class="spinning" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg> Processing…`;
-  setEnrollStatus('info', 'Capturing face data…');
 
-  const canvas = document.createElement('canvas');
-  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-  canvas.getContext('2d').drawImage(video, 0, 0);
-  const imageData = canvas.toDataURL('image/jpeg', 0.92);
+  const hints = [
+    'Look at the camera',
+    'Tilt your head slightly left',
+    'Tilt your head slightly right',
+    'Blink naturally',
+    'Look straight ahead',
+    'Slight nod',
+    'Stay relaxed',
+  ];
+
+  const frames = [];
+  for (let i = 0; i < NUM_SAMPLES; i++) {
+    const n = i + 1;
+    const hint = hints[i % hints.length];
+    captureBtn.innerHTML = `<svg class="spinning" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg> Capturing ${n}/${NUM_SAMPLES}…`;
+    setEnrollStatus('info', `Capture ${n}/${NUM_SAMPLES} — ${hint}`);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    frames.push(canvas.toDataURL('image/jpeg', 0.92));
+
+    if (i < NUM_SAMPLES - 1) {
+      await new Promise(r => setTimeout(r, SAMPLE_DELAY_MS));
+    }
+  }
+
+  captureBtn.innerHTML = `<svg class="spinning" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg> Processing…`;
+  setEnrollStatus('info', 'Processing face data and checking for duplicates…');
 
   try {
     const resp = await fetch('{% url "enroll_face_ajax" %}', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
-      body: JSON.stringify({ image: imageData }),
+      body: JSON.stringify({ images: frames }),
     });
     const data = await resp.json();
     if (data.success) {
       setEnrollStatus('ok', '✓ ' + data.message);
-      // Show new photo if returned
-      if (data.photo_url) {
-        const img = document.createElement('img');
-        img.src = data.photo_url; img.className = 'current-face';
-        img.style.cssText = 'margin:12px auto;display:block';
-        statusEl.parentNode.insertBefore(img, statusEl);
+      const badge = document.getElementById('enrolledBadge');
+      if (badge) {
+        badge.classList.remove('hidden');
+        // Show the user's face photo via the secure owner-only endpoint.
+        // If the img element doesn't exist yet (first enrollment),
+        // create it and insert before the text.
+        let photo = document.getElementById('enrolledPhoto');
+        if (!photo) {
+          photo = document.createElement('img');
+          photo.id = 'enrolledPhoto';
+          photo.className = 'current-face';
+          photo.alt = 'Your enrolled face';
+          photo.onerror = function() { this.style.display = 'none'; };
+          // Insert before the first child (the icon or text div).
+          badge.insertBefore(photo, badge.firstChild);
+          // Hide the SVG icon if present.
+          const icon = badge.querySelector('.enrolled-icon');
+          if (icon) icon.style.display = 'none';
+        }
+        // Cache-bust so the new photo shows immediately.
+        photo.src = '{% url "my_face_photo" %}?t=' + Date.now();
+        photo.style.display = '';
       }
     } else {
       setEnrollStatus('err', data.message);

@@ -1,19 +1,23 @@
 import json
 import logging
+import mimetypes
 import os
 import tempfile
+from datetime import timedelta
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.core.files import File as DjangoFile
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
+from django.core.paginator import Paginator
+from django.http import JsonResponse, Http404, FileResponse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 from django.conf import settings
+from django.db.models import Count, Q
 
-from .models import StaffUser, FaceLoginLog
+from .models import StaffUser, FaceLoginLog, AdminActionLog
 from .forms import StaffLoginForm, StaffUserCreationForm, StaffUserEditForm, FacePhotoUploadForm
 from . import face_utils
 
@@ -24,12 +28,102 @@ def is_admin(user):
     return user.is_staff or user.is_superuser
 
 
+def parse_device(request) -> str:
+    """Parse User-Agent into a human-readable device string."""
+    ua = request.META.get('HTTP_USER_AGENT', '')
+    if not ua:
+        return 'Unknown'
+    if 'iPhone' in ua:
+        platform = 'iOS Mobile'
+    elif 'iPad' in ua:
+        platform = 'iOS Tablet'
+    elif 'Android' in ua:
+        platform = 'Android Mobile' if 'Mobile' in ua else 'Android Tablet'
+    elif 'Windows' in ua:
+        platform = 'Windows'
+    elif 'Macintosh' in ua or 'Mac OS' in ua:
+        platform = 'macOS'
+    elif 'Linux' in ua:
+        platform = 'Linux'
+    elif 'CrOS' in ua:
+        platform = 'Chrome OS'
+    else:
+        platform = 'Unknown OS'
+    if 'Edg/' in ua or 'Edge/' in ua:
+        browser = 'Edge'
+    elif 'OPR/' in ua or 'Opera' in ua:
+        browser = 'Opera'
+    elif 'Firefox/' in ua:
+        browser = 'Firefox'
+    elif 'CriOS/' in ua or ('Chrome/' in ua and 'Safari/' in ua):
+        browser = 'Chrome'
+    elif 'Safari/' in ua and 'Chrome/' not in ua:
+        browser = 'Safari'
+    else:
+        browser = 'Unknown Browser'
+    return f'{platform} · {browser}'
+
+
+def get_client_ip(request):
+    """Return real client IP from X-Forwarded-For or REMOTE_ADDR."""
+    xff = request.META.get('HTTP_X_FORWARDED_FOR')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR')
+
+
+# ─── Rate Limiting & IP Lockout ──────────────────────────────────────────────
+# Simple in-DB rate limiter. No extra dependencies needed.
+
+def _is_ip_locked_out(ip_addr):
+    """Check if an IP is temporarily locked out due to too many failed scan sessions."""
+    threshold = getattr(settings, 'FACE_LOCKOUT_THRESHOLD', 15)
+    lockout_minutes = getattr(settings, 'FACE_LOCKOUT_DURATION_MINUTES', 5)
+    cutoff = timezone.now() - timedelta(minutes=lockout_minutes)
+
+    recent_fails = FaceLoginLog.objects.filter(
+        ip_address=ip_addr,
+        success=False,
+        timestamp__gte=cutoff,
+    ).count()
+
+    return recent_fails >= threshold
+
+
+def _send_security_notification(subject, message_body):
+    """Send email notification for security events (non-blocking)."""
+    admin_email = getattr(settings, 'ADMIN_NOTIFICATION_EMAIL', '')
+    if not admin_email:
+        return
+    try:
+        from django.core.mail import send_mail
+        send_mail(
+            subject=f'[FaceID Portal] {subject}',
+            message=message_body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[admin_email],
+            fail_silently=True,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to send security notification: {e}")
+
+
+def _log_admin_action(admin_user, action, target_user, details=''):
+    """Create an admin audit log entry."""
+    AdminActionLog.objects.create(
+        admin_user=admin_user,
+        action=action,
+        target_staff_id=target_user.staff_id if hasattr(target_user, 'staff_id') else str(target_user),
+        target_name=target_user.full_name if hasattr(target_user, 'full_name') else '',
+        details=details,
+    )
+
+
 # ─── Login / Logout ────────────────────────────────────────────────────────────
 
 def login_view(request):
     if request.user.is_authenticated:
         return redirect('dashboard')
-
     if request.method == 'POST':
         form = StaffLoginForm(request.POST)
         if form.is_valid():
@@ -44,7 +138,6 @@ def login_view(request):
                 messages.error(request, 'Invalid Staff ID or Password.')
     else:
         form = StaffLoginForm()
-
     return render(request, 'accounts/login.html', {'form': form})
 
 
@@ -56,7 +149,6 @@ def logout_view(request):
 # ─── Face ID Login ─────────────────────────────────────────────────────────────
 
 def face_login_view(request):
-    """Render the face ID login page"""
     if request.user.is_authenticated:
         return redirect('dashboard')
     return render(request, 'accounts/face_login.html')
@@ -65,76 +157,133 @@ def face_login_view(request):
 @require_POST
 def face_verify_ajax(request):
     """
-    AJAX endpoint: receive base64 frame from webcam, compare against all
-    registered face encodings, return match result.
+    AJAX: receive base64 frame, compare against enrolled faces.
+
+    Optimised for kiosk queue speed:
+    • Single-pass face detection + encoding (no duplicate work)
+    • In-memory encoding cache with batch numpy distance computation
+    • Server-side session state (no large encoding arrays in payload)
+    • Reduced default consecutive matches (2 instead of 3)
     """
     try:
+        ip_addr = get_client_ip(request)
+        device_info = parse_device(request)
+
+        # ── IP lockout check ───────────────────────────────────────
+        if _is_ip_locked_out(ip_addr):
+            return JsonResponse({
+                'success': False,
+                'message': 'Too many failed attempts. Please try again later.',
+                'locked_out': True,
+            })
+
         data = json.loads(request.body)
         image_data = data.get('image')
         if not image_data:
             return JsonResponse({'success': False, 'message': 'No image received'})
 
-        # Extract encoding from the live frame
-        candidate_encoding = face_utils.extract_encoding_from_b64(image_data)
-        if candidate_encoding is None:
+        required_consecutive = getattr(settings, 'FACE_VERIFY_CONSECUTIVE_MATCHES', 2)
+        min_confidence = getattr(settings, 'FACE_MIN_CONFIDENCE', 65)
+        tolerance = getattr(settings, 'FACE_RECOGNITION_TOLERANCE', 0.4)
+
+        # ── Single-pass: validate face quality AND extract encoding ──
+        # Old flow called face_locations() twice (once for quality, once
+        # inside face_encodings).  This halves the per-frame CPU work.
+        result = face_utils.validate_and_extract(image_data)
+        if not result['ok']:
             return JsonResponse({
                 'success': False,
-                'message': 'No face detected in frame. Please look at the camera.',
+                'message': result['reason'],
                 'face_detected': False,
             })
 
-        # Compare against all users with face_enabled and registered encoding
-        tolerance = getattr(settings, 'FACE_RECOGNITION_TOLERANCE', 0.5)
-        users_with_face = StaffUser.objects.filter(
-            face_enabled=True,
-            face_registered=True,
-            is_active=True
-        ).exclude(face_encoding__isnull=True).exclude(face_encoding='')
+        candidate_encoding = result['encoding']
 
-        best_match = None
-        best_confidence = 0.0
+        # ── Batch compare against all enrolled users at once ─────
+        # Uses in-memory numpy matrix — no DB query, no JSON parsing,
+        # single vectorised distance computation.
+        match = face_utils.encoding_cache.find_best_match(candidate_encoding, tolerance)
 
-        for user in users_with_face:
-            known_encoding = user.get_face_encoding()
-            if not known_encoding:
-                continue
-            result = face_utils.compare_faces(known_encoding, candidate_encoding, tolerance)
-            if result['match'] and result['confidence'] > best_confidence:
-                best_match = user
-                best_confidence = result['confidence']
+        if match and match['confidence'] >= min_confidence:
+            # ── Server-side consecutive match tracking ────────────
+            # Stored in Django session to avoid sending large encoding
+            # arrays back and forth in every request payload.
+            sess_match_user = request.session.get('_face_match_user')
+            sess_match_count = request.session.get('_face_match_count', 0)
+            sess_encodings = request.session.get('_face_match_encs', [])
 
-        ip_addr = request.META.get('REMOTE_ADDR')
+            if sess_match_user == match['staff_id']:
+                consecutive = sess_match_count + 1
+            else:
+                consecutive = 1
+                sess_encodings = []
 
-        if best_match:
-            # Log success
+            # Accumulate this frame's encoding for liveness check.
+            all_encodings = sess_encodings + [candidate_encoding]
+
+            if consecutive < required_consecutive:
+                request.session['_face_match_user'] = match['staff_id']
+                request.session['_face_match_count'] = consecutive
+                request.session['_face_match_encs'] = all_encodings
+                return JsonResponse({
+                    'success': False,
+                    'face_detected': True,
+                    'message': f'Verifying… ({consecutive}/{required_consecutive})',
+                    'confidence': match['confidence'],
+                    'verifying': True,
+                })
+
+            # ── Liveness check: verify frame variance ─────────────
+            if not face_utils.check_encoding_variance(all_encodings, min_std=0.008):
+                _clear_face_session(request)
+                FaceLoginLog.objects.create(
+                    success=False, ip_address=ip_addr,
+                    device=device_info,
+                    notes='Liveness check failed — possible photo spoofing',
+                )
+                logger.warning(f"Liveness check failed during login from {ip_addr}")
+                _send_security_notification(
+                    'Possible Photo Spoofing Attempt',
+                    f'A face login attempt from IP {ip_addr} failed the '
+                    f'liveness check (zero encoding variance across '
+                    f'{len(all_encodings)} frames). This may indicate a '
+                    f'printed photo or phone screen was used.\n'
+                    f'Device: {device_info}\n'
+                    f'Matched user: {match["staff_id"]}\n'
+                    f'Time: {timezone.now().isoformat()}',
+                )
+                return JsonResponse({
+                    'success': False,
+                    'face_detected': True,
+                    'message': 'Liveness check failed. Please look directly at the camera and blink naturally.',
+                })
+
+            # ── Grant login ───────────────────────────────────────
+            _clear_face_session(request)
+            best_match = StaffUser.objects.get(pk=match['pk'])
             FaceLoginLog.objects.create(
-                user=best_match,
-                success=True,
-                confidence=best_confidence,
-                ip_address=ip_addr,
+                user=best_match, success=True,
+                confidence=match['confidence'], ip_address=ip_addr,
+                device=device_info,
+                notes=f'{required_consecutive} consecutive matches',
             )
             best_match.last_face_login = timezone.now()
             best_match.save(update_fields=['last_face_login'])
+            login(request, best_match, backend='django.contrib.auth.backends.ModelBackend')
 
-            # Log the user in
-            login(request, best_match,
-                  backend='django.contrib.auth.backends.ModelBackend')
+            logger.info(f"Face login: {best_match.staff_id} from {ip_addr} ({device_info})")
 
             return JsonResponse({
                 'success': True,
                 'message': f'Welcome, {best_match.display_name}!',
-                'confidence': best_confidence,
+                'confidence': match['confidence'],
                 'redirect': '/dashboard/',
             })
         else:
-            FaceLoginLog.objects.create(
-                success=False,
-                ip_address=ip_addr,
-                notes='No matching face found',
-            )
+            # No match — reset session streak
+            _clear_face_session(request)
             return JsonResponse({
-                'success': False,
-                'face_detected': True,
+                'success': False, 'face_detected': True,
                 'message': 'Face not recognised. Try again or use Staff ID login.',
                 'confidence': 0,
             })
@@ -144,14 +293,59 @@ def face_verify_ajax(request):
         return JsonResponse({'success': False, 'message': f'Server error: {str(e)}'})
 
 
+def _clear_face_session(request):
+    """Remove temporary face verification state from the session."""
+    for key in ('_face_match_user', '_face_match_count', '_face_match_encs'):
+        request.session.pop(key, None)
+
+
+@require_POST
+def face_verify_fail_ajax(request):
+    """
+    AJAX: called once when a scan session exhausts its attempts without
+    finding a match. Logs a single failure entry for the IP lockout system.
+    Separated from face_verify_ajax so we don't log every individual frame.
+    """
+    ip_addr = get_client_ip(request)
+    device_info = parse_device(request)
+
+    FaceLoginLog.objects.create(
+        success=False,
+        ip_address=ip_addr,
+        device=device_info,
+        notes='Scan session timeout — no match found',
+    )
+
+    if _is_ip_locked_out(ip_addr):
+        _send_security_notification(
+            'IP Locked Out — Too Many Failed Face Login Attempts',
+            f'IP {ip_addr} has been temporarily locked out after '
+            f'exceeding {settings.FACE_LOCKOUT_THRESHOLD} failed '
+            f'face scan sessions.\nDevice: {device_info}\n'
+            f'Time: {timezone.now().isoformat()}',
+        )
+
+    return JsonResponse({'logged': True})
+
+
 # ─── Dashboard ─────────────────────────────────────────────────────────────────
 
 @login_required
 def dashboard_view(request):
+    user = request.user
+    show_reenroll = user.face_registered
+
+    # User's own recent face login history.
+    my_logins = FaceLoginLog.objects.filter(
+        user=user
+    ).order_by('-timestamp')[:10]
+
     context = {
-        'user': request.user,
-        'face_enabled': request.user.face_enabled,
-        'face_registered': request.user.face_registered,
+        'user': user,
+        'face_enabled': user.face_enabled,
+        'face_registered': user.face_registered,
+        'show_reenroll': show_reenroll,
+        'my_logins': my_logins,
     }
     return render(request, 'accounts/dashboard.html', context)
 
@@ -164,30 +358,15 @@ def profile_view(request):
     if request.method == 'POST':
         form = FacePhotoUploadForm(request.POST, request.FILES, instance=user)
         if form.is_valid():
-            saved_user = form.save(commit=False)
-            # If a new face_photo was uploaded, re-extract encoding
-            if 'face_photo' in request.FILES:
-                saved_user.save()  # save first so the storage backend has the file
-                encoding = face_utils.extract_encoding_from_field_file(saved_user.face_photo)
-                if encoding:
-                    saved_user.set_face_encoding(encoding)
-                    saved_user.face_registered = True
-                    messages.success(request, 'Face photo saved and face registered successfully!')
-                else:
-                    saved_user.face_registered = False
-                    messages.warning(request,
-                        'Photo saved but no face was detected. '
-                        'Please upload a clear frontal face photo.')
-                saved_user.save()
-            else:
-                saved_user.save()
-                messages.success(request, 'Profile updated.')
+            form.save()
+            messages.success(request, 'Profile updated.')
             return redirect('profile')
     else:
         form = FacePhotoUploadForm(instance=user)
     context = {
         'form': form,
         'user': user,
+        'enroll_num_samples': getattr(settings, 'FACE_ENROLL_NUM_SAMPLES', 5),
         'requirements': [
             'Good lighting',
             'Face clearly visible',
@@ -200,60 +379,183 @@ def profile_view(request):
 
 
 @login_required
+def my_face_photo_view(request):
+    """Serve the current user's own face photo (owner-only)."""
+    user = request.user
+    if not user.face_photo:
+        raise Http404("No face photo on file")
+    try:
+        f = user.face_photo.open('rb')
+        content_type = mimetypes.guess_type(user.face_photo.name)[0] or 'image/jpeg'
+        response = FileResponse(f, content_type=content_type)
+        response['Cache-Control'] = 'private, no-store'
+        return response
+    except Exception:
+        raise Http404("Face photo not accessible")
+
+
+@login_required
 @require_POST
 def enroll_face_ajax(request):
     """
-    AJAX: receive a captured webcam snapshot, save it as face_photo,
-    extract and store the encoding.
+    AJAX: multi-sample enrollment with quality checks, liveness
+    validation (frame variance), duplicate face check, and jittered
+    encoding averaging.
     """
     try:
         data = json.loads(request.body)
-        image_data = data.get('image')
-        if not image_data:
-            return JsonResponse({'success': False, 'message': 'No image data'})
+        images = data.get('images', [])
+        if not images and data.get('image'):
+            images = [data['image']]
 
-        # Detect face first
-        n_faces = face_utils.detect_faces_in_b64(image_data)
-        if n_faces == 0:
-            return JsonResponse({'success': False, 'message': 'No face detected. Please centre your face.'})
-        if n_faces > 1:
-            return JsonResponse({'success': False, 'message': 'Multiple faces detected. Please be alone in frame.'})
+        num_samples_required = getattr(settings, 'FACE_ENROLL_NUM_SAMPLES', 5)
+        num_jitters = getattr(settings, 'FACE_ENROLL_NUM_JITTERS', 3)
+        dup_tolerance = getattr(settings, 'FACE_ENROLL_DUPLICATE_TOLERANCE', 0.35)
 
-        # Save snapshot to a temporary local file for encoding extraction.
-        # Using a temp directory means this works regardless of whether
-        # MEDIA_ROOT is defined (it may not be when Cloudinary is active).
+        if len(images) < num_samples_required:
+            return JsonResponse({
+                'success': False,
+                'message': f'Need {num_samples_required} captures, got {len(images)}.',
+            })
+
         user = request.user
-        filename = f"{user.staff_id}_face.jpg"
+        encodings = []
 
+        for idx, image_data in enumerate(images):
+            quality = face_utils.validate_face_quality(image_data)
+            if not quality['ok']:
+                return JsonResponse({
+                    'success': False,
+                    'message': f'Capture {idx + 1}: {quality["reason"]}',
+                })
+            enc = face_utils.extract_encoding_from_b64_jittered(
+                image_data, num_jitters=num_jitters
+            )
+            if enc is None:
+                return JsonResponse({
+                    'success': False,
+                    'message': f'Could not extract face data from capture {idx + 1}.',
+                })
+            encodings.append(enc)
+
+        # ── Liveness: check frame variance ────────────────────────
+        # If all encodings are nearly identical, the user might be
+        # holding a static photo. Real faces produce slight encoding
+        # variation across frames due to micro-movements. We check
+        # that the standard deviation across samples exceeds a
+        # minimum threshold.
+        if not face_utils.check_encoding_variance(encodings, min_std=0.01):
+            return JsonResponse({
+                'success': False,
+                'message': (
+                    'Liveness check failed. Please move naturally and '
+                    'blink while capturing. Static images are not accepted.'
+                ),
+            })
+
+        final_encoding = face_utils.average_encodings(encodings)
+
+        # ── Duplicate face check ──────────────────────────────────
+        dup = face_utils.check_duplicate_face(
+            final_encoding, tolerance=dup_tolerance,
+            exclude_user_pk=user.pk,
+        )
+        if dup:
+            dup_user = dup['user']
+            logger.warning(
+                f"Enrollment rejected for {user.staff_id}: face too similar "
+                f"to {dup_user.staff_id} (distance={dup['distance']})"
+            )
+            _send_security_notification(
+                'Face Enrollment Rejected — Duplicate Face',
+                f'User {user.staff_id} ({user.full_name}) attempted to '
+                f'enroll but their face was too similar to '
+                f'{dup_user.staff_id} ({dup_user.full_name}).\n'
+                f'Distance: {dup["distance"]}\n'
+                f'Time: {timezone.now().isoformat()}',
+            )
+            return JsonResponse({
+                'success': False,
+                'message': (
+                    'Enrollment failed: your face is too similar to another '
+                    'enrolled user. Please contact an administrator.'
+                ),
+            })
+
+        # ── Save face photo ───────────────────────────────────────
+        filename = f"{user.staff_id}_face.jpg"
         with tempfile.TemporaryDirectory() as tmp_dir:
             save_path = os.path.join(tmp_dir, filename)
-            saved = face_utils.save_face_snapshot(image_data, save_path)
-            if not saved:
-                return JsonResponse({'success': False, 'message': 'Failed to save image.'})
+            saved = face_utils.save_face_snapshot(images[0], save_path)
+            if saved:
+                with open(save_path, 'rb') as f:
+                    user.face_photo.save(
+                        f'face_photos/{filename}', DjangoFile(f), save=False
+                    )
 
-            # Extract encoding from the local temp file
-            encoding = face_utils.extract_encoding_from_file(save_path)
-            if not encoding:
-                return JsonResponse({'success': False, 'message': 'Could not extract face data.'})
-
-            # Persist the photo via Django's storage backend (works for both
-            # local filesystem and Cloudinary).
-            with open(save_path, 'rb') as f:
-                user.face_photo.save(f'face_photos/{filename}', DjangoFile(f), save=False)
-
-        user.set_face_encoding(encoding)
+        user.set_face_encoding(final_encoding)
         user.face_registered = True
-        user.save(update_fields=['face_photo', 'face_encoding', 'face_registered'])
+        user.face_enabled = True
+        user.save(update_fields=[
+            'face_photo', 'face_encoding', 'face_registered', 'face_enabled'
+        ])
+        face_utils.encoding_cache.invalidate()
 
         return JsonResponse({
             'success': True,
             'message': 'Face enrolled successfully! You can now use Face ID login.',
-            'photo_url': user.face_photo.url,
         })
 
     except Exception as e:
         logger.exception("Error in enroll_face_ajax")
         return JsonResponse({'success': False, 'message': str(e)})
+
+
+# ─── Kiosk Mode ──────────────────────────────────────────────────────────────
+
+def kiosk_view(request):
+    """
+    Full-screen face scanner for shared devices (entrance tablets, kiosks).
+    Continuously scans → shows welcome greeting on match → auto-resets
+    after a few seconds. No login/auth required to render the page — the
+    face_verify_ajax endpoint handles the actual authentication.
+    """
+    return render(request, 'accounts/kiosk.html')
+
+
+# ─── Password Reset ──────────────────────────────────────────────────────────
+
+def password_reset_view(request):
+    """
+    Custom password reset view that wraps Django's built-in form but
+    catches SMTP errors and shows them to the user instead of silently
+    failing or returning a 500.
+    """
+    from django.contrib.auth.forms import PasswordResetForm
+
+    if request.method == 'POST':
+        form = PasswordResetForm(request.POST)
+        if form.is_valid():
+            try:
+                form.save(
+                    request=request,
+                    use_https=request.is_secure(),
+                    email_template_name='accounts/password_reset_email.html',
+                    subject_template_name='accounts/password_reset_subject.txt',
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                )
+                return redirect('password_reset_done')
+            except Exception as e:
+                logger.exception("Password reset email failed")
+                messages.error(
+                    request,
+                    f'Failed to send reset email. Please contact an administrator. '
+                    f'(Error: {type(e).__name__})'
+                )
+    else:
+        form = None
+
+    return render(request, 'accounts/password_reset.html', {'form': form})
 
 
 # ─── Admin: User Management ────────────────────────────────────────────────────
@@ -268,30 +570,50 @@ def admin_users_view(request):
 @login_required
 @user_passes_test(is_admin)
 def admin_add_user_view(request):
+    from decimal import Decimal
+    working_days = getattr(settings, 'CREDIT_WORKING_DAYS', 30)
+
     if request.method == 'POST':
         form = StaffUserCreationForm(request.POST, request.FILES)
         if form.is_valid():
             user = form.save(commit=False)
-            # If face photo provided, extract encoding
-            if user.face_photo:
-                user.save()  # save so the storage backend has the file
-                encoding = face_utils.extract_encoding_from_field_file(user.face_photo)
-                if encoding:
-                    user.set_face_encoding(encoding)
-                    user.face_registered = True
-                    messages.success(request,
-                        f'User {user.staff_id} created with face registration!')
-                else:
-                    messages.warning(request,
-                        f'User {user.staff_id} created but no face detected in photo.')
-                user.save()
+            user.set_password(form.cleaned_data['password'])
+
+            # ── Credit assignment ─────────────────────────────────
+            prorate = form.cleaned_data.get('prorate_credit', True)
+            if prorate:
+                # Prorate: remaining days in the month / working days
+                today = timezone.localdate()
+                import calendar
+                _, days_in_month = calendar.monthrange(today.year, today.month)
+                remaining_days = days_in_month - today.day + 1  # include today
+                ratio = Decimal(str(remaining_days)) / Decimal(str(working_days))
+                # Cap at 1.0 so credit never exceeds monthly amount
+                if ratio > 1:
+                    ratio = Decimal('1')
+                user.credit_balance = (user.monthly_credit * ratio).quantize(Decimal('0.01'))
             else:
-                user.save()
-                messages.success(request, f'User {user.staff_id} created successfully.')
+                manual = form.cleaned_data.get('manual_credit')
+                if manual is not None:
+                    user.credit_balance = manual
+                else:
+                    user.credit_balance = user.monthly_credit
+
+            user.save()
+            _log_admin_action(request.user, 'create', user,
+                              details=f'Credit: S${user.credit_balance}')
+            messages.success(
+                request,
+                f'User {user.staff_id} created with S${user.credit_balance} credit.',
+            )
             return redirect('admin_users')
     else:
         form = StaffUserCreationForm()
-    return render(request, 'accounts/admin_add_user.html', {'form': form})
+
+    return render(request, 'accounts/admin_add_user.html', {
+        'form': form,
+        'working_days': working_days,
+    })
 
 
 @login_required
@@ -301,21 +623,9 @@ def admin_edit_user_view(request, user_id):
     if request.method == 'POST':
         form = StaffUserEditForm(request.POST, request.FILES, instance=target_user)
         if form.is_valid():
-            user = form.save(commit=False)
-            if 'face_photo' in request.FILES:
-                user.save()
-                encoding = face_utils.extract_encoding_from_field_file(user.face_photo)
-                if encoding:
-                    user.set_face_encoding(encoding)
-                    user.face_registered = True
-                    messages.success(request, 'User updated with new face registration.')
-                else:
-                    user.face_registered = False
-                    messages.warning(request, 'User updated but face not detected in photo.')
-                user.save()
-            else:
-                user.save()
-                messages.success(request, 'User updated successfully.')
+            form.save()
+            _log_admin_action(request.user, 'edit', target_user)
+            messages.success(request, 'User updated successfully.')
             return redirect('admin_users')
     else:
         form = StaffUserEditForm(instance=target_user)
@@ -330,6 +640,7 @@ def admin_edit_user_view(request, user_id):
 def admin_delete_user_view(request, user_id):
     target_user = get_object_or_404(StaffUser, pk=user_id)
     if request.method == 'POST':
+        _log_admin_action(request.user, 'delete', target_user)
         name = target_user.staff_id
         target_user.delete()
         messages.success(request, f'User {name} deleted.')
@@ -339,9 +650,129 @@ def admin_delete_user_view(request, user_id):
 
 @login_required
 @user_passes_test(is_admin)
+def admin_bulk_import_view(request):
+    """CSV bulk import of users. Expects columns: staff_id, email, full_name, department, password."""
+    import csv
+    import io
+    import calendar
+    from decimal import Decimal
+
+    results = None
+    if request.method == 'POST' and request.FILES.get('csv_file'):
+        csv_file = request.FILES['csv_file']
+        try:
+            decoded = csv_file.read().decode('utf-8-sig')
+            reader = csv.DictReader(io.StringIO(decoded))
+            results = {'created': [], 'skipped': [], 'errors': []}
+
+            # Prorate credit for bulk-imported users
+            working_days = getattr(settings, 'CREDIT_WORKING_DAYS', 30)
+            default_credit = Decimal(str(getattr(settings, 'DEFAULT_MONTHLY_CREDIT', 50)))
+            today = timezone.localdate()
+            _, days_in_month = calendar.monthrange(today.year, today.month)
+            remaining = days_in_month - today.day + 1
+            ratio = min(Decimal('1'), Decimal(str(remaining)) / Decimal(str(working_days)))
+            prorated = (default_credit * ratio).quantize(Decimal('0.01'))
+
+            for i, row in enumerate(reader, start=2):  # row 1 is header
+                staff_id = (row.get('staff_id') or '').strip()
+                email = (row.get('email') or '').strip()
+                full_name = (row.get('full_name') or '').strip()
+                department = (row.get('department') or '').strip()
+                password = (row.get('password') or '').strip()
+
+                if not staff_id or not email or not password:
+                    results['errors'].append(f'Row {i}: missing staff_id, email, or password')
+                    continue
+
+                if StaffUser.objects.filter(staff_id=staff_id).exists():
+                    results['skipped'].append(f'{staff_id} — already exists')
+                    continue
+                if StaffUser.objects.filter(email=email).exists():
+                    results['skipped'].append(f'{email} — email already in use')
+                    continue
+
+                try:
+                    user = StaffUser.objects.create_user(
+                        staff_id=staff_id,
+                        email=email,
+                        password=password,
+                        full_name=full_name,
+                        department=department,
+                        monthly_credit=default_credit,
+                        credit_balance=prorated,
+                    )
+                    _log_admin_action(request.user, 'create', user, f'CSV bulk import · S${prorated}')
+                    results['created'].append(staff_id)
+                except Exception as e:
+                    results['errors'].append(f'Row {i} ({staff_id}): {e}')
+
+        except Exception as e:
+            results = {'created': [], 'skipped': [], 'errors': [f'CSV parse error: {e}']}
+
+    return render(request, 'accounts/admin_bulk_import.html', {'results': results})
+
+
+@login_required
+@user_passes_test(is_admin)
 def admin_face_logs_view(request):
-    logs = FaceLoginLog.objects.all().select_related('user')[:200]
-    return render(request, 'accounts/admin_face_logs.html', {'logs': logs})
+    logs_qs = FaceLoginLog.objects.all().select_related('user')
+    paginator = Paginator(logs_qs, 50)
+    page_number = request.GET.get('page', 1)
+    logs_page = paginator.get_page(page_number)
+    return render(request, 'accounts/admin_face_logs.html', {
+        'logs': logs_page,
+        'paginator': paginator,
+    })
+
+
+@login_required
+@user_passes_test(is_admin)
+def admin_action_logs_view(request):
+    """View admin action audit trail."""
+    logs_qs = AdminActionLog.objects.all().select_related('admin_user')
+    paginator = Paginator(logs_qs, 50)
+    page_number = request.GET.get('page', 1)
+    logs_page = paginator.get_page(page_number)
+    return render(request, 'accounts/admin_action_logs.html', {
+        'logs': logs_page,
+        'paginator': paginator,
+    })
+
+
+@login_required
+@user_passes_test(is_admin)
+def admin_dashboard_view(request):
+    """Admin face login activity summary."""
+    now = timezone.now()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today_start - timedelta(days=7)
+
+    today_logs = FaceLoginLog.objects.filter(timestamp__gte=today_start)
+    week_logs = FaceLoginLog.objects.filter(timestamp__gte=week_start)
+
+    context = {
+        'total_today': today_logs.count(),
+        'success_today': today_logs.filter(success=True).count(),
+        'failed_today': today_logs.filter(success=False).count(),
+        'total_week': week_logs.count(),
+        'success_week': week_logs.filter(success=True).count(),
+        'failed_week': week_logs.filter(success=False).count(),
+        'total_users': StaffUser.objects.filter(is_active=True).count(),
+        'enrolled_users': StaffUser.objects.filter(face_registered=True, is_active=True).count(),
+        'top_devices': (
+            week_logs.exclude(device='')
+            .values('device')
+            .annotate(count=Count('id'))
+            .order_by('-count')[:5]
+        ),
+        'recent_failures': (
+            FaceLoginLog.objects.filter(success=False)
+            .select_related('user')
+            .order_by('-timestamp')[:10]
+        ),
+    }
+    return render(request, 'accounts/admin_dashboard.html', context)
 
 
 # ─── Re-enroll face for a specific user (admin) ───────────────────────────────
@@ -357,6 +788,8 @@ def admin_reencode_user(request, user_id):
             target_user.set_face_encoding(encoding)
             target_user.face_registered = True
             target_user.save()
+            face_utils.encoding_cache.invalidate()
+            _log_admin_action(request.user, 'reencode', target_user)
             messages.success(request, f'Face re-encoded for {target_user.staff_id}.')
         else:
             messages.error(request, 'No face detected in existing photo.')

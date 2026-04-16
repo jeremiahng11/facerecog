@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+{% block title %}Queue Manager — {{ brand_name|default:"FaceID Portal" }}{% endblock %}
+{% block extra_head %}
+<style>
+  .q-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+  @media (max-width: 768px) { .q-grid { grid-template-columns: 1fr; } }
+  .q-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .q-num {
+    font-family: var(--mono); font-size: 28px; font-weight: 700;
+    letter-spacing: 2px; min-width: 90px;
+  }
+  .q-num.serving { color: var(--accent3); }
+  .q-num.waiting { color: #fbbf24; }
+  .q-info { flex: 1; }
+  .q-info .name { font-size: 14px; color: var(--text); }
+  .q-info .time { font-size: 11px; color: var(--text3); }
+  .q-actions { display: flex; gap: 6px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:24px">
+    <div>
+      <div class="page-title">Queue Manager</div>
+      <div class="page-subtitle">{{ today|date:"d M Y" }} — Manage the service queue</div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <a href="{% url 'queue_display' %}" class="btn btn-secondary" target="_blank">Open TV Display</a>
+      <a href="{% url 'admin_dashboard' %}" class="btn btn-secondary">← Dashboard</a>
+    </div>
+  </div>
+
+  <!-- Now Serving -->
+  <div style="margin-bottom:24px">
+    <div style="font-family:var(--mono);font-size:12px;color:var(--accent3);letter-spacing:2px;margin-bottom:12px">NOW SERVING ({{ now_serving|length }})</div>
+    {% for ticket in now_serving %}
+    <div class="q-card" style="border-color:rgba(16,185,129,0.3);margin-bottom:8px" id="ticket-{{ ticket.pk }}">
+      <div class="q-num serving">Q{{ ticket.number|stringformat:"03d" }}</div>
+      <div class="q-info">
+        <div class="name">{{ ticket.user.display_name }}</div>
+        <div class="time">{{ ticket.user.staff_id }} · Since {{ ticket.created_at|date:"H:i" }}</div>
+      </div>
+      <div class="q-actions">
+        <button class="btn btn-success btn-sm" onclick="updateTicket({{ ticket.pk }}, 'served')">Mark Served</button>
+      </div>
+    </div>
+    {% empty %}
+    <div style="color:var(--text3);font-size:14px;padding:16px 0">No one being served right now</div>
+    {% endfor %}
+  </div>
+
+  <!-- Waiting -->
+  <div style="margin-bottom:24px">
+    <div style="font-family:var(--mono);font-size:12px;color:#fbbf24;letter-spacing:2px;margin-bottom:12px">WAITING ({{ waiting|length }})</div>
+    {% for ticket in waiting %}
+    <div class="q-card" style="margin-bottom:8px" id="ticket-{{ ticket.pk }}">
+      <div class="q-num waiting">Q{{ ticket.number|stringformat:"03d" }}</div>
+      <div class="q-info">
+        <div class="name">{{ ticket.user.display_name }}</div>
+        <div class="time">{{ ticket.user.staff_id }} · Joined {{ ticket.created_at|date:"H:i" }}</div>
+      </div>
+      <div class="q-actions">
+        <button class="btn btn-primary btn-sm" onclick="updateTicket({{ ticket.pk }}, 'serving')">Call Next</button>
+        <button class="btn btn-secondary btn-sm" onclick="updateTicket({{ ticket.pk }}, 'cancelled')" style="color:var(--danger);border-color:rgba(239,68,68,0.3)">Cancel</button>
+      </div>
+    </div>
+    {% empty %}
+    <div style="color:var(--text3);font-size:14px;padding:16px 0">No one waiting</div>
+    {% endfor %}
+  </div>
+
+  <!-- Recently Served -->
+  {% if served %}
+  <div>
+    <div style="font-family:var(--mono);font-size:12px;color:var(--text3);letter-spacing:2px;margin-bottom:12px">RECENTLY SERVED</div>
+    {% for ticket in served %}
+    <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid rgba(30,48,80,0.3);font-size:13px">
+      <span class="mono" style="color:var(--text3);min-width:70px">Q{{ ticket.number|stringformat:"03d" }}</span>
+      <span style="color:var(--text2);flex:1">{{ ticket.user.display_name }}</span>
+      <span style="color:var(--text3);font-size:11px">{{ ticket.served_at|date:"H:i" }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function updateTicket(ticketId, status) {
+  try {
+    const resp = await fetch('{% url "queue_update" %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+      body: JSON.stringify({ ticket_id: ticketId, status: status }),
+    });
+    const data = await resp.json();
+    if (data.success) {
+      window.location.reload();
+    } else {
+      alert(data.message);
+    }
+  } catch (e) {
+    alert('Network error');
+  }
+}
+
+// Auto-refresh every 10 seconds
+setInterval(() => { window.location.reload(); }, 10000);
+</script>
+{% endblock %}

@@ -117,7 +117,7 @@
           <path d="M7 20.662V19a5 5 0 0110 0v1.662"/>
         </svg>
       </div>
-      <h1>FACEID PORTAL</h1>
+      <h1>{{ brand_name|default:"FACEID PORTAL"|upper }}</h1>
       <p>Secure Staff Authentication System</p>
     </div>
 
@@ -127,7 +127,7 @@
           <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
           Staff ID
         </button>
-        <button class="tab-btn" id="tabFace" onclick="switchTab('face')">
+        <button class="tab-btn" id="tabFace" onclick="goToFaceLogin()">
           <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M8 8c0-.667.133-1.3.4-1.9M15.6 6.1c.267.6.4 1.233.4 1.9M9 15c0 2.21 1.343 4 3 4s3-1.79 3-4"/><path d="M5 4l1.5 1.5M19 4l-1.5 1.5M5 20l1.5-1.5M19 20l-1.5-1.5"/></svg>
           Face ID
         </button>
@@ -149,6 +149,9 @@
             <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
             Sign In
           </button>
+          <div style="text-align:center;margin-top:12px">
+            <a href="{% url 'password_reset' %}" style="color:var(--text3);font-size:12px">Forgot password?</a>
+          </div>
         </form>
       </div>
 
@@ -176,7 +179,7 @@
     </div>
 
     <p style="text-align:center;margin-top:16px;font-size:12px;color:var(--text3);">
-      Secure access · Aleta Planet Pte. Ltd.
+      Secure access{% if brand_company %} · {{ brand_company }}{% endif %}
     </p>
   </div>
 </div>
@@ -191,7 +194,25 @@ function switchTab(tab) {
   document.getElementById('panelPassword').style.display = isPass ? '' : 'none';
   document.getElementById('panelFace').style.display = isPass ? 'none' : '';
 }
-function goToFaceLogin() {
+async function goToFaceLogin() {
+  // Mark the Face ID tab as active immediately for visual feedback.
+  document.getElementById('tabPassword').classList.remove('active');
+  document.getElementById('tabFace').classList.add('active');
+
+  // Trigger the camera permission prompt here — inside the tab click's
+  // user-gesture context — so the destination page can auto-start the
+  // scanner from its load handler without needing another user gesture.
+  // Browsers (especially mobile) only allow getUserMedia inside a gesture.
+  try {
+    const preStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user' }
+    });
+    // Release tracks; the target page will open a fresh stream.
+    preStream.getTracks().forEach(t => t.stop());
+  } catch (e) {
+    // Permission denied or no camera — navigate anyway so the user
+    // sees the error UI and manual retry button on the face login page.
+  }
   window.location.href = "{% url 'face_login' %}";
 }
 </script>

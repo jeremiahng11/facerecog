@@ -17,12 +17,20 @@
     animation: fadeIn 0.4s ease;
   }
   .back-link {
-    display: flex; align-items: center; gap: 6px;
+    display: inline-flex; align-items: center; gap: 6px;
     color: var(--text2); font-size: 13px;
     margin-bottom: 24px;
     cursor: pointer;
+    padding: 8px 12px;
+    margin-left: -12px;
+    border-radius: 8px;
+    position: relative;
+    z-index: 10;
+    -webkit-tap-highlight-color: rgba(0, 212, 255, 0.2);
+    touch-action: manipulation;
   }
-  .back-link:hover { color: var(--accent); text-decoration: none; }
+  .back-link:hover { color: var(--accent); text-decoration: none; background: rgba(0,212,255,0.05); }
+  .back-link:active { background: rgba(0,212,255,0.12); }
 
   .scan-title {
     text-align: center;
@@ -167,7 +175,7 @@
 
 {% block content %}
 <div class="face-scan-wrap">
-  <a href="{% url 'login' %}" class="back-link">
+  <a href="{% url 'login' %}" class="back-link" onclick="cancelAndBack(event)">
     <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
     Back to Login
   </a>
@@ -232,9 +240,11 @@
 const CSRF_TOKEN = '{{ csrf_token }}';
 let stream = null;
 let scanning = false;
-let scanInterval = null;
 let attemptCount = 0;
-const MAX_ATTEMPTS = 20; // ~10 seconds of scanning at 500ms intervals
+const MAX_ATTEMPTS = 40;              // up to ~15 seconds of scanning
+const CAPTURE_MAX_DIM = 320;           // smaller = faster encode/upload/detection
+const CAPTURE_JPEG_QUALITY = 0.70;     // smaller payload, still plenty for face recognition
+const SCAN_GAP_MS = 50;               // tight loop — server is the bottleneck
 
 const video = document.getElementById('videoEl');
 const camera = document.getElementById('cameraContainer');
@@ -292,16 +302,32 @@ async function startScan() {
   scanBtn.innerHTML = `<svg class="spinning" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Scanning…`;
   setStatus('scanning', 'Scanning…', 'Looking for your face. Hold still.');
 
-  scanInterval = setInterval(captureAndVerify, 600);
+  // Self-chaining scan loop. Unlike setInterval, this fires the next
+  // attempt as soon as the previous fetch resolves, so when the server
+  // is fast we're not idling for 600ms between tries, and when it's
+  // slow we don't stack overlapping requests.
+  scanLoop();
 }
 
+async function scanLoop() {
+  while (scanning) {
+    await captureAndVerify();
+    if (!scanning) break;
+    await new Promise(r => setTimeout(r, SCAN_GAP_MS));
+  }
+}
+
+// Reuse a single canvas to avoid GC pressure in the hot loop
+const _cap = document.createElement('canvas');
+
 function captureFrame() {
-  const canvas = document.createElement('canvas');
-  canvas.width = video.videoWidth || 320;
-  canvas.height = video.videoHeight || 320;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL('image/jpeg', 0.85);
+  const vw = video.videoWidth || 320;
+  const vh = video.videoHeight || 320;
+  const scale = Math.min(1, CAPTURE_MAX_DIM / Math.max(vw, vh));
+  _cap.width = Math.max(1, Math.round(vw * scale));
+  _cap.height = Math.max(1, Math.round(vh * scale));
+  _cap.getContext('2d').drawImage(video, 0, 0, _cap.width, _cap.height);
+  return _cap.toDataURL('image/jpeg', CAPTURE_JPEG_QUALITY);
 }
 
 async function captureAndVerify() {
@@ -309,51 +335,108 @@ async function captureAndVerify() {
   if (attemptCount > MAX_ATTEMPTS) {
     stopScan();
     setStatus('failed', 'Scan Timeout', 'Face not recognised after multiple attempts. Please try again or use Staff ID login.');
+    // Log a single failure for the IP lockout system.
+    fetch('{% url "face_verify_fail" %}', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': CSRF_TOKEN },
+    }).catch(() => {});
     return;
   }
 
-  const imageData = captureFrame();
   try {
     const resp = await fetch('{% url "face_verify_ajax" %}', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
-      body: JSON.stringify({ image: imageData }),
+      body: JSON.stringify({ image: captureFrame() }),
     });
     const data = await resp.json();
 
     if (data.success) {
       stopScan();
+      stopCamera();
       setStatus('success', 'Identity Confirmed!', data.message, data.confidence);
       scanBtn.innerHTML = `<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Access Granted`;
       scanBtn.style.background = 'var(--accent3)';
-      setTimeout(() => { window.location.href = data.redirect || '/dashboard/'; }, 1500);
+      window.location.replace(data.redirect || '/dashboard/');
+      return;
+    } else if (data.verifying) {
+      setStatus('scanning', 'Verifying Identity…', data.message);
     } else if (data.face_detected === false) {
       setStatus('scanning', 'No Face Detected', 'Please centre your face in the circle.');
     }
-    // else: face detected but not matched — keep scanning silently
   } catch (e) {
     // network error, keep trying
   }
 }
 
 function stopScan() {
+  // Flipping scanning = false is enough — scanLoop() checks this flag
+  // at the top of every iteration and exits the while loop.
   scanning = false;
-  clearInterval(scanInterval);
-  scanInterval = null;
   scanBtn.disabled = false;
   scanBtn.innerHTML = `<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 3H5a2 2 0 00-2 2v2M17 3h2a2 2 0 012 2v2M7 21H5a2 2 0 01-2-2v-2M17 21h2a2 2 0 002-2v-2"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="15" cy="10" r="1" fill="currentColor"/><path d="M9 15c.667.667 1.333 1 2 1h2c.667 0 1.333-.333 2-1"/></svg> Retry Scan`;
 }
 
-// Auto-start camera preview and begin scanning on load
-window.addEventListener('load', async () => {
+function stopCamera() {
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+  if (video) {
+    video.srcObject = null;
+  }
+}
+
+// Explicit handler for the Back to Login link. Stops the scan loop and
+// releases the camera stream *before* navigating, so the click feels
+// instant instead of waiting for an in-flight verify request to finish.
+function cancelAndBack(e) {
+  stopScan();
+  stopCamera();
+  // Let the default anchor navigation proceed.
+}
+
+// Release camera and scan loop whenever the page is being unloaded for
+// any reason (refresh, close, browser back button).
+window.addEventListener('pagehide', () => {
+  stopScan();
+  stopCamera();
+});
+
+// Auto-start camera preview and begin scanning as soon as the DOM is
+// ready. We trigger this on DOMContentLoaded (earlier than 'load') so
+// the scan begins immediately. Camera permission should already have
+// been granted on the previous page's Face ID tab click, so the
+// getUserMedia call here runs against an already-granted origin and
+// doesn't require a fresh user gesture.
+let autoStarted = false;
+async function autoStartScanner() {
+  if (autoStarted) return;
+  autoStarted = true;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } }
+    });
     video.srcObject = stream;
     overlay.classList.add('hidden');
+    await new Promise(r => {
+      if (video.readyState >= 1) return r();
+      video.onloadedmetadata = r;
+    });
     startScan();
   } catch (e) {
-    // Camera not auto-started, user must click
+    // Permission not granted or camera missing — leave overlay and
+    // the manual "Start Face Scan" button visible so the user can retry.
+    autoStarted = false;
+    setStatus('failed', 'Camera blocked',
+      'Please allow camera access and tap "Start Face Scan".');
   }
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', autoStartScanner);
+} else {
+  autoStartScanner();
+}
 </script>
 {% endblock %}

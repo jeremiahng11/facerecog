@@ -1,4 +1,7 @@
+from decimal import Decimal, InvalidOperation
+
 from django import forms
+from django.conf import settings
 from django.contrib.auth.forms import AuthenticationForm
 from .models import StaffUser
 
@@ -29,16 +32,32 @@ class StaffUserCreationForm(forms.ModelForm):
         label='Confirm Password'
     )
 
+    # Credit controls (not model fields — handled in view)
+    prorate_credit = forms.BooleanField(
+        required=False, initial=True,
+        label='Prorate credit for this month',
+    )
+    manual_credit = forms.DecimalField(
+        required=False, max_digits=8, decimal_places=2,
+        label='Initial credit amount',
+    )
+
     class Meta:
         model = StaffUser
         fields = ['staff_id', 'email', 'full_name', 'department',
-                  'profile_picture', 'face_photo', 'face_enabled']
+                  'monthly_credit', 'profile_picture']
         widgets = {
             'staff_id': forms.TextInput(attrs={'placeholder': 'e.g. EMP-001'}),
             'email': forms.EmailInput(attrs={'placeholder': 'staff@company.com'}),
             'full_name': forms.TextInput(attrs={'placeholder': 'Full Name'}),
             'department': forms.TextInput(attrs={'placeholder': 'Department (optional)'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        default_credit = Decimal(str(getattr(settings, 'DEFAULT_MONTHLY_CREDIT', 50)))
+        self.fields['monthly_credit'].initial = default_credit
+        self.fields['manual_credit'].initial = default_credit
 
     def clean(self):
         cleaned_data = super().clean()
@@ -59,8 +78,9 @@ class StaffUserCreationForm(forms.ModelForm):
 class StaffUserEditForm(forms.ModelForm):
     class Meta:
         model = StaffUser
+        # face_photo removed: Face ID enrollment is live-camera only.
         fields = ['email', 'full_name', 'department',
-                  'profile_picture', 'face_photo', 'face_enabled', 'is_active']
+                  'profile_picture', 'face_enabled', 'is_active']
         widgets = {
             'email': forms.EmailInput(attrs={'placeholder': 'staff@company.com'}),
             'full_name': forms.TextInput(attrs={'placeholder': 'Full Name'}),
@@ -69,7 +89,7 @@ class StaffUserEditForm(forms.ModelForm):
 
 
 class FacePhotoUploadForm(forms.ModelForm):
-    """Form for users to upload their own face photo"""
+    """Form for users to update their profile picture and kiosk PIN."""
     class Meta:
         model = StaffUser
-        fields = ['face_photo', 'profile_picture']
+        fields = ['profile_picture', 'kiosk_pin']
