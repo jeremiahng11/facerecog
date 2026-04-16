@@ -1,4 +1,7 @@
+from decimal import Decimal, InvalidOperation
+
 from django import forms
+from django.conf import settings
 from django.contrib.auth.forms import AuthenticationForm
 from .models import StaffUser
 
@@ -29,17 +32,32 @@ class StaffUserCreationForm(forms.ModelForm):
         label='Confirm Password'
     )
 
+    # Credit controls (not model fields — handled in view)
+    prorate_credit = forms.BooleanField(
+        required=False, initial=True,
+        label='Prorate credit for this month',
+    )
+    manual_credit = forms.DecimalField(
+        required=False, max_digits=8, decimal_places=2,
+        label='Initial credit amount',
+    )
+
     class Meta:
         model = StaffUser
-        # face_photo removed: Face ID enrollment is live-camera only.
         fields = ['staff_id', 'email', 'full_name', 'department',
-                  'profile_picture']
+                  'monthly_credit', 'profile_picture']
         widgets = {
             'staff_id': forms.TextInput(attrs={'placeholder': 'e.g. EMP-001'}),
             'email': forms.EmailInput(attrs={'placeholder': 'staff@company.com'}),
             'full_name': forms.TextInput(attrs={'placeholder': 'Full Name'}),
             'department': forms.TextInput(attrs={'placeholder': 'Department (optional)'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        default_credit = Decimal(str(getattr(settings, 'DEFAULT_MONTHLY_CREDIT', 50)))
+        self.fields['monthly_credit'].initial = default_credit
+        self.fields['manual_credit'].initial = default_credit
 
     def clean(self):
         cleaned_data = super().clean()

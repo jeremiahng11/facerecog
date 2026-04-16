@@ -34,3 +34,7 @@ Thumbs.db
 # Celery
 celerybeat-schedule
 celerybeat.pid
+
+# Build
+dist/
+build/

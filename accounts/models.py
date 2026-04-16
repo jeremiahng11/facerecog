@@ -78,11 +78,11 @@ class StaffUser(AbstractBaseUser, PermissionsMixin):
     # Cafeteria credit system
     monthly_credit = models.DecimalField(
         max_digits=8, decimal_places=2, default=50.00,
-        help_text='Monthly cafeteria credit allowance in SGD'
+        help_text='Monthly cafeteria credit allowance'
     )
     credit_balance = models.DecimalField(
         max_digits=8, decimal_places=2, default=0.00,
-        help_text='Current cafeteria credit balance in SGD'
+        help_text='Current cafeteria credit balance'
     )
 
     objects = StaffUserManager()

@@ -195,8 +195,9 @@ FACE_ENROLL_NUM_SAMPLES = int(os.environ.get('FACE_ENROLL_NUM_SAMPLES', '5'))
 FACE_MIN_CONFIDENCE = float(os.environ.get('FACE_MIN_CONFIDENCE', '65'))
 
 # Number of consecutive successful matches to the same user required
-# before granting login. Prevents single-frame spoofing with photos.
-FACE_VERIFY_CONSECUTIVE_MATCHES = int(os.environ.get('FACE_VERIFY_CONSECUTIVE_MATCHES', '3'))
+# before granting login. 2 is sufficient for liveness variance check
+# while keeping kiosk queues fast.  Override via env var if needed.
+FACE_VERIFY_CONSECUTIVE_MATCHES = int(os.environ.get('FACE_VERIFY_CONSECUTIVE_MATCHES', '2'))
 
 FACE_PHOTOS_DIR = 'face_photos'
 
@@ -222,7 +223,9 @@ QR_SECRET_KEY = os.environ.get('QR_SECRET_KEY', '')
 # Kiosk idle timeout (seconds) before returning to idle screen.
 STAFF_IDLE_TIMEOUT_SECONDS = int(os.environ.get('STAFF_IDLE_TIMEOUT_SECONDS', '30'))
 # Default monthly staff credit allowance (SGD).
-MONTHLY_STAFF_CREDIT = float(os.environ.get('MONTHLY_STAFF_CREDIT', '50.00'))
+DEFAULT_MONTHLY_CREDIT = float(os.environ.get('DEFAULT_MONTHLY_CREDIT', '50.00'))
+# Working days per month used for proration calculation.
+CREDIT_WORKING_DAYS = int(os.environ.get('CREDIT_WORKING_DAYS', '30'))
 # Day of month to reset credits (used by future Celery Beat task).
 CREDIT_RESET_DAY = int(os.environ.get('CREDIT_RESET_DAY', '1'))
 

@@ -241,13 +241,10 @@ const CSRF_TOKEN = '{{ csrf_token }}';
 let stream = null;
 let scanning = false;
 let attemptCount = 0;
-let matchUser = null;                  // staff_id of current consecutive match streak
-let matchCount = 0;                    // consecutive match counter
-let matchEncodings = [];               // accumulated encodings for liveness check
 const MAX_ATTEMPTS = 40;              // up to ~15 seconds of scanning
-const CAPTURE_MAX_DIM = 480;           // downscale video frames to this max dimension
-const CAPTURE_JPEG_QUALITY = 0.75;     // lower quality = smaller payload, still plenty for face recognition
-const SCAN_GAP_MS = 60;                // small breather between attempts
+const CAPTURE_MAX_DIM = 320;           // smaller = faster encode/upload/detection
+const CAPTURE_JPEG_QUALITY = 0.70;     // smaller payload, still plenty for face recognition
+const SCAN_GAP_MS = 50;               // tight loop — server is the bottleneck
 
 const video = document.getElementById('videoEl');
 const camera = document.getElementById('cameraContainer');
@@ -320,19 +317,17 @@ async function scanLoop() {
   }
 }
 
+// Reuse a single canvas to avoid GC pressure in the hot loop
+const _cap = document.createElement('canvas');
+
 function captureFrame() {
-  // Downscale to CAPTURE_MAX_DIM on the client so the server's
-  // face_recognition.face_encodings() has less data to process — this
-  // is the single biggest win for end-to-end scan latency.
-  const vw = video.videoWidth || 480;
-  const vh = video.videoHeight || 480;
+  const vw = video.videoWidth || 320;
+  const vh = video.videoHeight || 320;
   const scale = Math.min(1, CAPTURE_MAX_DIM / Math.max(vw, vh));
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(vw * scale));
-  canvas.height = Math.max(1, Math.round(vh * scale));
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL('image/jpeg', CAPTURE_JPEG_QUALITY);
+  _cap.width = Math.max(1, Math.round(vw * scale));
+  _cap.height = Math.max(1, Math.round(vh * scale));
+  _cap.getContext('2d').drawImage(video, 0, 0, _cap.width, _cap.height);
+  return _cap.toDataURL('image/jpeg', CAPTURE_JPEG_QUALITY);
 }
 
 async function captureAndVerify() {
@@ -348,27 +343,15 @@ async function captureAndVerify() {
     return;
   }
 
-  const imageData = captureFrame();
   try {
     const resp = await fetch('{% url "face_verify_ajax" %}', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
-      body: JSON.stringify({
-        image: imageData,
-        match_user: matchUser,
-        match_count: matchCount,
-        match_encodings: matchEncodings,
-      }),
+      body: JSON.stringify({ image: captureFrame() }),
     });
     const data = await resp.json();
 
-    // Track consecutive match state returned by the server.
-    matchUser = data.match_user || null;
-    matchCount = data.match_count || 0;
-    matchEncodings = data.match_encodings || [];
-
     if (data.success) {
-      // Stop the scan loop AND release the camera immediately.
       stopScan();
       stopCamera();
       setStatus('success', 'Identity Confirmed!', data.message, data.confidence);
@@ -377,18 +360,9 @@ async function captureAndVerify() {
       window.location.replace(data.redirect || '/dashboard/');
       return;
     } else if (data.verifying) {
-      // Partial match — server needs more consecutive frames.
       setStatus('scanning', 'Verifying Identity…', data.message);
     } else if (data.face_detected === false) {
-      matchUser = null;
-      matchCount = 0;
-      matchEncodings = [];
       setStatus('scanning', 'No Face Detected', 'Please centre your face in the circle.');
-    } else {
-      // Face detected but not matched — reset streak.
-      matchUser = null;
-      matchCount = 0;
-      matchEncodings = [];
     }
   } catch (e) {
     // network error, keep trying

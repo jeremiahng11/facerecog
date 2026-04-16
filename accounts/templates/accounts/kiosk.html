@@ -87,15 +87,12 @@
 
 <script>
 const CSRF_TOKEN = '{{ csrf_token }}';
-const CAPTURE_MAX_DIM = 480;
-const SCAN_GAP_MS = 100;
+const CAPTURE_MAX_DIM = 320;   // smaller = faster encode/upload/detection
+const SCAN_GAP_MS = 50;        // tight loop — server is the bottleneck
 const RESET_DELAY_MS = 4000;
 
 let stream = null;
 let scanning = false;
-let matchUser = null;
-let matchCount = 0;
-let matchEncodings = [];
 
 const video = document.getElementById('videoEl');
 const ring = document.getElementById('cameraRing');
@@ -103,15 +100,17 @@ const statusEl = document.getElementById('statusText');
 const overlay = document.getElementById('welcomeOverlay');
 const nameEl = document.getElementById('welcomeName');
 
+// Reuse a single canvas to avoid GC pressure in the hot loop
+const _cap = document.createElement('canvas');
+
 function captureFrame() {
-  const vw = video.videoWidth || 480;
-  const vh = video.videoHeight || 480;
+  const vw = video.videoWidth || 320;
+  const vh = video.videoHeight || 320;
   const scale = Math.min(1, CAPTURE_MAX_DIM / Math.max(vw, vh));
-  const c = document.createElement('canvas');
-  c.width = Math.max(1, Math.round(vw * scale));
-  c.height = Math.max(1, Math.round(vh * scale));
-  c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
-  return c.toDataURL('image/jpeg', 0.75);
+  _cap.width = Math.max(1, Math.round(vw * scale));
+  _cap.height = Math.max(1, Math.round(vh * scale));
+  _cap.getContext('2d').drawImage(video, 0, 0, _cap.width, _cap.height);
+  return _cap.toDataURL('image/jpeg', 0.70);
 }
 
 async function scanLoop() {
@@ -120,17 +119,9 @@ async function scanLoop() {
       const resp = await fetch('{% url "face_verify_ajax" %}', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
-        body: JSON.stringify({
-          image: captureFrame(),
-          match_user: matchUser,
-          match_count: matchCount,
-          match_encodings: matchEncodings,
-        }),
+        body: JSON.stringify({ image: captureFrame() }),
       });
       const data = await resp.json();
-      matchUser = data.match_user || null;
-      matchCount = data.match_count || 0;
-      matchEncodings = data.match_encodings || [];
 
       if (data.success) {
         scanning = false;
@@ -160,10 +151,6 @@ async function scanLoop() {
         return;
       } else if (data.face_detected === false) {
         statusEl.textContent = 'Position your face in the circle';
-      } else {
-        matchUser = null;
-        matchCount = 0;
-        matchEncodings = [];
       }
     } catch (e) {
       // network error, keep trying

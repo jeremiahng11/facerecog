@@ -162,8 +162,12 @@ def face_login_view(request):
 def face_verify_ajax(request):
     """
     AJAX: receive base64 frame, compare against enrolled faces.
-    Enforces rate limiting, IP lockout, face quality, minimum
-    confidence, and multi-frame consecutive matching.
+
+    Optimised for kiosk queue speed:
+    • Single-pass face detection + encoding (no duplicate work)
+    • In-memory encoding cache with batch numpy distance computation
+    • Server-side session state (no large encoding arrays in payload)
+    • Reduced default consecutive matches (2 instead of 3)
     """
     try:
         ip_addr = get_client_ip(request)
@@ -175,7 +179,6 @@ def face_verify_ajax(request):
                 'success': False,
                 'message': 'Too many failed attempts. Please try again later.',
                 'locked_out': True,
-                'match_user': None, 'match_count': 0,
             })
 
         data = json.loads(request.body)
@@ -183,77 +186,60 @@ def face_verify_ajax(request):
         if not image_data:
             return JsonResponse({'success': False, 'message': 'No image received'})
 
-        client_match_user = data.get('match_user')
-        client_match_count = data.get('match_count', 0)
-        # Client sends accumulated encodings from previous match frames
-        # so the server can check liveness variance before granting login.
-        client_encodings = data.get('match_encodings', [])
-        required_consecutive = getattr(settings, 'FACE_VERIFY_CONSECUTIVE_MATCHES', 3)
+        required_consecutive = getattr(settings, 'FACE_VERIFY_CONSECUTIVE_MATCHES', 2)
         min_confidence = getattr(settings, 'FACE_MIN_CONFIDENCE', 65)
-
-        # ── Face quality gate ─────────────────────────────────────
-        quality = face_utils.validate_face_quality(image_data)
-        if not quality['ok']:
-            return JsonResponse({
-                'success': False,
-                'message': quality['reason'],
-                'face_detected': False,
-                'match_user': None, 'match_count': 0,
-            })
-
-        candidate_encoding = face_utils.extract_encoding_from_b64(image_data)
-        if candidate_encoding is None:
-            return JsonResponse({
-                'success': False,
-                'message': 'No face detected in frame. Please look at the camera.',
-                'face_detected': False,
-                'match_user': None, 'match_count': 0,
-            })
-
-        # ── Compare against enrolled users ────────────────────────
         tolerance = getattr(settings, 'FACE_RECOGNITION_TOLERANCE', 0.4)
-        users_with_face = StaffUser.objects.filter(
-            face_enabled=True, face_registered=True, is_active=True
-        ).exclude(face_encoding__isnull=True).exclude(face_encoding='')
 
-        best_match = None
-        best_confidence = 0.0
-        for user in users_with_face:
-            known_encoding = user.get_face_encoding()
-            if not known_encoding:
-                continue
-            result = face_utils.compare_faces(known_encoding, candidate_encoding, tolerance)
-            if result['match'] and result['confidence'] > best_confidence:
-                best_match = user
-                best_confidence = result['confidence']
+        # ── Single-pass: validate face quality AND extract encoding ──
+        # Old flow called face_locations() twice (once for quality, once
+        # inside face_encodings).  This halves the per-frame CPU work.
+        result = face_utils.validate_and_extract(image_data)
+        if not result['ok']:
+            return JsonResponse({
+                'success': False,
+                'message': result['reason'],
+                'face_detected': False,
+            })
 
-        if best_match and best_confidence >= min_confidence:
-            if client_match_user == best_match.staff_id:
-                consecutive = client_match_count + 1
+        candidate_encoding = result['encoding']
+
+        # ── Batch compare against all enrolled users at once ─────
+        # Uses in-memory numpy matrix — no DB query, no JSON parsing,
+        # single vectorised distance computation.
+        match = face_utils.encoding_cache.find_best_match(candidate_encoding, tolerance)
+
+        if match and match['confidence'] >= min_confidence:
+            # ── Server-side consecutive match tracking ────────────
+            # Stored in Django session to avoid sending large encoding
+            # arrays back and forth in every request payload.
+            sess_match_user = request.session.get('_face_match_user')
+            sess_match_count = request.session.get('_face_match_count', 0)
+            sess_encodings = request.session.get('_face_match_encs', [])
+
+            if sess_match_user == match['staff_id']:
+                consecutive = sess_match_count + 1
             else:
                 consecutive = 1
-                client_encodings = []  # reset if user changed
+                sess_encodings = []
 
             # Accumulate this frame's encoding for liveness check.
-            all_encodings = client_encodings + [candidate_encoding]
+            all_encodings = sess_encodings + [candidate_encoding]
 
             if consecutive < required_consecutive:
+                request.session['_face_match_user'] = match['staff_id']
+                request.session['_face_match_count'] = consecutive
+                request.session['_face_match_encs'] = all_encodings
                 return JsonResponse({
                     'success': False,
                     'face_detected': True,
                     'message': f'Verifying… ({consecutive}/{required_consecutive})',
-                    'match_user': best_match.staff_id,
-                    'match_count': consecutive,
-                    'match_encodings': all_encodings,
-                    'confidence': best_confidence,
+                    'confidence': match['confidence'],
                     'verifying': True,
                 })
 
             # ── Liveness check: verify frame variance ─────────────
-            # A printed photo or phone screen produces nearly identical
-            # encodings across frames. A real person's micro-movements
-            # and blinking create measurable variance.
             if not face_utils.check_encoding_variance(all_encodings, min_std=0.008):
+                _clear_face_session(request)
                 FaceLoginLog.objects.create(
                     success=False, ip_address=ip_addr,
                     device=device_info,
@@ -267,21 +253,21 @@ def face_verify_ajax(request):
                     f'{len(all_encodings)} frames). This may indicate a '
                     f'printed photo or phone screen was used.\n'
                     f'Device: {device_info}\n'
-                    f'Matched user: {best_match.staff_id}\n'
+                    f'Matched user: {match["staff_id"]}\n'
                     f'Time: {timezone.now().isoformat()}',
                 )
                 return JsonResponse({
                     'success': False,
                     'face_detected': True,
                     'message': 'Liveness check failed. Please look directly at the camera and blink naturally.',
-                    'match_user': None, 'match_count': 0,
-                    'match_encodings': [],
                 })
 
             # ── Grant login ───────────────────────────────────────
+            _clear_face_session(request)
+            best_match = StaffUser.objects.get(pk=match['pk'])
             FaceLoginLog.objects.create(
                 user=best_match, success=True,
-                confidence=best_confidence, ip_address=ip_addr,
+                confidence=match['confidence'], ip_address=ip_addr,
                 device=device_info,
                 notes=f'{required_consecutive} consecutive matches',
             )
@@ -294,29 +280,27 @@ def face_verify_ajax(request):
             return JsonResponse({
                 'success': True,
                 'message': f'Welcome, {best_match.display_name}!',
-                'confidence': best_confidence,
+                'confidence': match['confidence'],
                 'redirect': '/dashboard/',
-                'match_user': None, 'match_count': 0,
             })
         else:
-            # Don't log every individual non-match frame — the scan loop
-            # fires ~10 frames/second and logging each one would flood
-            # the database and trigger the IP lockout within seconds.
-            # Only log once when the client explicitly reports a failed
-            # scan session (see queue_kiosk timeout / face_login MAX_ATTEMPTS).
-            # The lockout system still works because it counts logged
-            # failure entries, which are created by the session-level
-            # failure endpoints.
+            # No match — reset session streak
+            _clear_face_session(request)
             return JsonResponse({
                 'success': False, 'face_detected': True,
                 'message': 'Face not recognised. Try again or use Staff ID login.',
                 'confidence': 0,
-                'match_user': None, 'match_count': 0,
             })
 
     except Exception as e:
         logger.exception("Error in face_verify_ajax")
         return JsonResponse({'success': False, 'message': f'Server error: {str(e)}'})
+
+
+def _clear_face_session(request):
+    """Remove temporary face verification state from the session."""
+    for key in ('_face_match_user', '_face_match_count', '_face_match_encs'):
+        request.session.pop(key, None)
 
 
 @require_POST
@@ -515,6 +499,7 @@ def enroll_face_ajax(request):
         user.save(update_fields=[
             'face_photo', 'face_encoding', 'face_registered', 'face_enabled'
         ])
+        face_utils.encoding_cache.invalidate()
 
         return JsonResponse({
             'success': True,
@@ -588,16 +573,50 @@ def admin_users_view(request):
 @login_required
 @user_passes_test(is_admin)
 def admin_add_user_view(request):
+    from decimal import Decimal
+    working_days = getattr(settings, 'CREDIT_WORKING_DAYS', 30)
+
     if request.method == 'POST':
         form = StaffUserCreationForm(request.POST, request.FILES)
         if form.is_valid():
-            user = form.save()
-            _log_admin_action(request.user, 'create', user)
-            messages.success(request, f'User {user.staff_id} created successfully.')
+            user = form.save(commit=False)
+            user.set_password(form.cleaned_data['password'])
+
+            # ── Credit assignment ─────────────────────────────────
+            prorate = form.cleaned_data.get('prorate_credit', True)
+            if prorate:
+                # Prorate: remaining days in the month / working days
+                today = timezone.localdate()
+                import calendar
+                _, days_in_month = calendar.monthrange(today.year, today.month)
+                remaining_days = days_in_month - today.day + 1  # include today
+                ratio = Decimal(str(remaining_days)) / Decimal(str(working_days))
+                # Cap at 1.0 so credit never exceeds monthly amount
+                if ratio > 1:
+                    ratio = Decimal('1')
+                user.credit_balance = (user.monthly_credit * ratio).quantize(Decimal('0.01'))
+            else:
+                manual = form.cleaned_data.get('manual_credit')
+                if manual is not None:
+                    user.credit_balance = manual
+                else:
+                    user.credit_balance = user.monthly_credit
+
+            user.save()
+            _log_admin_action(request.user, 'create', user,
+                              details=f'Credit: S${user.credit_balance}')
+            messages.success(
+                request,
+                f'User {user.staff_id} created with S${user.credit_balance} credit.',
+            )
             return redirect('admin_users')
     else:
         form = StaffUserCreationForm()
-    return render(request, 'accounts/admin_add_user.html', {'form': form})
+
+    return render(request, 'accounts/admin_add_user.html', {
+        'form': form,
+        'working_days': working_days,
+    })
 
 
 @login_required
@@ -644,6 +663,8 @@ def admin_bulk_import_view(request):
     """CSV bulk import of users. Expects columns: staff_id, email, full_name, department, password."""
     import csv
     import io
+    import calendar
+    from decimal import Decimal
 
     results = None
     if request.method == 'POST' and request.FILES.get('csv_file'):
@@ -652,6 +673,15 @@ def admin_bulk_import_view(request):
             decoded = csv_file.read().decode('utf-8-sig')
             reader = csv.DictReader(io.StringIO(decoded))
             results = {'created': [], 'skipped': [], 'errors': []}
+
+            # Prorate credit for bulk-imported users
+            working_days = getattr(settings, 'CREDIT_WORKING_DAYS', 30)
+            default_credit = Decimal(str(getattr(settings, 'DEFAULT_MONTHLY_CREDIT', 50)))
+            today = timezone.localdate()
+            _, days_in_month = calendar.monthrange(today.year, today.month)
+            remaining = days_in_month - today.day + 1
+            ratio = min(Decimal('1'), Decimal(str(remaining)) / Decimal(str(working_days)))
+            prorated = (default_credit * ratio).quantize(Decimal('0.01'))
 
             for i, row in enumerate(reader, start=2):  # row 1 is header
                 staff_id = (row.get('staff_id') or '').strip()
@@ -678,8 +708,10 @@ def admin_bulk_import_view(request):
                         password=password,
                         full_name=full_name,
                         department=department,
+                        monthly_credit=default_credit,
+                        credit_balance=prorated,
                     )
-                    _log_admin_action(request.user, 'create', user, 'CSV bulk import')
+                    _log_admin_action(request.user, 'create', user, f'CSV bulk import · S${prorated}')
                     results['created'].append(staff_id)
                 except Exception as e:
                     results['errors'].append(f'Row {i} ({staff_id}): {e}')
@@ -765,6 +797,7 @@ def admin_reencode_user(request, user_id):
             target_user.set_face_encoding(encoding)
             target_user.face_registered = True
             target_user.save()
+            face_utils.encoding_cache.invalidate()
             _log_admin_action(request.user, 'reencode', target_user)
             messages.success(request, f'Face re-encoded for {target_user.staff_id}.')
         else:
