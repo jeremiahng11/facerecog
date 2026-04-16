@@ -1,0 +1,159 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><title>Administrator Guide</title>
+<style>
+body{font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#1a1a1a;line-height:1.6;margin:40px;}
+h1{font-size:22pt;color:#1e56b8;border-bottom:2px solid #1e56b8;padding-bottom:8px;}
+h2{font-size:16pt;color:#1e56b8;margin-top:28px;border-bottom:1px solid #d6e2f0;padding-bottom:4px;}
+h3{font-size:13pt;color:#333;margin-top:16px;}
+table{border-collapse:collapse;width:100%;margin:10px 0;}
+th{background:#eef2f7;text-align:left;padding:8px 12px;border:1px solid #d6e2f0;font-size:10pt;}
+td{padding:8px 12px;border:1px solid #d6e2f0;font-size:10pt;}
+code{font-family:Consolas,'Courier New',monospace;font-size:10pt;background:#f0f4f8;padding:2px 5px;}
+.note{background:#eff6ff;border-left:4px solid #1e56b8;padding:10px 14px;margin:12px 0;font-size:10pt;}
+.warn{background:#fef3c7;border-left:4px solid #d97706;padding:10px 14px;margin:12px 0;font-size:10pt;}
+ol,ul{padding-left:24px;}li{margin-bottom:4px;}
+</style></head><body>
+
+<h1>Administrator Guide</h1>
+<p><strong>System:</strong> FaceID Portal — Cafeteria Management System<br>
+<strong>Role:</strong> Administrator<br>
+<strong>Last Updated:</strong> April 2026</p>
+
+<h2>1. Dashboard Overview</h2>
+<p>After logging in, you land on the <strong>Admin Dashboard</strong> showing:</p>
+<ul>
+<li><strong>Today's KPIs</strong> — Revenue, orders, credits used, refunds</li>
+<li><strong>7-day revenue chart</strong></li>
+<li><strong>Top 5 items</strong> sold this week</li>
+<li><strong>Recent orders</strong> list</li>
+</ul>
+<p>Quick-access buttons: Displays, Menu, Stock, Orders, Reports, Staff, Events, Event Menus, Settings.</p>
+
+<h2>2. Managing Users</h2>
+<h3>2.1 Add a Single User</h3>
+<ol>
+<li>Go to <strong>Users → Add User</strong></li>
+<li>Fill in: Staff ID, Email, Full Name, Department, Password</li>
+<li>Select <strong>Employment Type</strong>: Permanent, Temp Staff, or Intern</li>
+<li>For Temp/Intern: set the <strong>Last Day</strong> — account auto-disables after this date</li>
+<li>Set <strong>Monthly Credit</strong> (default S$50)</li>
+<li><strong>Prorate Credit</strong> checkbox (checked by default) — auto-calculates opening balance based on remaining days this month</li>
+<li>Uncheck to enter a manual credit amount</li>
+<li>Click <strong>Create User</strong></li>
+</ol>
+
+<h3>2.2 Bulk Import</h3>
+<ol>
+<li>Go to <strong>Users → Bulk Import</strong></li>
+<li>Download the <strong>CSV Template</strong> or <strong>Excel Template</strong></li>
+<li>Fill in user data (staff_id, email, full_name, password are required)</li>
+<li>Optional columns: department, staff_type (permanent/temp/intern), contract_end_date (YYYY-MM-DD)</li>
+<li>Upload the file — credits are auto-prorated</li>
+</ol>
+
+<h3>2.3 Edit / Deactivate Users</h3>
+<ul>
+<li>Click any user in the Users list to edit their details</li>
+<li>Toggle <strong>Active</strong> to deactivate (blocks login)</li>
+<li>Change <strong>Staff Type</strong> and contract end date for existing users</li>
+<li>Adjust credit balance from the <strong>Staff Credits</strong> page</li>
+</ul>
+
+<h2>3. Menu Management</h2>
+<ol>
+<li>Go to <strong>Menu</strong> from the dashboard</li>
+<li><strong>Add Item</strong>: name, description, staff price, public price, menu type (Local/International/Cafe Bar), category, photo</li>
+<li>Tick <strong>Vegetarian</strong> for plant-based items</li>
+<li>Set <strong>Daily Quantity</strong> and <strong>Low Stock Threshold</strong></li>
+<li>Toggle <strong>Available</strong> to hide items without deleting</li>
+</ol>
+
+<h2>4. Daily Stock Management</h2>
+<ol>
+<li>Go to <strong>Stock</strong> each morning</li>
+<li>Set the day's quantities for each item</li>
+<li>As orders come in, remaining stock decreases automatically</li>
+<li>Items reaching 0 show as "Sold Out" in all ordering interfaces</li>
+</ol>
+
+<h2>5. Orders</h2>
+<ul>
+<li><strong>Orders</strong> — view all orders, filter by status</li>
+<li>Cancel an active order: credits are auto-refunded, stock is reinstated</li>
+<li><strong>My Orders</strong> — place orders as admin (e.g. for visitors)</li>
+</ul>
+
+<h2>6. Reports</h2>
+<p>Go to <strong>Reports</strong> — filter by Today / Week / Month:</p>
+<ul>
+<li><strong>Revenue KPIs</strong> — total revenue, credits used, refunds, net</li>
+<li><strong>By Menu Type</strong> — Local Kitchen, International Kitchen, Cafe Bar, Mixed</li>
+<li><strong>By Payment Method</strong> — Staff Credits, Stripe, PayNow, Cash, Terminal</li>
+<li><strong>Daily Breakdown</strong> table</li>
+<li><strong>Vending Machines</strong> — total payable to vendor, per-machine breakdown, link to full vending report with CSV download</li>
+<li><strong>Refunds &amp; No Shows</strong> — cancelled orders and auto-cancelled no-show orders</li>
+</ul>
+
+<h2>7. Settings</h2>
+<h3>7.1 Kiosk Timeouts</h3>
+<ul>
+<li><strong>Idle landing countdown</strong> — seconds before kiosk resets to idle screen</li>
+<li><strong>Session idle timeout</strong> — auto-logout after inactivity</li>
+<li><strong>Post-print auto-return</strong> — seconds after print before returning to idle</li>
+</ul>
+
+<h3>7.2 Credit Settings</h3>
+<ul>
+<li><strong>Working Days / Month</strong> — used to prorate credit for new staff (e.g. 30 days → joining on 15th = 50% credit)</li>
+</ul>
+
+<h3>7.3 Auto-Cancellation</h3>
+<ul>
+<li><strong>Kitchen Cutoff Time</strong> (default 17:01) — uncollected kitchen orders auto-cancel after this time daily</li>
+<li><strong>Cafe Bar Cutoff Time</strong> (default 20:01) — uncollected cafe bar orders auto-cancel daily</li>
+<li><strong>No Show Timer</strong> (default 20 min) — orders not collected within this time appear in the No Show tab at counters</li>
+<li>Credits are automatically refunded for cancelled orders</li>
+<li>For mixed orders with partial collection, only uncollected items are refunded</li>
+</ul>
+
+<h3>7.4 Operating Hours</h3>
+<ul>
+<li>Set opening/closing times for Kitchen and Cafe Bar</li>
+<li>Toggle per weekday (Mon–Sun)</li>
+<li>Add public holidays to close specific counters</li>
+</ul>
+
+<h2>8. Events &amp; Catering</h2>
+<ol>
+<li>Go to <strong>Events</strong> from the dashboard</li>
+<li>View all event bookings (pending, approved, rejected, cancelled)</li>
+<li>Approve or reject staff event requests</li>
+<li><strong>Book an Event</strong> — admin bookings are auto-approved</li>
+<li><strong>Event Menus</strong> — create/edit catering packages with components (mains, sides, drinks, desserts), price per pax, min/max pax</li>
+</ol>
+
+<h2>9. Vending Machine Integration</h2>
+<ul>
+<li>Vending API docs: <strong>Settings → Vending API</strong> (or download .doc)</li>
+<li>Set <code>VENDING_API_KEY</code> environment variable on Railway</li>
+<li>Vending machines deduct staff credit via QR scan</li>
+<li>Track transactions in <strong>Reports → Vending Machines</strong></li>
+<li>Download monthly CSV from <strong>Reports → Full Vending Report</strong> for vendor reconciliation</li>
+</ul>
+
+<h2>10. Monthly Credit Reset</h2>
+<ul>
+<li>Credits reset automatically on the 1st of each month via GitHub Actions cron</li>
+<li>Any uncollected orders from the previous day are refunded <strong>before</strong> the reset</li>
+<li>Expired temp/intern accounts are auto-disabled</li>
+</ul>
+
+<h2>11. Face ID Management</h2>
+<ul>
+<li>Staff enroll Face ID from their Profile page (live camera only — no photo upload)</li>
+<li>Admin can toggle <strong>Face Enabled</strong> per user in the edit user page</li>
+<li>View login attempts in <strong>Users → Face Logs</strong></li>
+<li>Liveness detection prevents photo spoofing</li>
+</ul>
+
+</body></html>

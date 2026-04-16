@@ -1,0 +1,127 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><title>Counter Staff Guide</title>
+<style>
+body{font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#1a1a1a;line-height:1.6;margin:40px;}
+h1{font-size:22pt;color:#1e56b8;border-bottom:2px solid #1e56b8;padding-bottom:8px;}
+h2{font-size:16pt;color:#1e56b8;margin-top:28px;border-bottom:1px solid #d6e2f0;padding-bottom:4px;}
+h3{font-size:13pt;color:#333;margin-top:16px;}
+table{border-collapse:collapse;width:100%;margin:10px 0;}
+th{background:#eef2f7;text-align:left;padding:8px 12px;border:1px solid #d6e2f0;font-size:10pt;}
+td{padding:8px 12px;border:1px solid #d6e2f0;font-size:10pt;}
+.note{background:#eff6ff;border-left:4px solid #1e56b8;padding:10px 14px;margin:12px 0;font-size:10pt;}
+.warn{background:#fef3c7;border-left:4px solid #d97706;padding:10px 14px;margin:12px 0;font-size:10pt;}
+ol,ul{padding-left:24px;}li{margin-bottom:4px;}
+</style></head><body>
+
+<h1>Counter Staff Guide</h1>
+<p><strong>Roles:</strong> Kitchen Counter / Cafe Bar Counter<br>
+<strong>Access:</strong> Counter Display, QR Scanner, Events<br>
+<strong>Last Updated:</strong> April 2026</p>
+
+<h2>1. Your Role</h2>
+<p>As counter staff, you manage the order display at your assigned counter (Local Kitchen, International Kitchen, or Cafe Bar). Your main tasks are:</p>
+<ul>
+<li>Monitor incoming orders on the counter display</li>
+<li>Prepare food items as orders arrive</li>
+<li>Scan customer QR codes to confirm collection</li>
+<li>Track no-show orders</li>
+</ul>
+
+<h2>2. Getting Started</h2>
+<ol>
+<li>Log in with your Staff ID and Password</li>
+<li>You'll land on the <strong>Displays Hub</strong></li>
+<li>Select your counter: Local Kitchen, International Kitchen, or Cafe Bar</li>
+<li>Keep this page open on your counter tablet — it auto-refreshes every 20 seconds</li>
+</ol>
+
+<h2>3. Counter Display Layout</h2>
+<p>The counter display has two areas:</p>
+<table>
+<tr><th>Area</th><th>Description</th></tr>
+<tr><td><strong>Left: Orders</strong></td><td>Grid of order cards showing order number, customer name, item list, and status</td></tr>
+<tr><td><strong>Right: QR Scanner</strong></td><td>Camera view for scanning customer QR codes + HID scanner support</td></tr>
+</table>
+
+<h3>3.1 Order Cards</h3>
+<p>Each order card shows:</p>
+<ul>
+<li><strong>Order Number</strong> (large, e.g. H031, C019)</li>
+<li><strong>STAFF / PUBLIC</strong> badge</li>
+<li><strong>Time</strong> the order was placed</li>
+<li><strong>Status</strong>: Confirmed, Preparing, Ready</li>
+<li><strong>Customer name</strong></li>
+<li><strong>Items list</strong> with quantities (only items for YOUR counter)</li>
+<li><strong>Mixed order indicator</strong> — if the order has items at another counter too</li>
+</ul>
+
+<h3>3.2 Tabs</h3>
+<ul>
+<li><strong>Active</strong> — current orders waiting to be collected</li>
+<li><strong>No Show</strong> — orders ready for more than 20 minutes (not collected). Also shows auto-cancelled orders from today.</li>
+</ul>
+
+<h2>4. Scanning QR Codes</h2>
+<p>When a customer comes to collect their food:</p>
+<ol>
+<li>Ask them to show their QR code (on their phone or printed receipt)</li>
+<li>Point the tablet camera at the QR code, OR use the handheld HID scanner</li>
+<li>The system validates the QR and shows a result popup:</li>
+</ol>
+
+<table>
+<tr><th>Result</th><th>What to Do</th></tr>
+<tr><td style="color:green"><strong>Valid</strong></td><td>Hand over the food. Items are marked as collected.</td></tr>
+<tr><td style="color:orange"><strong>Wrong Counter</strong></td><td>Direct the customer to the correct counter (e.g. "Please collect your cafe items at the Cafe Bar").</td></tr>
+<tr><td style="color:red"><strong>Duplicate</strong></td><td>This QR was already scanned. The order has already been collected.</td></tr>
+<tr><td style="color:blue"><strong>Not Ready</strong></td><td>The order hasn't been prepared yet. Ask the customer to wait.</td></tr>
+<tr><td style="color:red"><strong>Invalid</strong></td><td>The QR code is not recognised. Ask the customer to show their order QR from the app.</td></tr>
+</table>
+
+<h2>5. Mixed Orders</h2>
+<p>Some orders contain items from both Kitchen and Cafe Bar (mixed orders). These show a "Mixed order" indicator on the card.</p>
+<ul>
+<li>You only see items belonging to <strong>your counter</strong></li>
+<li>When you scan the QR, only your counter's items are marked as collected</li>
+<li>The order card disappears from your display once your items are collected</li>
+<li>The other counter still sees their items until collected separately</li>
+</ul>
+
+<h2>6. No-Show Orders</h2>
+<ul>
+<li>Orders not collected within 20 minutes (configurable by admin) move to the <strong>No Show</strong> tab</li>
+<li>These are highlighted with a red border</li>
+<li>At the daily cutoff time (set by admin), uncollected orders are <strong>automatically cancelled</strong> and credits refunded</li>
+<li>You do not need to take any action — the system handles refunds automatically</li>
+</ul>
+
+<h2>7. Using a Handheld QR Scanner</h2>
+<p>If your counter has an external USB/Bluetooth barcode scanner (HID keyboard emulation):</p>
+<ul>
+<li>The scanner types the QR data into a hidden input field</li>
+<li>It auto-submits when it detects an Enter or Tab character</li>
+<li>No need to tap anything — just scan and the popup appears</li>
+<li>If using both camera and handheld, the handheld takes priority</li>
+</ul>
+
+<div class="note">
+<strong>Tip:</strong> If the camera stops working, try refreshing the page. The scanner auto-recovers focus every 800ms.
+</div>
+
+<h2>8. Events</h2>
+<ul>
+<li>Go to <strong>Events</strong> in the top navigation to see upcoming catering bookings</li>
+<li>View event details: date, time, pax, menu selection</li>
+<li>Use this to plan preparation for event catering</li>
+</ul>
+
+<h2>9. Troubleshooting</h2>
+<table>
+<tr><th>Issue</th><th>Solution</th></tr>
+<tr><td>Orders not appearing</td><td>Refresh the page. Check that you're on the correct counter (Local/International/Cafe Bar).</td></tr>
+<tr><td>QR scanner not working</td><td>Refresh the page. Check camera permissions. For HID scanners, make sure the scanner is paired/connected.</td></tr>
+<tr><td>"Wrong counter" on valid order</td><td>The customer has items at a different counter. Direct them there.</td></tr>
+<tr><td>Order disappeared suddenly</td><td>It was either collected at this counter already, or auto-cancelled at cutoff time.</td></tr>
+</table>
+
+</body></html>

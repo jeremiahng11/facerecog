@@ -89,6 +89,16 @@
     </div>
   </form>
 
+  <div class="card" style="max-width:640px;margin-top:24px">
+    <div style="font-size:15px;font-weight:700;margin-bottom:12px">User Guides</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <a href="{% url 'user_guide_download' 'admin' %}" class="btn btn-secondary" style="text-align:center;font-size:13px">Admin Guide</a>
+      <a href="{% url 'user_guide_download' 'kitchen-admin' %}" class="btn btn-secondary" style="text-align:center;font-size:13px">Kitchen Admin Guide</a>
+      <a href="{% url 'user_guide_download' 'counter' %}" class="btn btn-secondary" style="text-align:center;font-size:13px">Counter Staff Guide</a>
+      <a href="{% url 'user_guide_download' 'staff' %}" class="btn btn-secondary" style="text-align:center;font-size:13px">Staff User Guide</a>
+    </div>
+  </div>
+
   <a href="{% url 'cafeteria_admin_hours' %}" class="card" style="max-width:640px;display:flex;justify-content:space-between;align-items:center;text-decoration:none;color:inherit;margin-top:16px">
     <div>
       <div style="font-size:15px;font-weight:700">🕒 Operating Hours</div>

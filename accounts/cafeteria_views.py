@@ -2348,6 +2348,28 @@ def vending_api_docs_download_view(request):
     return response
 
 
+@login_required
+@user_passes_test(is_admin)
+def user_guide_download_view(request, guide_type):
+    """Download user guides as .doc files."""
+    from django.http import HttpResponse
+
+    guides = {
+        'admin': ('Administrator_Guide.doc', 'cafeteria/guides/admin_guide.html'),
+        'kitchen-admin': ('Kitchen_Admin_Guide.doc', 'cafeteria/guides/kitchen_admin_guide.html'),
+        'counter': ('Counter_Staff_Guide.doc', 'cafeteria/guides/counter_guide.html'),
+        'staff': ('Staff_User_Guide.doc', 'cafeteria/guides/staff_guide.html'),
+    }
+    if guide_type not in guides:
+        raise Http404()
+
+    filename, template = guides[guide_type]
+    content = render(request, template).content
+    response = HttpResponse(content, content_type='application/msword')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
 @csrf_exempt
 @require_POST
 def vending_deduct_view(request):
