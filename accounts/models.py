@@ -56,6 +56,16 @@ class StaffUser(AbstractBaseUser, PermissionsMixin):
         help_text='4-6 digit PIN for kiosk queue login (set in Profile)'
     )
 
+    # Cafeteria credits
+    monthly_credit = models.DecimalField(
+        max_digits=8, decimal_places=2, default=50.00,
+        help_text='Monthly cafeteria credit allowance'
+    )
+    credit_balance = models.DecimalField(
+        max_digits=8, decimal_places=2, default=0.00,
+        help_text='Current cafeteria credit balance'
+    )
+
     objects = StaffUserManager()
 
     USERNAME_FIELD = 'staff_id'

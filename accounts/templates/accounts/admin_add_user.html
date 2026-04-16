@@ -68,6 +68,51 @@
 
       <div class="divider"></div>
       <div class="card-header" style="margin-bottom:16px">
+        <h2>Cafeteria Credit</h2>
+        <p>Set the monthly credit allowance and initial balance for this user</p>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Monthly Credit (S$) *</label>
+          <input type="number" name="monthly_credit" step="0.01" min="0" required
+            value="{{ form.monthly_credit.value|default:'50.00' }}" id="monthlyCredit">
+          <div class="hint">Credit renewed each month</div>
+        </div>
+        <div class="form-group">
+          <label>Working Days / Month</label>
+          <input type="number" value="{{ working_days }}" disabled
+            style="background:var(--bg);color:var(--text3)">
+          <div class="hint">Configured in system settings</div>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom:12px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" name="prorate_credit" id="prorateCheck" checked
+            style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer">
+          <span style="font-size:14px;font-weight:600">Prorate credit for this month</span>
+        </label>
+        <div class="hint" id="prorateHint" style="margin-top:4px">
+          Credit will be calculated based on remaining days this month.
+        </div>
+      </div>
+
+      <div id="manualCreditWrap" style="display:none">
+        <div class="form-group">
+          <label>Initial Credit Amount (S$) *</label>
+          <input type="number" name="manual_credit" step="0.01" min="0"
+            value="{{ form.manual_credit.value|default:'50.00' }}" id="manualCredit">
+          <div class="hint">Custom opening balance for this user</div>
+        </div>
+      </div>
+
+      <div id="creditPreview" class="form-group" style="padding:12px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:8px;font-size:13px;color:var(--text)">
+        <strong style="color:var(--accent3)">Estimated opening credit:</strong> <span id="creditEstimate">—</span>
+      </div>
+
+      <div class="divider"></div>
+      <div class="card-header" style="margin-bottom:16px">
         <h2>Profile &amp; Face ID</h2>
         <p>Face ID enrollment is done via live camera on the user's Profile page</p>
       </div>
@@ -93,4 +138,45 @@
     </form>
   </div>
 </div>
+
+<script>
+const prorateCheck = document.getElementById('prorateCheck');
+const manualWrap   = document.getElementById('manualCreditWrap');
+const prorateHint  = document.getElementById('prorateHint');
+const monthlyInput = document.getElementById('monthlyCredit');
+const manualInput  = document.getElementById('manualCredit');
+const estimateEl   = document.getElementById('creditEstimate');
+const WORKING_DAYS = {{ working_days }};
+
+// Today's remaining days in the month
+const today = new Date();
+const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+const remainingDays = daysInMonth - today.getDate() + 1;
+
+function updatePreview() {
+  const monthly = parseFloat(monthlyInput.value) || 0;
+  if (prorateCheck.checked) {
+    const ratio = Math.min(1, remainingDays / WORKING_DAYS);
+    const prorated = (monthly * ratio).toFixed(2);
+    estimateEl.textContent = 'S$' + prorated + ' (prorated: ' + remainingDays + ' of ' + WORKING_DAYS + ' days)';
+    manualWrap.style.display = 'none';
+    prorateHint.textContent = 'Credit will be calculated based on remaining days this month (' + remainingDays + ' days left).';
+  } else {
+    const manual = parseFloat(manualInput.value) || 0;
+    estimateEl.textContent = 'S$' + manual.toFixed(2) + ' (manual)';
+    manualWrap.style.display = '';
+    prorateHint.textContent = 'Enter a custom opening credit amount below.';
+  }
+}
+
+prorateCheck.addEventListener('change', updatePreview);
+monthlyInput.addEventListener('input', () => {
+  // Sync manual field default to match monthly credit
+  if (prorateCheck.checked) manualInput.value = monthlyInput.value;
+  updatePreview();
+});
+manualInput.addEventListener('input', updatePreview);
+
+updatePreview();
+</script>
 {% endblock %}

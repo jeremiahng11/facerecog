@@ -199,4 +199,10 @@ KIOSK_IDLE_TIMEOUT = int(os.environ.get('KIOSK_IDLE_TIMEOUT', '15'))
 # After printing, auto-logout and reset after this many seconds.
 KIOSK_POST_PRINT_TIMEOUT = int(os.environ.get('KIOSK_POST_PRINT_TIMEOUT', '10'))
 
+# ─── Cafeteria credits ───────────────────────────────────────────────────────
+# Default monthly credit for new staff (can be overridden per-user).
+DEFAULT_MONTHLY_CREDIT = float(os.environ.get('DEFAULT_MONTHLY_CREDIT', '50.00'))
+# Working days per month used for proration calculation.
+CREDIT_WORKING_DAYS = int(os.environ.get('CREDIT_WORKING_DAYS', '30'))
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

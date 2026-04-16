@@ -570,16 +570,50 @@ def admin_users_view(request):
 @login_required
 @user_passes_test(is_admin)
 def admin_add_user_view(request):
+    from decimal import Decimal
+    working_days = getattr(settings, 'CREDIT_WORKING_DAYS', 30)
+
     if request.method == 'POST':
         form = StaffUserCreationForm(request.POST, request.FILES)
         if form.is_valid():
-            user = form.save()
-            _log_admin_action(request.user, 'create', user)
-            messages.success(request, f'User {user.staff_id} created successfully.')
+            user = form.save(commit=False)
+            user.set_password(form.cleaned_data['password'])
+
+            # ── Credit assignment ─────────────────────────────────
+            prorate = form.cleaned_data.get('prorate_credit', True)
+            if prorate:
+                # Prorate: remaining days in the month / working days
+                today = timezone.localdate()
+                import calendar
+                _, days_in_month = calendar.monthrange(today.year, today.month)
+                remaining_days = days_in_month - today.day + 1  # include today
+                ratio = Decimal(str(remaining_days)) / Decimal(str(working_days))
+                # Cap at 1.0 so credit never exceeds monthly amount
+                if ratio > 1:
+                    ratio = Decimal('1')
+                user.credit_balance = (user.monthly_credit * ratio).quantize(Decimal('0.01'))
+            else:
+                manual = form.cleaned_data.get('manual_credit')
+                if manual is not None:
+                    user.credit_balance = manual
+                else:
+                    user.credit_balance = user.monthly_credit
+
+            user.save()
+            _log_admin_action(request.user, 'create', user,
+                              details=f'Credit: S${user.credit_balance}')
+            messages.success(
+                request,
+                f'User {user.staff_id} created with S${user.credit_balance} credit.',
+            )
             return redirect('admin_users')
     else:
         form = StaffUserCreationForm()
-    return render(request, 'accounts/admin_add_user.html', {'form': form})
+
+    return render(request, 'accounts/admin_add_user.html', {
+        'form': form,
+        'working_days': working_days,
+    })
 
 
 @login_required
@@ -620,6 +654,8 @@ def admin_bulk_import_view(request):
     """CSV bulk import of users. Expects columns: staff_id, email, full_name, department, password."""
     import csv
     import io
+    import calendar
+    from decimal import Decimal
 
     results = None
     if request.method == 'POST' and request.FILES.get('csv_file'):
@@ -628,6 +664,15 @@ def admin_bulk_import_view(request):
             decoded = csv_file.read().decode('utf-8-sig')
             reader = csv.DictReader(io.StringIO(decoded))
             results = {'created': [], 'skipped': [], 'errors': []}
+
+            # Prorate credit for bulk-imported users
+            working_days = getattr(settings, 'CREDIT_WORKING_DAYS', 30)
+            default_credit = Decimal(str(getattr(settings, 'DEFAULT_MONTHLY_CREDIT', 50)))
+            today = timezone.localdate()
+            _, days_in_month = calendar.monthrange(today.year, today.month)
+            remaining = days_in_month - today.day + 1
+            ratio = min(Decimal('1'), Decimal(str(remaining)) / Decimal(str(working_days)))
+            prorated = (default_credit * ratio).quantize(Decimal('0.01'))
 
             for i, row in enumerate(reader, start=2):  # row 1 is header
                 staff_id = (row.get('staff_id') or '').strip()
@@ -654,8 +699,10 @@ def admin_bulk_import_view(request):
                         password=password,
                         full_name=full_name,
                         department=department,
+                        monthly_credit=default_credit,
+                        credit_balance=prorated,
                     )
-                    _log_admin_action(request.user, 'create', user, 'CSV bulk import')
+                    _log_admin_action(request.user, 'create', user, f'CSV bulk import · S${prorated}')
                     results['created'].append(staff_id)
                 except Exception as e:
                     results['errors'].append(f'Row {i} ({staff_id}): {e}')
