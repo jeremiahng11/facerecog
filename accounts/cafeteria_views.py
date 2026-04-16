@@ -1640,19 +1640,21 @@ def cafeteria_hours_view(request):
 @login_required
 @user_passes_test(is_admin)
 def cafeteria_kiosk_config_view(request):
-    """Admin: edit kiosk idle / post-print timeouts."""
+    """Admin: edit kiosk idle / post-print timeouts and credit working days."""
     cfg = KioskConfig.get()
     if request.method == 'POST':
         try:
             landing = int(request.POST.get('idle_landing_seconds') or cfg.idle_landing_seconds)
             session_s = int(request.POST.get('idle_session_seconds') or cfg.idle_session_seconds)
             post_print = int(request.POST.get('post_print_seconds') or cfg.post_print_seconds)
+            working_days = int(request.POST.get('credit_working_days') or cfg.credit_working_days)
             # Sane bounds.
             cfg.idle_landing_seconds = max(5, min(600, landing))
             cfg.idle_session_seconds = max(5, min(600, session_s))
             cfg.post_print_seconds = max(1, min(120, post_print))
+            cfg.credit_working_days = max(1, min(31, working_days))
             cfg.save()
-            messages.success(request, 'Kiosk timeouts updated.')
+            messages.success(request, 'Settings updated.')
         except (TypeError, ValueError):
             messages.error(request, 'Please enter whole numbers only.')
         return redirect('cafeteria_kiosk_config')

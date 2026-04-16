@@ -17,7 +17,7 @@ from django.utils import timezone
 from django.conf import settings
 from django.db.models import Count, Q
 
-from .models import StaffUser, FaceLoginLog, AdminActionLog
+from .models import StaffUser, FaceLoginLog, AdminActionLog, KioskConfig
 from .forms import StaffLoginForm, StaffUserCreationForm, StaffUserEditForm, FacePhotoUploadForm
 from . import face_utils
 
@@ -574,7 +574,8 @@ def admin_users_view(request):
 @user_passes_test(is_admin)
 def admin_add_user_view(request):
     from decimal import Decimal
-    working_days = getattr(settings, 'CREDIT_WORKING_DAYS', 30)
+    cfg = KioskConfig.get()
+    working_days = cfg.credit_working_days
 
     if request.method == 'POST':
         form = StaffUserCreationForm(request.POST, request.FILES)
@@ -675,7 +676,7 @@ def admin_bulk_import_view(request):
             results = {'created': [], 'skipped': [], 'errors': []}
 
             # Prorate credit for bulk-imported users
-            working_days = getattr(settings, 'CREDIT_WORKING_DAYS', 30)
+            working_days = KioskConfig.get().credit_working_days
             default_credit = Decimal(str(getattr(settings, 'DEFAULT_MONTHLY_CREDIT', 50)))
             today = timezone.localdate()
             _, days_in_month = calendar.monthrange(today.year, today.month)

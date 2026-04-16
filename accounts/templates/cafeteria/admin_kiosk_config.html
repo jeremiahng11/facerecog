@@ -1,17 +1,21 @@
 {% extends 'base.html' %}
-{% block title %}Kiosk Timeouts{% endblock %}
+{% block title %}System Settings{% endblock %}
 {% block content %}
 <div class="page">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
     <div>
-      <div class="page-title">Kiosk Timeouts</div>
-      <div class="page-subtitle">Configure how long the kiosk waits before auto-returning to the idle screen.</div>
+      <div class="page-title">System Settings</div>
+      <div class="page-subtitle">Configure kiosk timeouts and cafeteria credit settings.</div>
     </div>
     <a href="{% url 'cafeteria_dashboard' %}" class="btn btn-secondary">← Dashboard</a>
   </div>
 
   <form method="post" class="card" style="max-width:640px">
     {% csrf_token %}
+
+    <div class="card-header" style="margin-bottom:16px">
+      <h2>Kiosk Timeouts</h2>
+    </div>
 
     <div class="form-group">
       <label>Idle landing-screen countdown (seconds)</label>
@@ -26,8 +30,7 @@
       <input type="number" name="idle_session_seconds" min="5" max="600"
              value="{{ cfg.idle_session_seconds }}" required>
       <div class="hint">Auto-logout after this many seconds of inactivity once a staff user has signed in
-        OR a walk-in public visitor is browsing (staff login, menu-select, menu browsing, public order,
-        and the order-confirmation ticket). Range 5 – 600.</div>
+        OR a walk-in public visitor is browsing. Range 5 – 600.</div>
     </div>
 
     <div class="form-group">
@@ -38,9 +41,23 @@
         before signing the user out and returning to the idle screen. Range 1 – 120.</div>
     </div>
 
+    <div class="divider"></div>
+
+    <div class="card-header" style="margin-bottom:16px">
+      <h2>Credit Settings</h2>
+    </div>
+
+    <div class="form-group">
+      <label>Working Days / Month</label>
+      <input type="number" name="credit_working_days" min="1" max="31"
+             value="{{ cfg.credit_working_days }}" required>
+      <div class="hint">Used when prorating credit for new staff added mid-month.
+        e.g. S$50 monthly credit, 15 days remaining out of 30 working days = S$25 opening balance. Range 1 – 31.</div>
+    </div>
+
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:24px">
       <div class="text-dim text-xs">Last updated: {{ cfg.updated_at|date:"d M Y H:i" }}</div>
-      <button type="submit" class="btn btn-primary">💾 Save Timeouts</button>
+      <button type="submit" class="btn btn-primary">Save Settings</button>
     </div>
   </form>
 </div>

@@ -536,6 +536,10 @@ class KioskConfig(models.Model):
     post_print_seconds = models.PositiveIntegerField(
         default=5, help_text='Auto-return to idle screen this many seconds after Print is clicked.'
     )
+    # Working days per month for credit proration when adding new staff.
+    credit_working_days = models.PositiveIntegerField(
+        default=30, help_text='Working days per month (used for prorating new staff credit).'
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
