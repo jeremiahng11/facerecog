@@ -189,7 +189,7 @@ FACE_ENROLL_NUM_JITTERS = int(os.environ.get('FACE_ENROLL_NUM_JITTERS', '1'))
 # Number of separate captures to average during enrollment. 3 captures
 # is enough for liveness variance + template averaging while keeping
 # enrollment fast (~2 seconds vs ~5 with 5 samples).
-FACE_ENROLL_NUM_SAMPLES = int(os.environ.get('FACE_ENROLL_NUM_SAMPLES', '3'))
+FACE_ENROLL_NUM_SAMPLES = int(os.environ.get('FACE_ENROLL_NUM_SAMPLES', '5'))
 
 # Minimum confidence (0-100) required for a verification match. Even if
 # the distance is within tolerance, reject if confidence is below this.

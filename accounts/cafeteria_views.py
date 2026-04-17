@@ -13,19 +13,20 @@ Pages:
   /cafeteria/admin/orders/     — order list / cancel
 """
 import base64
+import csv
 import hashlib
 import hmac
 import io
 import json
 import secrets
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db import transaction
 from django.db.models import Sum, Q, Exists, OuterRef
-from django.http import JsonResponse, Http404
+from django.http import JsonResponse, Http404, HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -1156,6 +1157,142 @@ def admin_menu_edit_view(request, item_id):
         messages.success(request, f'Updated "{item.name}".')
         return redirect('cafeteria_admin_menu_list')
     return render(request, 'cafeteria/admin_menu_form.html', {'item': item})
+
+
+_MENU_TYPE_ALIASES = {
+    'halal': 'halal', 'local': 'halal',
+    'non_halal': 'non_halal', 'nonhalal': 'non_halal', 'international': 'non_halal',
+    'cafe_bar': 'cafe_bar', 'cafebar': 'cafe_bar', 'cafe bar': 'cafe_bar',
+}
+_CSV_HEADERS = [
+    'menu_type', 'category', 'name', 'description',
+    'staff_price', 'public_price', 'daily_quantity',
+    'low_stock_threshold', 'display_order', 'is_available', 'is_vegetarian',
+]
+
+
+def _parse_bool(val, default=True):
+    return str(val).strip().upper() not in ('N', 'NO', 'FALSE', '0', '')
+
+
+def _parse_menu_rows(file_obj, filename):
+    """Return list of row dicts from a CSV or XLSX file object."""
+    name_lower = filename.lower()
+    if name_lower.endswith('.xlsx') or name_lower.endswith('.xls'):
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(file_obj.read()), data_only=True)
+            ws = wb.active
+            headers = [str(c.value or '').strip().lower().replace(' ', '_') for c in ws[1]]
+            rows = []
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                if not any(v for v in row if v is not None and str(v).strip()):
+                    continue
+                rows.append({headers[i]: (str(v).strip() if v is not None else '') for i, v in enumerate(row) if i < len(headers)})
+            return rows, None
+        except Exception as e:
+            return [], str(e)
+    else:
+        try:
+            content = file_obj.read().decode('utf-8-sig')
+            reader = csv.DictReader(io.StringIO(content))
+            reader.fieldnames = [h.strip().lower().replace(' ', '_') for h in (reader.fieldnames or [])]
+            return [dict(r) for r in reader if any(r.values())], None
+        except Exception as e:
+            return [], str(e)
+
+
+@login_required
+@user_passes_test(is_admin)
+def admin_menu_bulk_import_view(request):
+    """Bulk import cafeteria menu items from CSV or Excel."""
+    results = None
+    if request.method == 'POST':
+        f = request.FILES.get('import_file')
+        update_existing = request.POST.get('update_existing') == 'on'
+        if not f:
+            messages.error(request, 'No file uploaded.')
+        else:
+            rows, parse_err = _parse_menu_rows(f, f.name)
+            if parse_err:
+                messages.error(request, f'Could not read file: {parse_err}')
+            else:
+                results = {'created': [], 'updated': [], 'skipped': [], 'errors': []}
+                for idx, row in enumerate(rows, start=2):
+                    raw_type = str(row.get('menu_type', '') or '').strip().lower().replace(' ', '_')
+                    menu_type = _MENU_TYPE_ALIASES.get(raw_type)
+                    name = str(row.get('name', '') or '').strip()
+                    if not name:
+                        results['errors'].append(f'Row {idx}: missing name')
+                        continue
+                    if not menu_type:
+                        results['errors'].append(f'Row {idx} "{name}": invalid menu_type "{raw_type}" (use halal/non_halal/cafe_bar)')
+                        continue
+                    try:
+                        staff_price = Decimal(str(row.get('staff_price', '0') or '0').replace('$', '').replace(',', ''))
+                        public_price = Decimal(str(row.get('public_price', '0') or '0').replace('$', '').replace(',', ''))
+                        daily_qty = int(row.get('daily_quantity', 0) or 0)
+                        low_stock = int(row.get('low_stock_threshold', 3) or 3)
+                        display_order = int(row.get('display_order', 0) or 0)
+                        is_available = _parse_bool(row.get('is_available', 'Y'), default=True)
+                        is_veg = str(row.get('is_vegetarian', 'N') or 'N').strip().upper() in ('Y', 'YES', 'TRUE', '1')
+                    except (ValueError, InvalidOperation) as e:
+                        results['errors'].append(f'Row {idx} "{name}": {e}')
+                        continue
+                    existing = MenuItem.objects.filter(name__iexact=name, menu_type=menu_type).first()
+                    if existing:
+                        if update_existing:
+                            existing.category = str(row.get('category', '') or '')[:50]
+                            existing.description = str(row.get('description', '') or '')[:240]
+                            existing.staff_price = staff_price
+                            existing.public_price = public_price
+                            existing.daily_quantity = daily_qty
+                            existing.low_stock_threshold = low_stock
+                            existing.display_order = display_order
+                            existing.is_available = is_available
+                            existing.is_vegetarian = is_veg
+                            existing.save()
+                            results['updated'].append(name)
+                        else:
+                            results['skipped'].append(name)
+                    else:
+                        MenuItem.objects.create(
+                            menu_type=menu_type,
+                            category=str(row.get('category', '') or '')[:50],
+                            name=name[:120],
+                            description=str(row.get('description', '') or '')[:240],
+                            staff_price=staff_price,
+                            public_price=public_price,
+                            daily_quantity=daily_qty,
+                            quantity_remaining=daily_qty,
+                            low_stock_threshold=low_stock,
+                            display_order=display_order,
+                            is_available=is_available,
+                            is_vegetarian=is_veg,
+                        )
+                        results['created'].append(name)
+                total = len(results['created']) + len(results['updated']) + len(results['skipped']) + len(results['errors'])
+                msg = f"Processed {total} rows: {len(results['created'])} created, {len(results['updated'])} updated, {len(results['skipped'])} skipped, {len(results['errors'])} errors."
+                if results['errors']:
+                    messages.warning(request, msg)
+                else:
+                    messages.success(request, msg)
+    return render(request, 'cafeteria/admin_menu_bulk_import.html', {'results': results})
+
+
+@login_required
+@user_passes_test(is_admin)
+def admin_menu_template_download_view(request):
+    """Download a CSV import template for cafeteria menu items."""
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = 'attachment; filename="menu_import_template.csv"'
+    response.write('\ufeff')  # BOM for Excel compatibility
+    writer = csv.writer(response)
+    writer.writerow(_CSV_HEADERS)
+    writer.writerow(['halal', 'Rice Meals', 'Chicken Rice', 'Hainanese chicken rice', '3.50', '5.00', '50', '5', '1', 'Y', 'N'])
+    writer.writerow(['non_halal', 'Noodles', 'Char Kway Teow', '', '4.00', '6.00', '30', '3', '2', 'Y', 'N'])
+    writer.writerow(['cafe_bar', 'Hot Drinks', 'Kopi', 'Traditional local coffee', '1.50', '2.50', '100', '10', '1', 'Y', 'N'])
+    return response
 
 
 @login_required

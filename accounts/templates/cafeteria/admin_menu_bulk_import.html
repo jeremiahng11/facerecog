@@ -1,0 +1,179 @@
+{% extends 'base.html' %}
+{% block title %}Bulk Import Menu Items{% endblock %}
+{% block extra_head %}
+<style>
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    background: var(--bg2);
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--primary);
+    background: var(--primary-light, rgba(30,86,184,0.05));
+  }
+  .upload-zone input[type=file] { display: none; }
+  .file-label {
+    font-size: 15px; color: var(--text2);
+    margin: 10px 0 4px;
+  }
+  .file-hint { font-size: 12px; color: var(--text3); }
+  .results-box { margin-top: 20px; }
+  .result-section { margin-bottom: 14px; }
+  .result-section h4 {
+    font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
+    font-weight: 700; margin-bottom: 6px;
+  }
+  .result-section.ok h4 { color: var(--success, #047857); }
+  .result-section.warn h4 { color: var(--warn, #c2410c); }
+  .result-section.err h4 { color: var(--danger, #b91c1c); }
+  .result-section.skip h4 { color: var(--text3); }
+  .result-list {
+    font-size: 13px; color: var(--text2);
+    max-height: 160px; overflow-y: auto;
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px;
+  }
+  .result-list li { list-style: none; padding: 2px 0; }
+  .instructions-table th, .instructions-table td {
+    font-size: 12px; padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+  .instructions-table th { color: var(--text3); font-weight: 700; }
+  .col-required { color: var(--danger); font-size: 11px; }
+  .col-optional { color: var(--text3); font-size: 11px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <div>
+      <div class="page-title">Bulk Import Menu Items</div>
+      <div class="page-subtitle">Upload a CSV or Excel file to add or update menu items in bulk.</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <a href="{% url 'cafeteria_admin_menu_template' %}" class="btn btn-secondary">⬇ Download Template</a>
+      <a href="{% url 'cafeteria_admin_menu_list' %}" class="btn btn-secondary">← Back to Menu</a>
+    </div>
+  </div>
+
+  {% if messages %}
+  {% for m in messages %}
+  <div class="alert alert-{{ m.tags }}" style="margin-bottom:16px">{{ m }}</div>
+  {% endfor %}
+  {% endif %}
+
+  <div class="card" style="max-width:780px">
+    <form method="post" enctype="multipart/form-data" id="importForm">
+      {% csrf_token %}
+
+      <label for="fileInput" class="upload-zone" id="uploadZone">
+        <svg width="40" height="40" fill="none" stroke="var(--primary)" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto 12px;display:block"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        <div class="file-label" id="fileLabel">Click to choose file, or drag &amp; drop here</div>
+        <div class="file-hint">Accepts .csv or .xlsx files</div>
+        <input type="file" id="fileInput" name="import_file" accept=".csv,.xlsx,.xls" required onchange="onFileSelect(this)">
+      </label>
+
+      <div style="margin-top:16px;display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="update_existing" name="update_existing" style="width:16px;height:16px;accent-color:var(--primary)">
+        <label for="update_existing" style="font-size:14px;cursor:pointer">
+          Update existing items when name + menu type match
+          <span style="font-size:12px;color:var(--text3)">(leave unchecked to only add new items)</span>
+        </label>
+      </div>
+
+      <div style="margin-top:20px">
+        <button type="submit" class="btn btn-primary" id="submitBtn">⬆ Import</button>
+      </div>
+    </form>
+
+    {% if results %}
+    <div class="results-box">
+      <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px;padding-top:16px;border-top:1px solid var(--border)">Import Results</div>
+
+      {% if results.created %}
+      <div class="result-section ok">
+        <h4>✓ Created ({{ results.created|length }})</h4>
+        <ul class="result-list">{% for n in results.created %}<li>{{ n }}</li>{% endfor %}</ul>
+      </div>
+      {% endif %}
+
+      {% if results.updated %}
+      <div class="result-section warn">
+        <h4>↺ Updated ({{ results.updated|length }})</h4>
+        <ul class="result-list">{% for n in results.updated %}<li>{{ n }}</li>{% endfor %}</ul>
+      </div>
+      {% endif %}
+
+      {% if results.skipped %}
+      <div class="result-section skip">
+        <h4>— Skipped / already exists ({{ results.skipped|length }})</h4>
+        <ul class="result-list">{% for n in results.skipped %}<li>{{ n }}</li>{% endfor %}</ul>
+      </div>
+      {% endif %}
+
+      {% if results.errors %}
+      <div class="result-section err">
+        <h4>✗ Errors ({{ results.errors|length }})</h4>
+        <ul class="result-list">{% for e in results.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card" style="max-width:780px;margin-top:16px">
+    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px">Column Reference</div>
+    <table class="instructions-table" style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr>
+          <th>Column</th>
+          <th>Required</th>
+          <th>Accepted values</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><code>menu_type</code></td><td><span class="col-required">Required</span></td><td><code>halal</code> / <code>local</code> · <code>non_halal</code> / <code>international</code> · <code>cafe_bar</code></td></tr>
+        <tr><td><code>name</code></td><td><span class="col-required">Required</span></td><td>Item name (max 120 chars)</td></tr>
+        <tr><td><code>staff_price</code></td><td><span class="col-required">Required</span></td><td>Decimal number, e.g. <code>3.50</code></td></tr>
+        <tr><td><code>public_price</code></td><td><span class="col-required">Required</span></td><td>Decimal number, e.g. <code>5.00</code></td></tr>
+        <tr><td><code>category</code></td><td><span class="col-optional">Optional</span></td><td>Free text, e.g. <code>Rice Meals</code></td></tr>
+        <tr><td><code>description</code></td><td><span class="col-optional">Optional</span></td><td>Short description (max 240 chars)</td></tr>
+        <tr><td><code>daily_quantity</code></td><td><span class="col-optional">Optional</span></td><td>Integer, default <code>0</code></td></tr>
+        <tr><td><code>low_stock_threshold</code></td><td><span class="col-optional">Optional</span></td><td>Integer, default <code>3</code></td></tr>
+        <tr><td><code>display_order</code></td><td><span class="col-optional">Optional</span></td><td>Integer, default <code>0</code></td></tr>
+        <tr><td><code>is_available</code></td><td><span class="col-optional">Optional</span></td><td><code>Y</code> / <code>N</code>, default <code>Y</code></td></tr>
+        <tr><td><code>is_vegetarian</code></td><td><span class="col-optional">Optional</span></td><td><code>Y</code> / <code>N</code>, default <code>N</code></td></tr>
+      </tbody>
+    </table>
+    <div style="margin-top:12px;font-size:12px;color:var(--text3)">
+      Duplicate detection: items are matched by <strong>name + menu_type</strong> (case-insensitive).
+      Photos and Cafe Bar customizations must be set manually via the Edit page.
+    </div>
+  </div>
+</div>
+<script>
+const zone = document.getElementById('uploadZone');
+const label = document.getElementById('fileLabel');
+
+function onFileSelect(input) {
+  label.textContent = input.files[0] ? input.files[0].name : 'Click to choose file, or drag & drop here';
+}
+
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e => {
+  e.preventDefault();
+  zone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) {
+    document.getElementById('fileInput').files = e.dataTransfer.files;
+    label.textContent = f.name;
+  }
+});
+</script>
+{% endblock %}
