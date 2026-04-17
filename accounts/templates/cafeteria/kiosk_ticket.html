@@ -124,7 +124,9 @@
   </div>
 
   <div class="btns">
+    {% if request.GET.source != 'portal' %}
     <button class="btn btn-secondary" onclick="printReceipt()">🖨 Print</button>
+    {% endif %}
     <button class="btn btn-primary" onclick="window.location='{{ done_url|default:"/cafeteria/kiosk/" }}'">{{ done_label|default:"Done" }}</button>
   </div>
 

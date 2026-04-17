@@ -160,7 +160,7 @@ const video = document.getElementById('videoEl');
 const camStatus = document.getElementById('camStatus');
 let stream = null;
 let scanning = false;
-const CAP_MAX_DIM = 240;
+const CAP_MAX_DIM = 200;
 const _cap = document.createElement('canvas');
 
 function captureFrame() {
@@ -176,7 +176,7 @@ async function scanLoop() {
   while (scanning) {
     try {
       const f1 = captureFrame();
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise(r => setTimeout(r, 150));
       if (!scanning) break;
       const f2 = captureFrame();
 
@@ -196,7 +196,6 @@ async function scanLoop() {
       }
     } catch (e) {}
     if (!scanning) break;
-    await new Promise(r => setTimeout(r, 50));
   }
 }
 

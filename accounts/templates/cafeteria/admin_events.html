@@ -83,8 +83,10 @@
               {% if b.title %}<div style="font-size:11px;color:var(--text3)">{{ b.get_event_type_display }}</div>{% endif %}
             </td>
             <td>
+              {% if b.user %}
               <div class="booker-name">{{ b.user.display_name|default:b.user.full_name }}</div>
               <div class="booker-sid">{{ b.user.staff_id }}</div>
+              {% else %}<div class="booker-name">—</div>{% endif %}
             </td>
             <td>{{ b.event_menu.name|default:"—" }}</td>
             <td class="mono">{{ b.pax }}</td>

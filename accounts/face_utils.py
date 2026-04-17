@@ -440,18 +440,22 @@ def validate_and_extract(data_url: str, min_face_pct: float = 0.04) -> dict:
         encodings = face_recognition.face_encodings(arr, known_face_locations=locations, num_jitters=1)
         if not encodings:
             return {'ok': False, 'reason': 'Could not encode face. Please try again.'}
-        return {'ok': True, 'encoding': encodings[0].tolist()}
+        return {'ok': True, 'encoding': encodings[0].tolist(), 'location': locations[0]}
     except Exception as e:
         logger.error(f"Error extracting encoding: {e}")
         return {'ok': False, 'reason': 'Error processing face.'}
 
 
-def fast_extract(data_url: str) -> list | None:
+def fast_extract(data_url: str, known_location: tuple | None = None) -> list | None:
     """
-    Fast-path encoding extraction — skips quality checks (size, centering,
-    multi-face).  Used for follow-up frames during a verification match
-    streak where the first frame already passed full validation.
+    Fast-path encoding for a follow-up frame.
 
+    When known_location (top, right, bottom, left) is supplied — taken from
+    the first frame's already-validated face region — we skip HOG detection
+    entirely and pass it directly to face_encodings().  This halves the
+    number of expensive dlib operations per request.
+
+    Falls back to running face_locations() if no location is provided.
     Returns 128-dim encoding list, or None if no face found.
     """
     if not FACE_RECOGNITION_AVAILABLE:
@@ -460,9 +464,12 @@ def fast_extract(data_url: str) -> list | None:
     if arr is None:
         return None
     try:
-        locations = face_recognition.face_locations(arr, model='hog')
-        if len(locations) != 1:
-            return None
+        if known_location is not None:
+            locations = [known_location]
+        else:
+            locations = face_recognition.face_locations(arr, model='hog')
+            if len(locations) != 1:
+                return None
         encodings = face_recognition.face_encodings(arr, known_face_locations=locations, num_jitters=1)
         return encodings[0].tolist() if encodings else None
     except Exception:

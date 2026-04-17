@@ -198,8 +198,10 @@ def face_verify_ajax(request):
         min_confidence = getattr(settings, 'FACE_MIN_CONFIDENCE', 65)
         tolerance = getattr(settings, 'FACE_RECOGNITION_TOLERANCE', 0.4)
 
-        # ── Extract encodings from all frames ─────────────────────
+        # Extract encodings. Frame1 runs full HOG detection + quality checks;
+        # subsequent frames reuse frame1's face location to skip re-detection.
         encodings = []
+        frame1_location = None
         for i, img in enumerate(images):
             if i == 0:
                 result = face_utils.validate_and_extract(img)
@@ -210,8 +212,9 @@ def face_verify_ajax(request):
                         'face_detected': False,
                     })
                 encodings.append(result['encoding'])
+                frame1_location = result.get('location')
             else:
-                enc = face_utils.fast_extract(img)
+                enc = face_utils.fast_extract(img, known_location=frame1_location)
                 if enc is None:
                     return JsonResponse({
                         'success': False,
