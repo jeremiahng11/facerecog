@@ -77,9 +77,9 @@ class _EncodingCache:
             return self._matrix, list(self._user_keys)
 
     def invalidate(self):
-        """Force a refresh on the next call (e.g. after enrollment)."""
+        """Force an immediate refresh (e.g. after enrollment)."""
         with self._lock:
-            self._ts = 0.0
+            self._refresh()
 
     def find_best_match(self, candidate: list, tolerance: float) -> dict | None:
         """

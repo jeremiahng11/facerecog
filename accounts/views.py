@@ -279,6 +279,13 @@ def face_verify_ajax(request):
         # ── Grant login ───────────────────────────────────────────
         best_match = StaffUser.objects.get(pk=match['pk'])
 
+        if not best_match.is_active:
+            return JsonResponse({
+                'success': False,
+                'face_detected': True,
+                'message': 'Your account has been deactivated. Please contact admin.',
+            })
+
         # Auto-disable expired temp/intern accounts
         if (best_match.staff_type in ('temp', 'intern')
                 and best_match.contract_end_date

@@ -60,7 +60,15 @@
     <div class="row">👥 {{ booking.pax }} pax</div>
   </div>
   {% if booking.event_menu %}
-  <div class="booking-menu">🍽 {{ booking.event_menu.name }}</div>
+  <div style="display:flex;gap:10px;margin-top:8px;align-items:center">
+    {% if booking.event_menu.photo %}
+    <img src="{{ booking.event_menu.photo.url }}" style="width:56px;height:56px;border-radius:8px;object-fit:cover;flex-shrink:0">
+    {% endif %}
+    <div>
+      <div class="booking-menu" style="margin-top:0">🍽 {{ booking.event_menu.name }}</div>
+      <div style="font-size:11px;color:var(--text3)">S${{ booking.event_menu.price_per_pax|floatformat:2 }}/pax</div>
+    </div>
+  </div>
   {% endif %}
 </a>
 {% empty %}

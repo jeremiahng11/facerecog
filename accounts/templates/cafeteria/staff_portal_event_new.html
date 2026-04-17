@@ -127,6 +127,8 @@
       price_per_pax: {{ m.price_per_pax }},
       min_pax: {{ m.min_pax }},
       max_pax: {{ m.max_pax }},
+      photo: "{% if m.photo %}{{ m.photo.url }}{% endif %}",
+      description: "{{ m.description|default:''|escapejs }}",
       components: [
         {% for c in m.components.all %}
         { category: "{{ c.get_category_display|escapejs }}", name: "{{ c.name|escapejs }}", description: "{{ c.description|default:''|escapejs }}", is_vegetarian: {% if c.is_vegetarian %}true{% else %}false{% endif %} }{% if not forloop.last %},{% endif %}
@@ -154,7 +156,12 @@
       groups[c.category] = groups[c.category] || [];
       groups[c.category].push(c);
     });
-    let html = `<div class="pv-title">${m.name}</div>`;
+    let html = '';
+    if (m.photo) {
+      html += `<img src="${m.photo}" style="width:100%;max-height:180px;object-fit:cover;border-radius:8px;margin-bottom:10px">`;
+    }
+    html += `<div class="pv-title">${m.name}</div>`;
+    if (m.description) html += `<div style="font-size:12px;color:var(--text2);margin-bottom:6px">${m.description}</div>`;
     html += `<div class="pv-price">S$${m.price_per_pax.toFixed(2)}/pax · Min ${m.min_pax}, Max ${m.max_pax} pax</div>`;
     Object.keys(groups).forEach(cat => {
       html += `<div class="pv-cat">${cat}</div>`;

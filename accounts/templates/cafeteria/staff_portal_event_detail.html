@@ -88,7 +88,11 @@
 
 {% if booking.event_menu %}
 <div class="card">
-  <div class="section-title">Menu Components</div>
+  {% if booking.event_menu.photo %}
+  <img src="{{ booking.event_menu.photo.url }}" style="width:100%;max-height:200px;object-fit:cover;border-radius:8px;margin-bottom:12px">
+  {% endif %}
+  <div class="section-title">{{ booking.event_menu.name }}</div>
+  {% if booking.event_menu.description %}<div style="font-size:13px;color:var(--text2);margin-bottom:10px">{{ booking.event_menu.description }}</div>{% endif %}
   {% regroup booking.event_menu.components.all by get_category_display as cat_groups %}
   {% for g in cat_groups %}
   <div class="cat-block">
