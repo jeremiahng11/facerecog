@@ -193,9 +193,12 @@ async function scanLoop() {
         return;
       } else if (data.face_detected === false) {
         camStatus.textContent = 'Position your face in the circle';
+      } else {
+        camStatus.textContent = data.message || 'Retrying…';
       }
     } catch (e) {}
     if (!scanning) break;
+    await new Promise(r => setTimeout(r, 1500));
   }
 }
 

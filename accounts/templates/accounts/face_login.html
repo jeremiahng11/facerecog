@@ -245,7 +245,7 @@ const MAX_ATTEMPTS = 30;
 const CAPTURE_MAX_DIM = 320;
 const CAPTURE_JPEG_QUALITY = 0.65;
 const FRAME_GAP_MS = 250;
-const SCAN_GAP_MS = 0;
+const SCAN_GAP_MS = 1500;
 
 const video = document.getElementById('videoEl');
 const camera = document.getElementById('cameraContainer');
@@ -370,6 +370,12 @@ async function captureAndVerify() {
       return;
     } else if (data.face_detected === false) {
       setStatus('scanning', 'No Face Detected', 'Please centre your face in the circle.');
+    } else if (data.locked_out) {
+      stopScan();
+      setStatus('failed', 'Locked Out', data.message);
+      return;
+    } else {
+      setStatus('scanning', data.message || 'Retrying…', 'Hold still — scanning again shortly.', data.confidence || null);
     }
   } catch (e) {
     // network error, keep trying

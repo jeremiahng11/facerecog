@@ -89,7 +89,7 @@
 const CSRF_TOKEN = '{{ csrf_token }}';
 const CAPTURE_MAX_DIM = 320;
 const FRAME_GAP_MS = 250;
-const SCAN_GAP_MS = 0;
+const SCAN_GAP_MS = 1500;
 const RESET_DELAY_MS = 4000;
 
 let stream = null;
@@ -153,6 +153,8 @@ async function scanLoop() {
         return;
       } else if (data.face_detected === false) {
         statusEl.textContent = 'Position your face in the circle';
+      } else {
+        statusEl.textContent = data.message || 'Retrying…';
       }
     } catch (e) {
       // network error, keep trying

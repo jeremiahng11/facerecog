@@ -175,7 +175,7 @@ else:
 # ─── Face recognition ─────────────────────────────────────────────────────────
 # Verification tolerance: maximum face_distance to accept a login match.
 # Lower = stricter. Default library value is 0.6; we use 0.4 for security.
-FACE_RECOGNITION_TOLERANCE = float(os.environ.get('FACE_TOLERANCE', '0.4'))
+FACE_RECOGNITION_TOLERANCE = float(os.environ.get('FACE_TOLERANCE', '0.45'))
 
 # Enrollment duplicate-check tolerance: how close a new face can be to an
 # existing enrolled face before we reject the enrollment as a potential
@@ -193,7 +193,7 @@ FACE_ENROLL_NUM_SAMPLES = int(os.environ.get('FACE_ENROLL_NUM_SAMPLES', '3'))
 
 # Minimum confidence (0-100) required for a verification match. Even if
 # the distance is within tolerance, reject if confidence is below this.
-FACE_MIN_CONFIDENCE = float(os.environ.get('FACE_MIN_CONFIDENCE', '65'))
+FACE_MIN_CONFIDENCE = float(os.environ.get('FACE_MIN_CONFIDENCE', '55'))
 
 # Number of consecutive successful matches to the same user required
 # before granting login. 2 is sufficient for liveness variance check
