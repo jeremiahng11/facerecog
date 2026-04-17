@@ -175,15 +175,12 @@ function captureFrame() {
 async function scanLoop() {
   while (scanning) {
     try {
-      const f1 = captureFrame();
-      await new Promise(r => setTimeout(r, 250));
-      if (!scanning) break;
-      const f2 = captureFrame();
+      const frame = captureFrame();
 
       const resp = await fetch('{% url "face_verify_ajax" %}', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
-        body: JSON.stringify({ images: [f1, f2] }),
+        body: JSON.stringify({ images: [frame] }),
       });
       const data = await resp.json();
       if (data.success) {

@@ -197,82 +197,23 @@ def face_verify_ajax(request):
         min_confidence = getattr(settings, 'FACE_MIN_CONFIDENCE', 65)
         tolerance = getattr(settings, 'FACE_RECOGNITION_TOLERANCE', 0.4)
 
-        # Extract encodings. Frame1 runs full HOG detection + quality checks;
-        # subsequent frames reuse frame1's face location to skip re-detection.
-        encodings = []
-        frame1_location = None
-        for i, img in enumerate(images):
-            if i == 0:
-                result = face_utils.validate_and_extract(img)
-                if not result['ok']:
-                    return JsonResponse({
-                        'success': False,
-                        'message': result['reason'],
-                        'face_detected': False,
-                    })
-                encodings.append(result['encoding'])
-                frame1_location = result.get('location')
-            else:
-                enc = face_utils.fast_extract(img, known_location=frame1_location)
-                if enc is None:
-                    return JsonResponse({
-                        'success': False,
-                        'message': 'Hold still…',
-                        'face_detected': False,
-                    })
-                encodings.append(enc)
+        # Extract encoding from the first (and usually only) frame.
+        result = face_utils.validate_and_extract(images[0])
+        if not result['ok']:
+            return JsonResponse({
+                'success': False,
+                'message': result['reason'],
+                'face_detected': False,
+            })
 
-        # ── Batch compare first frame against all enrolled users ──
-        match = face_utils.encoding_cache.find_best_match(encodings[0], tolerance)
+        # ── Batch compare against all enrolled users ──────────────
+        match = face_utils.encoding_cache.find_best_match(result['encoding'], tolerance)
 
         if not match or match['confidence'] < min_confidence:
             return JsonResponse({
                 'success': False, 'face_detected': True,
                 'message': 'Face not recognised. Try again or use Staff ID login.',
                 'confidence': 0,
-            })
-
-        # If only 1 frame was sent (legacy client), ask for more
-        if len(encodings) < 2:
-            return JsonResponse({
-                'success': False,
-                'face_detected': True,
-                'message': 'Verifying…',
-                'confidence': match['confidence'],
-                'verifying': True,
-            })
-
-        # ── Verify second frame matches the same user ─────────────
-        match2 = face_utils.encoding_cache.find_best_match(encodings[1], tolerance)
-        if not match2 or match2['staff_id'] != match['staff_id']:
-            return JsonResponse({
-                'success': False, 'face_detected': True,
-                'message': 'Hold still — verifying…',
-                'verifying': True,
-            })
-
-        # ── Liveness check: verify frame variance ─────────────────
-        if not face_utils.check_encoding_variance(encodings, min_std=0.008):
-            FaceLoginLog.objects.create(
-                success=False, ip_address=ip_addr,
-                device=device_info,
-                notes='Liveness check failed — possible photo spoofing',
-            )
-            logger.warning(f"Liveness check failed during login from {ip_addr}")
-            _send_security_notification(
-                'Possible Photo Spoofing Attempt',
-                f'A face login attempt from IP {ip_addr} failed the '
-                f'liveness check (zero encoding variance across '
-                f'{len(encodings)} frames). This may indicate a '
-                f'printed photo or phone screen was used.\n'
-                f'Device: {device_info}\n'
-                f'Matched user: {match["staff_id"]}\n'
-                f'Time: {timezone.now().isoformat()}',
-            )
-            return JsonResponse({
-                'success': False,
-                'face_detected': True,
-                'message': 'Liveness check failed. Please look directly at the camera and blink naturally.',
             })
 
         # ── Grant login ───────────────────────────────────────────

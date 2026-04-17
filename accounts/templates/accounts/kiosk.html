@@ -89,7 +89,7 @@
 const CSRF_TOKEN = '{{ csrf_token }}';
 const CAPTURE_MAX_DIM = 320;
 const FRAME_GAP_MS = 250;
-const SCAN_GAP_MS = 1500;
+const SCAN_GAP_MS = 800;
 const RESET_DELAY_MS = 4000;
 
 let stream = null;
@@ -116,16 +116,12 @@ function captureFrame() {
 async function scanLoop() {
   while (scanning) {
     try {
-      // Capture 2 frames with a small gap for liveness variance
-      const frame1 = captureFrame();
-      await new Promise(r => setTimeout(r, FRAME_GAP_MS));
-      if (!scanning) break;
-      const frame2 = captureFrame();
+      const frame = captureFrame();
 
       const resp = await fetch('{% url "face_verify_ajax" %}', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
-        body: JSON.stringify({ images: [frame1, frame2] }),
+        body: JSON.stringify({ images: [frame] }),
       });
       const data = await resp.json();
 
