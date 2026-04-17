@@ -16,6 +16,7 @@
     background: var(--primary-light, rgba(30,86,184,0.05));
   }
   .upload-zone input[type=file] { display: none; }
+  .upload-zone { display: block; }
   .file-label {
     font-size: 15px; color: var(--text2);
     margin: 10px 0 4px;
@@ -71,12 +72,12 @@
     <form method="post" enctype="multipart/form-data" id="importForm">
       {% csrf_token %}
 
-      <label for="fileInput" class="upload-zone" id="uploadZone">
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
         <svg width="40" height="40" fill="none" stroke="var(--primary)" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto 12px;display:block"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
         <div class="file-label" id="fileLabel">Click to choose file, or drag &amp; drop here</div>
         <div class="file-hint">Accepts .csv or .xlsx files</div>
         <input type="file" id="fileInput" name="import_file" accept=".csv,.xlsx,.xls" required onchange="onFileSelect(this)">
-      </label>
+      </div>
 
       <div style="margin-top:16px;display:flex;align-items:center;gap:8px">
         <input type="checkbox" id="update_existing" name="update_existing" style="width:16px;height:16px;accent-color:var(--primary)">
