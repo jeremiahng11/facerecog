@@ -140,8 +140,7 @@ def login_view(request):
                     messages.error(request, 'Your account has expired. Please contact admin.')
                 else:
                     login(request, user)
-                    next_url = request.GET.get('next', 'dashboard')  # router
-                    return redirect(next_url)
+                    return redirect('dashboard')
             else:
                 messages.error(request, 'Invalid Staff ID or Password.')
     else:
