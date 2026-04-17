@@ -178,62 +178,85 @@ def face_verify_ajax(request):
             })
 
         data = json.loads(request.body)
-        image_data = data.get('image')
-        if not image_data:
+        # Accept both single-frame (image) and dual-frame (images) payloads.
+        images = data.get('images') or []
+        if not images and data.get('image'):
+            images = [data['image']]
+        if not images:
             return JsonResponse({'success': False, 'message': 'No image received'})
 
         required_consecutive = getattr(settings, 'FACE_VERIFY_CONSECUTIVE_MATCHES', 2)
         min_confidence = getattr(settings, 'FACE_MIN_CONFIDENCE', 65)
         tolerance = getattr(settings, 'FACE_RECOGNITION_TOLERANCE', 0.4)
 
-        # ── Single-pass: validate face quality AND extract encoding ──
-        # Old flow called face_locations() twice (once for quality, once
-        # inside face_encodings).  This halves the per-frame CPU work.
-        result = face_utils.validate_and_extract(image_data)
-        if not result['ok']:
-            return JsonResponse({
-                'success': False,
-                'message': result['reason'],
-                'face_detected': False,
-            })
+        # Extract encodings. Frame1 runs full HOG detection + quality checks;
+        # subsequent frames reuse frame1’s face location to skip re-detection.
+        encodings = []
+        frame1_location = None
+        for i, img in enumerate(images):
+            if i == 0:
+                result = face_utils.validate_and_extract(img)
+                if not result['ok']:
+                    return JsonResponse({
+                        'success': False,
+                        'message': result['reason'],
+                        'face_detected': False,
+                    })
+                encodings.append(result['encoding'])
+                frame1_location = result.get('location')
+            else:
+                enc = face_utils.fast_extract(img, known_location=frame1_location)
+                if enc is None:
+                    return JsonResponse({
+                        'success': False,
+                        'message': 'Hold still…',
+                        'face_detected': False,
+                    })
+                encodings.append(enc)
 
-        candidate_encoding = result['encoding']
+        candidate_encoding = encodings[0]
 
-        # ── Batch compare against all enrolled users at once ─────
-        # Uses in-memory numpy matrix — no DB query, no JSON parsing,
-        # single vectorised distance computation.
+        # Batch compare first frame against all enrolled users at once.
         match = face_utils.encoding_cache.find_best_match(candidate_encoding, tolerance)
 
         if match and match['confidence'] >= min_confidence:
-            # ── Server-side consecutive match tracking ────────────
-            # Stored in Django session to avoid sending large encoding
-            # arrays back and forth in every request payload.
-            sess_match_user = request.session.get('_face_match_user')
-            sess_match_count = request.session.get('_face_match_count', 0)
-            sess_encodings = request.session.get('_face_match_encs', [])
-
-            if sess_match_user == match['staff_id']:
-                consecutive = sess_match_count + 1
+            if len(encodings) >= 2:
+                # 2-frame batch: verify frame2 matches the same user.
+                match2 = face_utils.encoding_cache.find_best_match(encodings[1], tolerance)
+                if not match2 or match2['staff_id'] != match['staff_id']:
+                    return JsonResponse({
+                        'success': False, 'face_detected': True,
+                        'message': 'Hold still — verifying…',
+                        'verifying': True,
+                    })
+                all_encodings = encodings
             else:
-                consecutive = 1
-                sess_encodings = []
+                # Single-frame fallback: session-based consecutive tracking.
+                sess_match_user = request.session.get('_face_match_user')
+                sess_match_count = request.session.get('_face_match_count', 0)
+                sess_encodings = request.session.get('_face_match_encs', [])
 
-            # Accumulate this frame's encoding for liveness check.
-            all_encodings = sess_encodings + [candidate_encoding]
+                if sess_match_user == match['staff_id']:
+                    consecutive = sess_match_count + 1
+                else:
+                    consecutive = 1
+                    sess_encodings = []
 
-            if consecutive < required_consecutive:
-                request.session['_face_match_user'] = match['staff_id']
-                request.session['_face_match_count'] = consecutive
-                request.session['_face_match_encs'] = all_encodings
-                return JsonResponse({
-                    'success': False,
-                    'face_detected': True,
-                    'message': f'Verifying… ({consecutive}/{required_consecutive})',
-                    'confidence': match['confidence'],
-                    'verifying': True,
-                })
+                all_encodings = sess_encodings + [candidate_encoding]
 
-            # ── Liveness check: verify frame variance ─────────────
+                if consecutive < required_consecutive:
+                    request.session['_face_match_user'] = match['staff_id']
+                    request.session['_face_match_count'] = consecutive
+                    request.session['_face_match_encs'] = all_encodings
+                    return JsonResponse({
+                        'success': False,
+                        'face_detected': True,
+                        'message': 'Verifying…',
+                        'confidence': match['confidence'],
+                        'verifying': True,
+                    })
+
+            # Liveness check: frames must show natural micro-variance.
             if not face_utils.check_encoding_variance(all_encodings, min_std=0.008):
                 _clear_face_session(request)
                 FaceLoginLog.objects.create(
@@ -258,14 +281,14 @@ def face_verify_ajax(request):
                     'message': 'Liveness check failed. Please look directly at the camera and blink naturally.',
                 })
 
-            # ── Grant login ───────────────────────────────────────
+            # Grant login
             _clear_face_session(request)
             best_match = StaffUser.objects.get(pk=match['pk'])
             FaceLoginLog.objects.create(
                 user=best_match, success=True,
                 confidence=match['confidence'], ip_address=ip_addr,
                 device=device_info,
-                notes=f'{required_consecutive} consecutive matches',
+                notes=f'{len(all_encodings)}-frame verified',
             )
             best_match.last_face_login = timezone.now()
             best_match.save(update_fields=['last_face_login'])

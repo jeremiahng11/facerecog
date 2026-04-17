@@ -86,8 +86,9 @@
 
 <script>
 const CSRF_TOKEN = '{{ csrf_token }}';
-const CAPTURE_MAX_DIM = 320;   // smaller = faster encode/upload/detection
-const SCAN_GAP_MS = 50;        // tight loop — server is the bottleneck
+const CAPTURE_MAX_DIM = 200;
+const FRAME_GAP_MS = 150;
+const SCAN_GAP_MS = 0;
 const RESET_DELAY_MS = 4000;
 
 let stream = null;
@@ -115,10 +116,14 @@ function captureFrame() {
 async function scanLoop() {
   while (scanning) {
     try {
+      const f1 = captureFrame();
+      await new Promise(r => setTimeout(r, FRAME_GAP_MS));
+      if (!scanning) break;
+      const f2 = captureFrame();
       const resp = await fetch('{% url "face_verify_ajax" %}', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
-        body: JSON.stringify({ image: captureFrame() }),
+        body: JSON.stringify({ images: [f1, f2] }),
       });
       const data = await resp.json();
 

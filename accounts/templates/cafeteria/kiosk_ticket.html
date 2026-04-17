@@ -1,0 +1,215 @@
+{% extends 'cafeteria/_base_cafeteria.html' %}
+{% block title %}Collection QR — {{ order.order_number }}{% endblock %}
+{% block extra_head %}
+<style>
+  .wrap { max-width: 520px; margin: 40px auto; padding: 20px; text-align: center; }
+  .success-icon {
+    width: 72px; height: 72px; border-radius: 50%;
+    background: var(--success-soft); color: var(--success);
+    display: inline-flex; align-items: center; justify-content: center;
+    margin-bottom: 16px;
+  }
+  h1 { font-size: 28px; font-weight: 800; margin-bottom: 6px; }
+  h1 .accent { color: var(--success); }
+  .subtitle { color: var(--text2); margin-bottom: 24px; }
+
+  .order-card {
+    background: linear-gradient(135deg, var(--primary-light), #fff);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 32px 20px;
+    box-shadow: var(--shadow-lg);
+  }
+  .order-num {
+    font-size: 56px; font-weight: 800; color: var(--primary);
+    letter-spacing: 4px; margin: 8px 0 4px;
+  }
+  .menu-badge { margin-bottom: 20px; }
+  .qr-wrap {
+    background: #fff; border-radius: 16px; padding: 14px;
+    display: inline-block; margin: 12px 0;
+  }
+  .qr-wrap img { display: block; width: 220px; height: 220px; }
+
+  .items-list {
+    text-align: left;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin: 18px 0;
+  }
+  .items-list .row {
+    display: flex; justify-content: space-between;
+    padding: 4px 0; font-size: 14px;
+  }
+  .totals {
+    border-top: 1px dashed var(--border); margin-top: 8px; padding-top: 8px;
+  }
+
+  .btns { display: flex; gap: 10px; margin-top: 20px; }
+  .btns button {
+    flex: 1; padding: 14px; font-size: 15px; font-weight: 700;
+    border-radius: 10px; cursor: pointer;
+  }
+
+  .info-pill {
+    background: var(--warn-soft); color: #854d0e;
+    padding: 10px 14px; border-radius: 10px; font-size: 13px;
+    margin-top: 20px;
+  }
+
+  /* Print layout for 58mm thermal printer (48mm printable). */
+  #printArea { display: none; }
+  @media print {
+    @page { size: 58mm auto; margin: 0; }
+    html, body { background: #fff !important; width: 48mm; margin: 0; padding: 0; }
+    /* Hide everything on the page, then re-show only #printArea and
+       its descendants. Using visibility (not display) keeps ancestor
+       containers laid out so the print area stays positioned. */
+    body * { visibility: hidden !important; }
+    #printArea, #printArea * { visibility: visible !important; }
+    #printArea {
+      display: block !important;
+      position: absolute; left: 0; top: 0;
+      width: 48mm; padding: 3mm 2mm;
+      font-family: 'Courier New', monospace;
+      color: #000; text-align: center;
+    }
+    #printArea img { display: block; margin: 2mm auto; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="wrap">
+  <div class="success-icon">
+    <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+      <polyline points="20 6 9 17 4 12"/>
+    </svg>
+  </div>
+  <h1>Order <span class="accent">Confirmed!</span></h1>
+  <div class="subtitle">Show this QR code at the counter to collect your meal</div>
+
+  <div class="order-card">
+    <div style="font-size:11px;letter-spacing:2px;color:var(--text3);font-weight:700">YOUR ORDER NUMBER</div>
+    <div class="order-num">{{ order.order_number }}</div>
+    <div class="menu-badge">
+      {% if order.menu_type == 'halal' %}<span class="badge badge-halal">LOCAL KITCHEN</span>
+      {% elif order.menu_type == 'non_halal' %}<span class="badge badge-nonhalal">INTERNATIONAL KITCHEN</span>
+      {% elif order.menu_type == 'cafe_bar' %}<span class="badge badge-cafe">CAFE BAR</span>{% endif %}
+    </div>
+
+    <div class="qr-wrap">
+      <img src="{{ qr_image }}" alt="QR">
+    </div>
+
+    <div class="items-list">
+      {% for item in order.items.all %}
+      <div class="row">
+        <span>{{ item.quantity }}× {{ item.name_snapshot }}</span>
+        <span>S${{ item.subtotal|floatformat:2 }}</span>
+      </div>
+      {% endfor %}
+      <div class="totals">
+        <div class="row"><span>Subtotal</span><span>S${{ order.subtotal|floatformat:2 }}</span></div>
+        <div class="row" style="color:var(--success);font-weight:600"><span>Credits Applied</span><span>-S${{ order.credits_applied|floatformat:2 }}</span></div>
+      </div>
+    </div>
+
+    <div style="font-size:12px;color:var(--text3)">{{ order.customer.display_name }} · {{ order.created_at|date:"d M Y" }} · {{ order.created_at|time:"H:i" }}</div>
+  </div>
+
+  <div class="info-pill">
+    ⚠ This QR is <strong>one-time use only</strong>. Save a screenshot or check your Staff Portal.
+  </div>
+
+  <div class="btns">
+    {% if request.GET.source != 'portal' %}
+    <button class="btn btn-secondary" onclick="printReceipt()">🖨 Print</button>
+    {% endif %}
+    <button class="btn btn-primary" onclick="window.location='{{ done_url|default:"/cafeteria/kiosk/" }}'">{{ done_label|default:"Done" }}</button>
+  </div>
+
+<script>
+  // Silent print via RawBT URL scheme: rawbt:<base64-of-ESC/POS-bytes>
+  //
+  // The RawBT Android app intercepts this URL, decodes the base64 payload,
+  // and sends the raw ESC/POS bytes (init + centered header + double-size
+  // order number + raster-bitmap QR + items + totals) directly to the
+  // paired Bluetooth MPT-2 — no browser print dialog, ever.
+  //
+  // Falls back to window.print() + a dedicated 58mm print page when no
+  // ESC/POS payload is available (e.g. browsers with no RawBT installed
+  // for development / admin desktop testing).
+  const IS_KIOSK_SOURCE = {% if request.GET.source == 'kiosk' or not request.GET.source %}true{% else %}false{% endif %};
+  const KIOSK_POST_PRINT_MS = {{ post_print_timeout|default:5 }} * 1000;
+  const KIOSK_TICKET_IDLE_MS = {{ idle_timeout|default:30 }} * 1000;
+  const ESCPOS_B64 = "{{ escpos_b64|default:'' }}";
+
+  function printReceipt() {
+    if (ESCPOS_B64) {
+      // RawBT URL scheme: rawbt:base64,<base64-of-ESC/POS-bytes>
+      // The 'base64,' prefix tells RawBT to base64-decode the payload
+      // into raw binary and hand it to the printer. Without that prefix
+      // RawBT treats the URL payload as plain text and prints the
+      // base64 string character by character.
+      const a = document.createElement('a');
+      a.href = 'rawbt:base64,' + ESCPOS_B64;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => a.remove(), 500);
+    } else {
+      // No RawBT / no payload — fall back to the dedicated print page
+      // which uses window.print() in a new tab (dialog on stock browsers,
+      // silent under Fully Kiosk with Kiosk-Printing enabled).
+      window.open('{% url "cafeteria_ticket_print" order.id %}', '_blank');
+    }
+    if (IS_KIOSK_SOURCE) {
+      try { sessionStorage.removeItem('kiosk_cart'); } catch (e) {}
+      setTimeout(kioskLogoutAndReturn, KIOSK_POST_PRINT_MS);
+    }
+  }
+
+  // POST logout with next=/cafeteria/kiosk/ so the kiosk lands on the idle
+  // screen, not the regular login page.
+  function kioskLogoutAndReturn() {
+    const f = document.createElement('form');
+    f.method = 'POST'; f.action = '/logout/';
+    const csrf = document.createElement('input');
+    csrf.type = 'hidden'; csrf.name = 'csrfmiddlewaretoken';
+    csrf.value = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+    const nxt = document.createElement('input');
+    nxt.type = 'hidden'; nxt.name = 'next'; nxt.value = '/cafeteria/kiosk/';
+    f.appendChild(csrf); f.appendChild(nxt);
+    document.body.appendChild(f); f.submit();
+  }
+
+  function scheduleKioskReturn(ms) {
+    setTimeout(kioskLogoutAndReturn, ms);
+  }
+
+  // Kiosk-only: idle auto-return even if the user never prints.
+  if (IS_KIOSK_SOURCE) {
+    (function(){
+      let t;
+      function reset() { clearTimeout(t); t = setTimeout(kioskLogoutAndReturn, KIOSK_TICKET_IDLE_MS); }
+      ['touchstart','mousedown','keydown','scroll','pointerdown'].forEach(ev => document.addEventListener(ev, reset, { passive: true }));
+      reset();
+    })();
+  }
+</script>
+</div>
+
+<!-- Hidden print area -->
+<div id="printArea">
+  <div style="font-weight:bold">Cafeteria</div>
+  <div style="border-top:1px dashed #000;margin:3mm 0"></div>
+  <div>{{ order.customer.display_name }}</div>
+  <div style="font-size:30pt;font-weight:bold;letter-spacing:4px;margin:4mm 0">{{ order.order_number }}</div>
+  <img src="{{ qr_image }}" style="width:32mm;height:32mm;margin:3mm auto;display:block">
+  <div style="font-size:8pt">{{ order.created_at|date:"d M Y H:i" }}</div>
+  <div style="border-top:1px dashed #000;margin:3mm 0"></div>
+  <div style="font-size:8pt">Thank you</div>
+</div>
+{% endblock %}
