@@ -80,12 +80,12 @@
         <div class="field"><span class="k">Pax</span><span class="v">{{ booking.pax }}</span></div>
       </div>
       <div class="dl">
-        <div class="field"><span class="k">Booker</span><span class="v">{{ booking.user.display_name|default:booking.user.full_name }}</span></div>
-        <div class="field"><span class="k">Staff ID</span><span class="v mono">{{ booking.user.staff_id }}</span></div>
-        <div class="field"><span class="k">Email</span><span class="v">{{ booking.user.email }}</span></div>
+        <div class="field"><span class="k">Booker</span><span class="v">{{ booking.booked_by.display_name|default:booking.booked_by.full_name }}</span></div>
+        <div class="field"><span class="k">Staff ID</span><span class="v mono">{{ booking.booked_by.staff_id }}</span></div>
+        <div class="field"><span class="k">Email</span><span class="v">{{ booking.booked_by.email }}</span></div>
         <div class="field"><span class="k">Menu</span><span class="v">{{ booking.event_menu.name|default:"—" }}</span></div>
         <div class="field"><span class="k">Total Cost</span><span class="v" style="color:var(--accent);font-weight:700">S${{ booking.total_cost|floatformat:2 }}</span></div>
-        <div class="field"><span class="k">Submitted</span><span class="v">{{ booking.created_at|date:"d M Y, H:i" }}</span></div>
+        <div class="field"><span class="k">Submitted</span><span class="v">{{ booking.submitted_at|date:"d M Y, H:i" }}</span></div>
         {% if booking.approved_at %}
         <div class="field"><span class="k">Approved</span><span class="v">{{ booking.approved_at|date:"d M Y, H:i" }}</span></div>
         {% endif %}
@@ -113,7 +113,7 @@
     {% endif %}
     <div class="card-header"><h2>{{ booking.event_menu.name }}</h2></div>
     {% if booking.event_menu.description %}<div style="font-size:13px;color:var(--text2);margin-bottom:12px">{{ booking.event_menu.description }}</div>{% endif %}
-    {% regroup booking.event_menu.components.all by get_category_display as cat_groups %}
+    {% regroup booking.event_menu.components.all|dictsort:"category" by get_category_display as cat_groups %}
     {% for g in cat_groups %}
     <div class="component-cat">
       <div class="cat-header">{{ g.grouper }}</div>

@@ -2973,7 +2973,10 @@ def admin_event_new_view(request):
 @login_required
 @user_passes_test(is_admin)
 def admin_event_detail_view(request, booking_id):
-    booking = get_object_or_404(EventBooking, pk=booking_id)
+    booking = get_object_or_404(
+        EventBooking.objects.select_related('event_menu', 'booked_by', 'approved_by'),
+        pk=booking_id,
+    )
     return render(request, 'cafeteria/admin_event_detail.html', {
         'booking': booking,
     })
@@ -3004,7 +3007,7 @@ def admin_event_reject_view(request, booking_id):
         messages.error(request, 'Only pending bookings can be rejected.')
     else:
         booking.status = 'rejected'
-        booking.rejection_reason = (request.POST.get('reason') or '').strip()[:500]
+        booking.rejection_reason = (request.POST.get('rejection_reason') or '').strip()[:500]
         booking.approved_by = request.user
         booking.approved_at = timezone.now()
         booking.save(update_fields=['status', 'rejection_reason', 'approved_by', 'approved_at'])

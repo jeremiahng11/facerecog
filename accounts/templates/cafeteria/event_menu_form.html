@@ -140,13 +140,13 @@
           {% if menu %}
             {% for c in menu.components.all %}
             <div class="component-row" data-index="{{ forloop.counter0 }}">
-              <select name="component_category[]">
+              <select name="component_category">
                 {% for val, label in categories %}
                 <option value="{{ val }}" {% if c.category == val %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
               </select>
-              <input type="text" name="component_name[]" value="{{ c.name }}" placeholder="Component name" required>
-              <input type="text" name="component_description[]" value="{{ c.description|default:'' }}" placeholder="Description (optional)">
+              <input type="text" name="component_name" value="{{ c.name }}" placeholder="Component name" required>
+              <input type="text" name="component_description" value="{{ c.description|default:'' }}" placeholder="Description (optional)">
               <label class="veg-wrap">
                 <input type="checkbox" name="component_veg_{{ forloop.counter0 }}" {% if c.is_vegetarian %}checked{% endif %}>
                 Veg
@@ -169,13 +169,13 @@
 
 <template id="row-template">
   <div class="component-row">
-    <select name="component_category[]">
+    <select name="component_category">
       {% for val, label in categories %}
       <option value="{{ val }}">{{ label }}</option>
       {% endfor %}
     </select>
-    <input type="text" name="component_name[]" placeholder="Component name" required>
-    <input type="text" name="component_description[]" placeholder="Description (optional)">
+    <input type="text" name="component_name" placeholder="Component name" required>
+    <input type="text" name="component_description" placeholder="Description (optional)">
     <label class="veg-wrap">
       <input type="checkbox" data-veg-check>
       Veg
