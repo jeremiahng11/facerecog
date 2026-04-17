@@ -1289,9 +1289,9 @@ def admin_menu_template_download_view(request):
     response.write('\ufeff')  # BOM for Excel compatibility
     writer = csv.writer(response)
     writer.writerow(_CSV_HEADERS)
-    writer.writerow(['halal', 'Rice Meals', 'Chicken Rice', 'Hainanese chicken rice', '3.50', '5.00', '50', '5', '1', 'Y', 'N'])
-    writer.writerow(['non_halal', 'Noodles', 'Char Kway Teow', '', '4.00', '6.00', '30', '3', '2', 'Y', 'N'])
-    writer.writerow(['cafe_bar', 'Hot Drinks', 'Kopi', 'Traditional local coffee', '1.50', '2.50', '100', '10', '1', 'Y', 'N'])
+    writer.writerow(['Local', 'Rice Meals', 'Chicken Rice', 'Hainanese chicken rice', '3.50', '5.00', '50', '5', '1', 'Y', 'N'])
+    writer.writerow(['International', 'Noodles', 'Char Kway Teow', '', '4.00', '6.00', '30', '3', '2', 'Y', 'N'])
+    writer.writerow(['Cafe Bar', 'Hot Drinks', 'Kopi', 'Traditional local coffee', '1.50', '2.50', '100', '10', '1', 'Y', 'N'])
     return response
 
 
